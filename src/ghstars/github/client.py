@@ -14,8 +14,12 @@ from ghstars.github.schema import (
     RateLimitResponse,
     RemoveStarResponse,
     RepositoryIdResponse,
+    RepositoryItemNode,
     StarredEdge,
     StarredResponse,
+    UserListItemsNodeResponse,
+    UserListNode,
+    UserListsResponse,
 )
 
 PAGE_SIZE = 100
@@ -93,6 +97,23 @@ mutation($starrableId: ID!) {
     }
   }
 }
+"""
+
+_LISTS_QUERY = f"""
+query($cursor: String) {{
+  viewer {{
+    lists(first: {PAGE_SIZE}, after: $cursor) {{
+      pageInfo {{ hasNextPage endCursor }}
+      nodes {{
+        id
+        name
+        slug
+        description
+        isPrivate
+      }}
+    }}
+  }}
+}}
 """
 
 
@@ -176,13 +197,48 @@ def _parse_following_page(
     return conn.nodes, conn.page_info
 
 
+def _parse_lists_page(data: dict[str, object]) -> tuple[list[UserListNode], PageInfo]:
+    conn = UserListsResponse.model_validate(data).viewer.lists
+    return conn.nodes, conn.page_info
+
+
+def _list_items_query(list_id: str) -> str:
+    # `list_id` is a GitHub GraphQL node ID (opaque, e.g. "UL_kwDO..."); a
+    # per-list query needs it baked into the query text since `_graphql`
+    # only threads a `$cursor` variable through. json.dumps produces a
+    # valid, safely-escaped GraphQL string literal (same quoting rules as
+    # JSON), so this can't break out of the string even for odd IDs.
+    return f"""
+query($cursor: String) {{
+  node(id: {json.dumps(list_id)}) {{
+    ... on UserList {{
+      items(first: {PAGE_SIZE}, after: $cursor) {{
+        pageInfo {{ hasNextPage endCursor }}
+        nodes {{ ... on Repository {{ nameWithOwner }} }}
+      }}
+    }}
+  }}
+}}
+"""
+
+
+def _parse_list_items_page(
+    data: dict[str, object],
+) -> tuple[list[RepositoryItemNode | None], PageInfo]:
+    parsed = UserListItemsNodeResponse.model_validate(data)
+    if parsed.node is None:
+        return [], PageInfo(has_next_page=False, end_cursor=None)
+    conn = parsed.node.items
+    return conn.nodes, conn.page_info
+
+
 class RealGitHubClient:
     """ghstars.core.GitHubClient over `gh api graphql`.
 
-    fetch_stars, check_rate_limit, and remove_star are implemented here —
-    List reads land in ticket 03, List/membership mutations in ticket 04.
-    Those methods exist to satisfy the GitHubClient Protocol and raise
-    NotImplementedError until their own ticket lands.
+    fetch_stars, fetch_lists, check_rate_limit, and remove_star are all
+    implemented here — only List/membership *mutations* (create_list,
+    update_list, delete_list, update_list_membership_for_item) remain
+    NotImplementedError, pending ticket 04.
     """
 
     def check_rate_limit(self) -> RateLimitStatus:
@@ -234,10 +290,36 @@ class RealGitHubClient:
             for node in _paginate_all(_FOLLOWING_QUERY, _parse_following_page)
         }
 
-    # --- Out of scope for ticket 02 ---
-
     def fetch_lists(self) -> list[List]:
-        raise NotImplementedError("List fetching lands in ticket 03")
+        """Fetch `viewer.lists` with each List's full item membership.
+
+        Raw `name`/`description`/etc. only -- Intent/Category classification
+        from `name` is a `ghstars.core.taxonomy` concern, applied by
+        `ghstars.core.sync.sync()`, not here.
+        """
+        lists: list[List] = []
+        for node in _paginate_all(_LISTS_QUERY, _parse_lists_page):
+            lists.append(
+                List(
+                    id=node.id,
+                    name=node.name,
+                    slug=node.slug,
+                    description=node.description,
+                    is_private=node.is_private,
+                    items=self._fetch_list_items(node.id),
+                )
+            )
+        return lists
+
+    def _fetch_list_items(self, list_id: str) -> list[str]:
+        query = _list_items_query(list_id)
+        return [
+            item.name_with_owner
+            for item in _paginate_all(query, _parse_list_items_page)
+            if item is not None and item.name_with_owner is not None
+        ]
+
+    # --- List/membership mutations: ticket 04 ---
 
     def create_list(
         self, name: str, *, is_private: bool = False, description: str | None = None

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ValidationError
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import Star
 from ghstars.core.state_store import StateStore
+from ghstars.core.taxonomy import classify_list
 
 
 class RateLimitExceededError(Exception):
@@ -18,6 +19,7 @@ class RateLimitExceededError(Exception):
 
 class SyncResult(BaseModel):
     star_count: int
+    list_count: int
 
 
 def sync(client: GitHubClient, store: StateStore) -> SyncResult:
@@ -36,10 +38,19 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
         previous = _load_previous_stars(store)
         stars = client.fetch_stars()
         archived = _carry_forward_archived(previous, stars, now=datetime.now(UTC))
-
         all_stars = stars + archived
+
+        # Lists (ticket 03): fetched Lists carry only their raw `name` from
+        # GitHub -- classify_list() derives intent/category/malformed from
+        # it before persisting, so GitHub-side classification is always
+        # respected. Fetched before either save below, so a failure here
+        # never leaves stars.json updated while lists.json is stale (or
+        # vice versa).
+        lists = [classify_list(lst) for lst in client.fetch_lists()]
+
         store.save_stars(all_stars)
-    return SyncResult(star_count=len(all_stars))
+        store.save_lists(lists)
+    return SyncResult(star_count=len(all_stars), list_count=len(lists))
 
 
 def _load_previous_stars(store: StateStore) -> list[Star]:

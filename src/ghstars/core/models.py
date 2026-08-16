@@ -30,6 +30,11 @@ class List(BaseModel):
     is_private: bool = False
     intent: Intent | None = None
     category: str | None = None
+    # Set when `name` looks like an attempted `{Intent}: {Category}` prefix
+    # that doesn't exactly match (wrong case, wrong separator, unrecognized
+    # word) -- flagged for the user to rename, never guessed at. A plain
+    # unprefixed name is General (malformed=False, intent=None), not this.
+    malformed: bool = False
     items: list[str] = []
 
 
