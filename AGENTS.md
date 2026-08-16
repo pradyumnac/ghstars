@@ -1,3 +1,9 @@
+## Handoff notes
+
+Managed by the `handoff` skill.
+
+- handoff_file: HANDOFF.md
+
 ## Agent skills
 
 ### Issue tracker
