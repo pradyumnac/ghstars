@@ -17,3 +17,6 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# Agent-managed worktree checkouts — nested git repos, never part of history.
+.claude/worktrees/
