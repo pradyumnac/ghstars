@@ -8,6 +8,29 @@ of scope to fix right now.
 Delete a section once it lands in `TODO.md`, an ADR, `AGENTS.md`, or
 `README.md` — this file is a staging area, not a second source of truth.
 
+## Start next session with: spec/issues consistency audit
+
+Run an independent advisor review (fresh agent, no shared context —
+same pattern as this session's whole-project reviews) over
+`.scratch/ghstars-v1/spec.md` together with the full
+`.scratch/ghstars-v1/issues/*.md` ticket list. Look for inconsistencies
+between them and any observations worth surfacing — e.g. spec sections
+that no ticket covers, ticket scope that's drifted from what the spec
+says, acceptance criteria that no longer match a decision made in a
+later ticket's `## Comments` (ticket 04 and 05 already have one such
+cross-reference — the push-then-pull ordering — that a consistency
+pass should confirm is still accurate once 05 actually lands).
+
+Checked (2026-08-16): no `mattpocock-skills` skill is purpose-built for
+this. `/domain-modeling` is vocabulary/term-level only;
+`/improve-codebase-architecture` is code-architecture, not spec/ticket
+content. This is the generic advisor pattern, not a named skill — spawn
+it directly rather than searching for a skill to wrap it in. Report
+findings only; this is exactly the report-only whole-project-review
+class of check per the project's review-process convention (see the
+"Review process" section elsewhere in this file), so don't auto-apply
+fixes from it without checking back first.
+
 ## Task rail
 
 Mirror of the session-scoped Task tool (`TaskCreate`/`TaskUpdate`/
