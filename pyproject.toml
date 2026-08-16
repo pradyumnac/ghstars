@@ -54,7 +54,7 @@ warn_unreachable = true
 # plugin. Every module below defines BaseModel subclasses; add a module here
 # only when it does the same, never to silence an unrelated explicit-any.
 [[tool.mypy.overrides]]
-module = ["ghstars.core.models", "ghstars.core.sync"]
+module = ["ghstars.core.models", "ghstars.core.sync", "ghstars.github.schema"]
 disable_error_code = ["explicit-any"]
 
 [tool.pytest.ini_options]

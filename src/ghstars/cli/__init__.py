@@ -6,6 +6,7 @@ from ghstars.cli.deps import get_client, get_store
 from ghstars.cli.errors import fail
 from ghstars.core import RateLimitExceededError, sync
 from ghstars.core.models import Star
+from ghstars.github import GitHubApiError
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -17,12 +18,12 @@ DEFAULT_LIST_FIELDS = ["full_name", "language", "stargazer_count"]
 def sync_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
-    """Fetch stars from GitHub (the fake client, until ticket 02) into local state."""
+    """Fetch stars from GitHub into local state."""
     client = get_client()
     store = get_store()
     try:
         result = sync(client, store)
-    except RateLimitExceededError as exc:
+    except (RateLimitExceededError, GitHubApiError) as exc:
         fail(str(exc))
 
     if json_output:
