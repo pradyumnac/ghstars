@@ -1,0 +1,91 @@
+import pytest
+
+from ghstars.core.models import Intent, List
+from ghstars.core.taxonomy import classify_list, parse_list_name
+
+
+@pytest.mark.parametrize(
+    ("name", "intent", "category"),
+    [
+        ("Explore: Tool", "Explore", "Tool"),
+        ("Current: Dev Tooling", "Current", "Dev Tooling"),
+        ("Retired: Editors", "Retired", "Editors"),
+        ("Reference: AI Agents", "Reference", "AI Agents"),
+        ("Explore: General", "Explore", "General"),
+    ],
+)
+def test_parse_list_name_recognizes_intent_prefixes(
+    name: str, intent: Intent, category: str
+) -> None:
+    parsed = parse_list_name(name)
+    assert parsed.intent == intent
+    assert parsed.category == category
+    assert parsed.malformed is False
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Vendored skills",
+        "AI Agents Reference",
+        "Explorer",
+        "My Tools",
+        "Explore",  # bare Intent word, no separator attempt -> General
+        "Explore Zone",  # normal word boundary, not a separator attempt
+        "Current Events",
+    ],
+)
+def test_parse_list_name_recognizes_unprefixed_general(name: str) -> None:
+    parsed = parse_list_name(name)
+    assert parsed.intent is None
+    assert parsed.category is None
+    assert parsed.malformed is False
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "explore: Foo",  # wrong case
+        "Explore - Foo",  # wrong separator
+        "Explore-Foo",  # wrong separator, no space
+        "Exploring: Foo",  # unrecognized word before the colon
+        "current: bar",  # wrong case
+    ],
+)
+def test_parse_list_name_flags_malformed_never_guesses(name: str) -> None:
+    parsed = parse_list_name(name)
+    assert parsed.malformed is True
+    assert parsed.intent is None
+    assert parsed.category is None
+
+
+def test_classify_list_sets_intent_and_category_from_name() -> None:
+    lst = List(id="L_1", name="Explore: Tool", slug="explore-tool")
+
+    classified = classify_list(lst)
+
+    assert classified.intent == "Explore"
+    assert classified.category == "Tool"
+    assert classified.malformed is False
+    # original untouched (model_copy)
+    assert lst.intent is None
+
+
+def test_classify_list_flags_malformed_and_leaves_intent_category_none() -> None:
+    lst = List(id="L_1", name="Exploring: Foo", slug="exploring-foo")
+
+    classified = classify_list(lst)
+
+    assert classified.intent is None
+    assert classified.category is None
+    assert classified.malformed is True
+
+
+def test_classify_list_general_is_not_malformed() -> None:
+    lst = List(id="L_1", name="Vendored skills", slug="vendored-skills")
+
+    classified = classify_list(lst)
+
+    assert classified.intent is None
+    assert classified.category is None
+    assert classified.malformed is False

@@ -95,3 +95,47 @@ class RateLimit(_GraphQLModel):
 
 class RateLimitResponse(_GraphQLModel):
     rate_limit: RateLimit
+
+
+class UserListNode(_GraphQLModel):
+    id: str
+    name: str
+    slug: str
+    description: str | None = None
+    is_private: bool
+
+
+class UserListsConnection(_GraphQLModel):
+    page_info: PageInfo
+    nodes: list[UserListNode]
+
+
+class UserListsViewer(_GraphQLModel):
+    lists: UserListsConnection
+
+
+class UserListsResponse(_GraphQLModel):
+    viewer: UserListsViewer
+
+
+class RepositoryItemNode(_GraphQLModel):
+    # None when the union member behind `... on Repository` didn't match
+    # (shouldn't happen -- `UserListItems`'s only possible type is
+    # Repository, confirmed via introspection -- but the field is nullable
+    # in the schema, so handle it defensively).
+    name_with_owner: str | None = None
+
+
+class UserListItemsConnection(_GraphQLModel):
+    page_info: PageInfo
+    nodes: list[RepositoryItemNode | None]
+
+
+class UserListItemsOnly(_GraphQLModel):
+    items: UserListItemsConnection
+
+
+class UserListItemsNodeResponse(_GraphQLModel):
+    # `node` is None if the list ID no longer resolves (e.g. deleted
+    # between the outer `viewer.lists` fetch and this per-list item fetch).
+    node: UserListItemsOnly | None = None

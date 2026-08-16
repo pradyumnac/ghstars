@@ -10,6 +10,7 @@ from ghstars.core.models import (
 )
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import RateLimitExceededError, SyncResult, sync
+from ghstars.core.taxonomy import ParsedListName, classify_list, parse_list_name
 
 __all__ = [
     "FakeGitHubClient",
@@ -17,11 +18,14 @@ __all__ = [
     "Intent",
     "List",
     "Nudge",
+    "ParsedListName",
     "RateLimitExceededError",
     "RateLimitStatus",
     "RetriageEntry",
     "Star",
     "StateStore",
     "SyncResult",
+    "classify_list",
+    "parse_list_name",
     "sync",
 ]
