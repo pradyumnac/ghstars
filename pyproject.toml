@@ -1,0 +1,64 @@
+[project]
+name = "ghstars"
+version = "0.1.0"
+description = "Terminal-first tool for classifying GitHub starred repos into GitHub's native Lists."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+authors = [{ name = "Pradyumna Chatterjee", email = "chatterjee.pra@gmail.com" }]
+dependencies = [
+    "filelock>=3.32.3",
+    "pydantic>=2.13.4",
+    "typer>=0.27.1",
+]
+
+[project.scripts]
+ghstars = "ghstars.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest", "mypy", "ruff"]
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+# Inherit Ruff's curated baseline, then add the rulesets that catch real
+# defects. Ruff's own default is E and F only, which misses import order,
+# modernisation, and most bug patterns.
+extend-select = [
+    "B",    # flake8-bugbear: likely bugs
+    "I",    # isort: import order
+    "UP",   # pyupgrade: modern syntax for the target version
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "PTH",  # prefer pathlib over os.path
+]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+python_version = "3.14"
+strict = true
+# strict = true does NOT ban Any. This key is what bans it.
+disallow_any_explicit = true
+disallow_any_generics = true
+warn_return_any = true
+warn_unreachable = true
+
+# mypy 2.3.1 attributes an Any from pydantic.BaseModel's own stub to the
+# `class Foo(BaseModel):` line itself, indistinguishable from an Any written
+# in our code — confirmed in isolation, with and without the pydantic mypy
+# plugin. Every module below defines BaseModel subclasses; add a module here
+# only when it does the same, never to silence an unrelated explicit-any.
+[[tool.mypy.overrides]]
+module = ["ghstars.core.models", "ghstars.core.sync"]
+disable_error_code = ["explicit-any"]
+
+[tool.pytest.ini_options]
+# --strict-config errors on a misspelled config key.
+# --strict-markers errors on an undeclared marker.
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]

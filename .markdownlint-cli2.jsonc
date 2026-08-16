@@ -1,0 +1,26 @@
+// markdownlint-cli2 configuration. Rules and paths both live here.
+//
+// There is no "globs" key on purpose. With one, markdownlint-cli2 lints that
+// glob and disregards the file given on the command line, so a pre-commit
+// hook would report every problem in the repository against each staged file.
+// Pass the glob to the command instead:
+//
+//     markdownlint-cli2 '**/*.md'
+{
+  "config": {
+    "default": true,
+    "MD013": {
+      "line_length": 120,
+      "code_blocks": false,
+      "tables": false
+    },
+    "MD024": {
+      "allow_different_nesting": true
+    }
+  },
+  "ignores": [
+    "**/node_modules/**",
+    ".git/**",
+    ".venv/**"
+  ]
+}

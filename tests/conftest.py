@@ -1,0 +1,27 @@
+from datetime import UTC, datetime
+from typing import Protocol
+
+import pytest
+
+from ghstars.core.models import Star
+
+NOW = datetime(2026, 8, 16, tzinfo=UTC)
+
+
+class StarFactory(Protocol):
+    def __call__(self, full_name: str = ..., **overrides: object) -> Star: ...
+
+
+@pytest.fixture
+def make_star() -> StarFactory:
+    def _make(full_name: str = "pradyumnac/ghstars", **overrides: object) -> Star:
+        defaults = {
+            "full_name": full_name,
+            "html_url": f"https://github.com/{full_name}",
+            "starred_at": NOW,
+            "first_seen": NOW,
+            "last_checked": NOW,
+        }
+        return Star.model_validate(defaults | overrides)
+
+    return _make

@@ -1,0 +1,35 @@
+# Tool versions and tasks. mise also activates the uv virtual environment.
+[tools]
+python = "3.14"
+uv = "latest"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.install]
+description = "Sync dependencies from the lockfile"
+run = "uv sync --all-extras"
+
+[tasks.fmt]
+description = "Format the code"
+run = "uv run ruff format ."
+
+[tasks.lint]
+description = "Lint the code"
+run = "uv run ruff check --fix ."
+
+[tasks.typecheck]
+description = "Type-check the code"
+run = "uv run mypy ."
+
+[tasks.test]
+description = "Run the tests"
+run = "uv run pytest"
+
+[tasks.check]
+description = "Run every gate, as the hooks do"
+depends = ["fmt", "lint", "typecheck", "test"]
+
+[tasks.build]
+description = "Build the wheel and the source distribution"
+run = "uv build"
