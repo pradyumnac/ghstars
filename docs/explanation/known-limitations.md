@@ -18,8 +18,37 @@ take tens of seconds, so the window is real, not theoretical.
 **Recovery:** self-heals on the next sync. By then the repo was
 starred well before that sync's `fetch_stars()` call.
 
-**Not fixed:** reordering the two fetches only moves the race; it does
-not remove it (an unstar between the calls creates the same problem in
-the other direction). A real fix needs defensive handling — reconcile
-`List.items` against `Star.list_ids`, and skip or log any list item
-with no matching local Star — not just a fetch-order change.
+**Not fully fixed:** `reconcile_list_membership()` now joins `List.items`
+back onto `Star.list_ids`, skipping any list item with no matching
+local Star, so the race no longer produces missing data — it just
+resolves one sync late. It also leaves an already-Archived star
+untouched, so a stale or racy `List.items` entry can never re-list a
+star that was just unstarred (verified: an early version of this fix
+did not have that guard, and code review caught a reproducible case
+where it did). Reordering the two fetches would only move the race,
+not remove it (an unstar between the calls creates the same problem
+in the other direction), so reordering was not attempted.
+
+## Sync always re-fetches everything
+
+`sync()` has no incremental path. Every `ghstars sync` re-fetches all
+starred repos, all owned forks, all follows, and every List's full
+item membership from GitHub, regardless of what changed since the
+last sync.
+
+**Effect:** sync time scales with account size, not with what
+changed. On a 1,529-star account, a sync takes about 45-50 seconds,
+even when nothing changed since the last run.
+
+**Why stars can't go incremental easily:** `starredRepositories` is
+ordered newest-first, so *new* stars could in principle stop paging
+early once a known `starred_at` is reached. But unstar detection
+(`_carry_forward_archived`) needs the full current set to diff
+against the previous one — GitHub has no "unstar" event feed, so
+there is no cheaper way to learn what disappeared.
+
+**The clear win, not yet taken:** the forks and follows fetches
+(`_fetch_forked_parents`, `_fetch_followed_logins`) do not need a
+full diff at all. They exist only to compute two `Star` fields and
+could be fetched less often (e.g. cached, refreshed on a longer
+interval) without touching star/unstar correctness.

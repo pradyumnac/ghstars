@@ -1,12 +1,18 @@
 from pathlib import Path
 
 import pytest
-from conftest import StarFactory
+from conftest import NOW, StarFactory
 
 from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.models import List, RateLimitStatus
 from ghstars.core.state_store import StateStore
-from ghstars.core.sync import RateLimitExceededError, remove_star_from_lists, sync
+from ghstars.core.sync import (
+    RateLimitExceededError,
+    archive_star,
+    reconcile_list_membership,
+    remove_star_from_lists,
+    sync,
+)
 
 
 def test_sync_fetches_and_persists_stars(
@@ -134,6 +140,70 @@ def test_sync_fetches_and_classifies_lists(tmp_path: Path) -> None:
     assert saved["L_3"].intent is None
     assert saved["L_3"].category is None
     assert saved["L_3"].malformed is True
+
+
+def test_sync_populates_list_ids_from_list_membership(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    shared = make_star("pradyumnac/shared")
+    solo = make_star("pradyumnac/solo")
+    unlisted = make_star("pradyumnac/unlisted")
+    lists = [
+        List(id="L_1", name="Explore: A", slug="a", items=["pradyumnac/shared"]),
+        List(
+            id="L_2",
+            name="Explore: B",
+            slug="b",
+            items=["pradyumnac/shared", "pradyumnac/solo"],
+        ),
+    ]
+    client = FakeGitHubClient(stars=[shared, solo, unlisted], lists=lists)
+    store = StateStore(tmp_path)
+
+    sync(client, store)
+
+    by_name = {s.full_name: s for s in store.load_stars()}
+    assert sorted(by_name["pradyumnac/shared"].list_ids) == ["L_1", "L_2"]
+    assert by_name["pradyumnac/solo"].list_ids == ["L_2"]
+    assert by_name["pradyumnac/unlisted"].list_ids == []
+
+
+def test_reconcile_list_membership_never_relists_an_archived_star(
+    make_star: StarFactory,
+) -> None:
+    """A stale/racy List.items entry for an already-archived star must not
+    override archive_star()'s empty list_ids (CONTEXT.md: Archived carries
+    no List membership going forward)."""
+    archived = archive_star(make_star("pradyumnac/gone"), now=NOW)
+    lists = [
+        List(id="L_1", name="Explore: A", slug="a", items=["pradyumnac/gone"]),
+    ]
+
+    reconciled = reconcile_list_membership([archived], lists)
+
+    assert reconciled[0].list_ids == []
+    assert reconciled[0].archived is True
+
+
+def test_reconcile_list_membership_skips_a_list_item_with_no_matching_star(
+    make_star: StarFactory,
+) -> None:
+    """The two fetches are not one atomic snapshot (see
+    docs/explanation/known-limitations.md) -- an unmatched item must not
+    raise, only be skipped."""
+    known = make_star("pradyumnac/known")
+    lists = [
+        List(
+            id="L_1",
+            name="Explore: A",
+            slug="a",
+            items=["pradyumnac/known", "pradyumnac/not-yet-fetched"],
+        ),
+    ]
+
+    reconciled = reconcile_list_membership([known], lists)
+
+    assert reconciled[0].list_ids == ["L_1"]
 
 
 def test_remove_star_from_lists_drops_only_the_matching_star() -> None:

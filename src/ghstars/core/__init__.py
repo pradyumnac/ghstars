@@ -13,6 +13,7 @@ from ghstars.core.sync import (
     RateLimitExceededError,
     SyncResult,
     archive_star,
+    reconcile_list_membership,
     remove_star_from_lists,
     sync,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "archive_star",
     "classify_list",
     "parse_list_name",
+    "reconcile_list_membership",
     "remove_star_from_lists",
     "sync",
 ]

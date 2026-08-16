@@ -44,6 +44,7 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
         # Fetched before either save below, so a failure here never leaves
         # stars.json updated while lists.json is stale, or vice versa.
         lists = [classify_list(lst) for lst in client.fetch_lists()]
+        all_stars = reconcile_list_membership(all_stars, lists)
 
         store.save_stars(all_stars)
         store.save_lists(lists)
@@ -96,6 +97,36 @@ def _carry_forward_archived(
             continue
         carried.append(star if star.archived else archive_star(star, now=now))
     return carried
+
+
+def reconcile_list_membership(stars: list[Star], lists: list[List]) -> list[Star]:
+    """Set each Star's `list_ids` from the Lists that actually contain it.
+
+    `List.items` is the source of truth (fetched fresh from GitHub);
+    `Star.list_ids` starts empty on every fetch (see
+    docs/explanation/known-limitations.md). The relation is many-to-many:
+    one repo can sit in several Lists, and one List holds many repos.
+
+    A List item with no matching Star is skipped, not an error — the two
+    fetches are not one atomic snapshot, so this can legitimately happen
+    (see docs/explanation/known-limitations.md). It self-heals next sync.
+
+    An Archived star is left untouched. `archive_star()` already cleared
+    its `list_ids`, and CONTEXT.md is explicit that Archived carries no
+    List membership going forward — a stale or racy `List.items` entry
+    for an already-archived star must not override that.
+    """
+    membership: dict[str, list[str]] = {}
+    for lst in lists:
+        for full_name in lst.items:
+            membership.setdefault(full_name, []).append(lst.id)
+
+    return [
+        star
+        if star.archived
+        else star.model_copy(update={"list_ids": membership.get(star.full_name, [])})
+        for star in stars
+    ]
 
 
 def remove_star_from_lists(lists: list[List], full_name: str) -> list[List]:
