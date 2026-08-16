@@ -52,3 +52,15 @@ there is no cheaper way to learn what disappeared.
 full diff at all. They exist only to compute two `Star` fields and
 could be fetched less often (e.g. cached, refreshed on a longer
 interval) without touching star/unstar correctness.
+
+## Pending tag pushes are not batched
+
+Each `ghstars tag` stages a pending edit locally; `sync()` pushes them
+one at a time. `update_list_membership_for_item` first resolves the
+repo's GitHub node ID (`_resolve_repository_node_id`, one round trip),
+then sends the mutation (a second round trip) — so N pending tags cost
+2N sequential `gh api graphql` calls in that one sync, on top of the
+sync's own fetches. GraphQL supports batching independent operations
+into one request via aliases; this doesn't use that. Fine at the scale
+one person tags between syncs; would need revisiting if that scale
+changed.

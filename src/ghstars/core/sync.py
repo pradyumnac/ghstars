@@ -20,6 +20,7 @@ class RateLimitExceededError(Exception):
 class SyncResult(BaseModel):
     star_count: int
     list_count: int
+    failed_tag_pushes: list[str] = []
 
 
 def sync(client: GitHubClient, store: StateStore) -> SyncResult:
@@ -35,6 +36,7 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
     # stale snapshot and clobbering this write, or vice versa (story 33).
     with store.lock():
         previous = _load_previous_stars(store)
+        failed_tag_pushes = _push_pending_list_membership(client, previous)
         stars = client.fetch_stars()
         archived = _carry_forward_archived(previous, stars, now=datetime.now(UTC))
         all_stars = stars + archived
@@ -48,7 +50,11 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
 
         store.save_stars(all_stars)
         store.save_lists(lists)
-    return SyncResult(star_count=len(all_stars), list_count=len(lists))
+    return SyncResult(
+        star_count=len(all_stars),
+        list_count=len(lists),
+        failed_tag_pushes=failed_tag_pushes,
+    )
 
 
 def _load_previous_stars(store: StateStore) -> list[Star]:
@@ -64,19 +70,66 @@ def _load_previous_stars(store: StateStore) -> list[Star]:
         return []
 
 
+def _push_pending_list_membership(
+    client: GitHubClient, previous: list[Star]
+) -> list[str]:
+    """Push any locally staged `ghstars tag` edit to GitHub for real.
+
+    Runs before the fresh pull in `sync()`, so that pull's own
+    `fetch_lists()` + `reconcile_list_membership()` naturally picks up
+    the pushed state — no separate merge step needed here.
+    `pending_list_ids` always holds the full desired set, never a delta,
+    so retrying a failed/partial push on the next sync is a harmless
+    no-op on GitHub's side (story 32).
+
+    Each push is isolated: one star's failure (e.g. it was unstarred on
+    GitHub since it was tagged, before this sync ever ran) must not
+    abort every other pending push, and must not leave that one star
+    stuck retrying forever — `stars = client.fetch_stars()` right after
+    this always returns fresh Star objects with `pending_list_ids=None`
+    (see FakeGitHubClient.fetch_stars/RealGitHubClient.fetch_stars), so
+    a failed push is simply not retried, not silently spun forever.
+    Returns the full_names that failed, so the caller can tell the user
+    instead of the failure vanishing unreported.
+
+    Catches `Exception` broadly, on purpose: `ghstars.core` depends only
+    on the `GitHubClient` Protocol, never on a concrete implementation's
+    error types (`ghstars.github.GitHubApiError` included) — that
+    boundary is why this can't catch anything narrower.
+    """
+    failed: list[str] = []
+    for star in previous:
+        if star.pending_list_ids is None:
+            continue
+        try:
+            client.update_list_membership_for_item(
+                star.full_name, star.pending_list_ids
+            )
+        except Exception:  # noqa: BLE001 -- broad on purpose, see docstring
+            failed.append(star.full_name)
+    return failed
+
+
 def archive_star(star: Star, *, now: datetime) -> Star:
     """Mark a single Star Archived.
 
     Archived is a Star property: the repo was unstarred on GitHub.
     Never an Intent; never the same axis as a List's Retired Intent
     (CONTEXT.md). An unstarred repo drops out of every List
-    automatically, so clear `list_ids` too.
+    automatically, so clear `list_ids` too. Also clear `pending_list_ids`
+    — a staged `ghstars tag` edit for a repo that is no longer starred is
+    moot, and left set it would get pushed again on the next sync.
 
     Shared by `sync()`'s unstar diff and the `ghstars unstar` command,
     so both agree on what "archived" means.
     """
     return star.model_copy(
-        update={"archived": True, "archived_at": now, "list_ids": []}
+        update={
+            "archived": True,
+            "archived_at": now,
+            "list_ids": [],
+            "pending_list_ids": None,
+        }
     )
 
 

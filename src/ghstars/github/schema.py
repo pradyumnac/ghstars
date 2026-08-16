@@ -7,7 +7,7 @@ code strictly typed, no Any leaking past this module.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 
@@ -160,3 +160,25 @@ class UserListItemsNodeResponse(_GraphQLModel):
     # `node` is None if the list ID no longer resolves (e.g. deleted
     # between the outer `viewer.lists` fetch and this per-list item fetch).
     node: UserListItemsOnly | None = None
+
+
+class CreateUserListPayload(_GraphQLModel):
+    list: UserListNode | None = None
+
+
+class CreateUserListResponse(_GraphQLModel):
+    create_user_list: CreateUserListPayload
+
+
+class TypedNode(_GraphQLModel):
+    """A node queried for just `__typename`, to confirm a union isn't null."""
+
+    typename: str = Field(alias="__typename")
+
+
+class UpdateListsForItemPayload(_GraphQLModel):
+    item: TypedNode | None = None
+
+
+class UpdateListsForItemResponse(_GraphQLModel):
+    update_user_lists_for_item: UpdateListsForItemPayload

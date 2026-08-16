@@ -6,6 +6,7 @@ from typing import cast
 
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.github.schema import (
+    CreateUserListResponse,
     FollowingNode,
     FollowingResponse,
     OwnedRepoNode,
@@ -17,6 +18,7 @@ from ghstars.github.schema import (
     RepositoryItemNode,
     StarredEdge,
     StarredResponse,
+    UpdateListsForItemResponse,
     UserListItemsNodeResponse,
     UserListNode,
     UserListsResponse,
@@ -99,6 +101,30 @@ mutation($starrableId: ID!) {
 }
 """
 
+_CREATE_LIST_MUTATION = """
+mutation($name: String!, $description: String, $isPrivate: Boolean) {
+  createUserList(input: {name: $name, description: $description, isPrivate: $isPrivate}) {
+    list {
+      id
+      name
+      slug
+      description
+      isPrivate
+    }
+  }
+}
+"""
+
+_UPDATE_LIST_MEMBERSHIP_MUTATION = """
+mutation($itemId: ID!, $listIds: [ID!]!) {
+  updateUserListsForItem(input: {itemId: $itemId, listIds: $listIds}) {
+    item {
+      __typename
+    }
+  }
+}
+"""
+
 _LISTS_QUERY = f"""
 query($cursor: String) {{
   viewer {{
@@ -122,13 +148,26 @@ class GitHubApiError(RuntimeError):
 
 
 def _graphql(
-    query: str, cursor: str | None = None, **variables: str
+    query: str,
+    cursor: str | None = None,
+    **variables: str | bool | list[str] | None,
 ) -> dict[str, object]:
     cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
     if cursor is not None:
         cmd += ["-f", f"cursor={cursor}"]
     for name, value in variables.items():
-        cmd += ["-f", f"{name}={value}"]
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            cmd += ["-F", f"{name}={'true' if value else 'false'}"]
+        elif isinstance(value, list):
+            if not value:
+                cmd += ["-F", f"{name}[]"]
+            else:
+                for item in value:
+                    cmd += ["-F", f"{name}[]={item}"]
+        else:
+            cmd += ["-f", f"{name}={value}"]
 
     try:
         result = subprocess.run(
@@ -233,10 +272,9 @@ def _parse_list_items_page(
 class RealGitHubClient:
     """ghstars.core.GitHubClient over `gh api graphql`.
 
-    fetch_stars, fetch_lists, check_rate_limit, and remove_star are
-    implemented. List/membership mutations (create_list, update_list,
-    delete_list, update_list_membership_for_item) raise
-    NotImplementedError until ticket 04.
+    Implemented: fetch_stars, fetch_lists, check_rate_limit, remove_star,
+    create_list, update_list_membership_for_item. update_list and
+    delete_list raise NotImplementedError until ticket 07.
     """
 
     def check_rate_limit(self) -> RateLimitStatus:
@@ -316,12 +354,31 @@ class RealGitHubClient:
             if item is not None and item.name_with_owner is not None
         ]
 
-    # --- List/membership mutations: ticket 04 ---
-
     def create_list(
         self, name: str, *, is_private: bool = False, description: str | None = None
     ) -> List:
-        raise NotImplementedError("List mutations land in ticket 04")
+        """Create a List for real via `createUserList`.
+
+        Returns the raw List as GitHub created it (no Intent/Category —
+        that's `ghstars.core.taxonomy`'s job at the caller).
+        """
+        data = _graphql(
+            _CREATE_LIST_MUTATION,
+            name=name,
+            description=description,
+            isPrivate=is_private,
+        )
+        payload = CreateUserListResponse.model_validate(data).create_user_list
+        if payload.list is None:
+            raise GitHubApiError(f"createUserList for {name!r} returned no list")
+        node = payload.list
+        return List(
+            id=node.id,
+            name=node.name,
+            slug=node.slug,
+            description=node.description,
+            is_private=node.is_private,
+        )
 
     def update_list(
         self,
@@ -331,23 +388,53 @@ class RealGitHubClient:
         description: str | None = None,
         is_private: bool | None = None,
     ) -> List:
-        raise NotImplementedError("List mutations land in ticket 04")
+        raise NotImplementedError("List rename/description mutations land in ticket 07")
 
     def delete_list(self, list_id: str) -> None:
-        raise NotImplementedError("List mutations land in ticket 04")
+        raise NotImplementedError("List deletion lands in ticket 07")
 
     def update_list_membership_for_item(
         self, item_id: str, list_ids: list[str]
     ) -> None:
-        raise NotImplementedError("List membership push lands in ticket 04")
+        """Replace `item_id`'s (a `full_name`) entire List membership.
+
+        `updateUserListsForItem` replaces, it does not merge (the spec's
+        load-bearing GraphQL detail) — `list_ids` must already be the
+        full desired set, never a delta. Needs GitHub's node ID, not
+        `owner/repo`; resolved the same way `remove_star` does.
+        """
+        node_id = self._resolve_repository_node_id(item_id)
+        data = _graphql(
+            _UPDATE_LIST_MEMBERSHIP_MUTATION, itemId=node_id, listIds=list_ids
+        )
+        payload = UpdateListsForItemResponse.model_validate(
+            data
+        ).update_user_lists_for_item
+        if payload.item is None:
+            raise GitHubApiError(
+                f"updateUserListsForItem for {item_id!r} returned no item "
+                "(GitHub may not have applied the mutation)"
+            )
 
     def remove_star(self, item_id: str) -> None:
-        """Unstar `item_id` (a `full_name`, e.g. `owner/repo`) for real.
+        """Unstar `item_id` (a `full_name`, e.g. `owner/repo`) for real."""
+        node_id = self._resolve_repository_node_id(item_id)
+        mutation_data = _graphql(_REMOVE_STAR_MUTATION, starrableId=node_id)
+        payload = RemoveStarResponse.model_validate(mutation_data).remove_star
+        if payload.starrable is None:
+            raise GitHubApiError(
+                f"removeStar for {item_id!r} returned no starrable "
+                "(GitHub may not have applied the mutation)"
+            )
 
-        `removeStar` needs GitHub's node ID (`starrableId`), not
-        `owner/repo`. Resolve the node ID via `repository(owner, name)
-        { id }` first, then call the mutation. One extra round trip per
-        unstar; acceptable for a single user-initiated action.
+    def _resolve_repository_node_id(self, item_id: str) -> str:
+        """`item_id` is `owner/repo`; several mutations need GitHub's
+        opaque node ID instead. One extra round trip per call. Used by
+        `remove_star` (a single user-initiated action) and by
+        `update_list_membership_for_item` from `sync()`'s per-star push
+        loop (`ghstars.core.sync._push_pending_list_membership`) — N
+        pending tags cost 2N sequential round trips per sync, not
+        batched (see docs/explanation/known-limitations.md).
         """
         owner, _, name = item_id.partition("/")
         id_data = _graphql(_REPOSITORY_ID_QUERY, owner=owner, name=name)
@@ -357,11 +444,4 @@ class RealGitHubClient:
                 f"repository {item_id!r} not found on GitHub "
                 "(it may have been renamed or deleted)"
             )
-
-        mutation_data = _graphql(_REMOVE_STAR_MUTATION, starrableId=repo.id)
-        payload = RemoveStarResponse.model_validate(mutation_data).remove_star
-        if payload.starrable is None:
-            raise GitHubApiError(
-                f"removeStar for {item_id!r} returned no starrable "
-                "(GitHub may not have applied the mutation)"
-            )
+        return repo.id

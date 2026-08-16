@@ -19,7 +19,14 @@ class FakeGitHubClient:
         )
 
     def fetch_stars(self) -> list[Star]:
-        return list(self._stars.values())
+        # pending_list_ids is purely local (ghstars.core.tagging's stage
+        # for an unpushed edit) -- no GitHubClient's fetch_stars can ever
+        # return it, real or fake, same as RealGitHubClient always
+        # constructing a fresh Star() that never sets the field.
+        return [
+            star.model_copy(update={"pending_list_ids": None})
+            for star in self._stars.values()
+        ]
 
     def fetch_lists(self) -> list[List]:
         return list(self._lists.values())

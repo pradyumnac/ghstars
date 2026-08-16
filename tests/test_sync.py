@@ -142,6 +142,54 @@ def test_sync_fetches_and_classifies_lists(tmp_path: Path) -> None:
     assert saved["L_3"].malformed is True
 
 
+def test_sync_pushes_a_pending_edit_before_pulling(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    lst = List(id="L_1", name="Explore: Tool", slug="explore-tool")
+    star = make_star("pradyumnac/ghstars", pending_list_ids=["L_1"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([lst])
+    client = FakeGitHubClient(stars=[star], lists=[lst])
+
+    sync(client, store)
+
+    # The push already landed on the fake's own state before fetch_stars()
+    # re-reads it, so the fresh pull + reconcile reflects it with no extra
+    # merge step.
+    saved = store.load_stars()[0]
+    assert saved.list_ids == ["L_1"]
+    assert saved.pending_list_ids is None
+
+
+def test_sync_isolates_a_pending_push_failure_and_reports_it(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """A star can be tagged, then unstarred on GitHub before the next
+    sync -- the fake models that by no longer having it, so the push
+    raises KeyError. sync() must not abort or get stuck retrying: it
+    reports the failure and keeps going with everything else."""
+    keep_lst = List(id="L_1", name="Explore: Keep", slug="keep")
+    kept = make_star("pradyumnac/kept", pending_list_ids=["L_1"])
+    gone = make_star("pradyumnac/gone", pending_list_ids=["L_1"])
+    store = StateStore(tmp_path)
+    store.save_stars([kept, gone])
+    store.save_lists([keep_lst])
+    client = FakeGitHubClient(stars=[kept, gone], lists=[keep_lst])
+    client.remove_star("pradyumnac/gone")  # unstarred since it was tagged
+
+    result = sync(client, store)  # must not raise
+
+    assert result.failed_tag_pushes == ["pradyumnac/gone"]
+    by_name = {s.full_name: s for s in store.load_stars()}
+    assert by_name["pradyumnac/kept"].list_ids == ["L_1"]
+    assert by_name["pradyumnac/kept"].pending_list_ids is None
+    # Not stuck retrying: fetch_stars() never returns pending_list_ids
+    # (see FakeGitHubClient.fetch_stars), so a failed push isn't reapplied.
+    assert by_name["pradyumnac/gone"].pending_list_ids is None
+    assert by_name["pradyumnac/gone"].archived is True
+
+
 def test_sync_populates_list_ids_from_list_membership(
     tmp_path: Path, make_star: StarFactory
 ) -> None:

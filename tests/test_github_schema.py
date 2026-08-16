@@ -8,12 +8,14 @@ with no I/O, is safe and cheap to test directly.
 """
 
 from ghstars.github.schema import (
+    CreateUserListResponse,
     FollowingResponse,
     OwnedReposResponse,
     RateLimitResponse,
     RemoveStarResponse,
     RepositoryIdResponse,
     StarredResponse,
+    UpdateListsForItemResponse,
     UserListItemsNodeResponse,
     UserListsResponse,
 )
@@ -202,3 +204,52 @@ def test_remove_star_response_handles_null_starrable() -> None:
 
     parsed = RemoveStarResponse.model_validate(data)
     assert parsed.remove_star.starrable is None
+
+
+# createUserList/updateUserListsForItem shapes below are derived from live
+# GraphQL schema introspection (verified: input/output field names and
+# types), not a captured real response -- the token used for this ticket
+# lacked the `user` scope those mutations need, so an actual live call was
+# never possible (see README.md's Authenticate section). Revisit these
+# fixtures against a real response once that scope is available.
+
+
+def test_create_user_list_response_parses_list() -> None:
+    data = {
+        "createUserList": {
+            "list": {
+                "id": "UL_kwDOABkiBM4AhlIM",
+                "name": "Explore: Tool",
+                "slug": "explore-tool",
+                "description": None,
+                "isPrivate": False,
+            }
+        }
+    }
+
+    parsed = CreateUserListResponse.model_validate(data)
+    assert parsed.create_user_list.list is not None
+    assert parsed.create_user_list.list.id == "UL_kwDOABkiBM4AhlIM"
+    assert parsed.create_user_list.list.name == "Explore: Tool"
+
+
+def test_create_user_list_response_handles_null_list() -> None:
+    data = {"createUserList": {"list": None}}
+
+    parsed = CreateUserListResponse.model_validate(data)
+    assert parsed.create_user_list.list is None
+
+
+def test_update_lists_for_item_response_parses_typename() -> None:
+    data = {"updateUserListsForItem": {"item": {"__typename": "Repository"}}}
+
+    parsed = UpdateListsForItemResponse.model_validate(data)
+    assert parsed.update_user_lists_for_item.item is not None
+    assert parsed.update_user_lists_for_item.item.typename == "Repository"
+
+
+def test_update_lists_for_item_response_handles_null_item() -> None:
+    data = {"updateUserListsForItem": {"item": None}}
+
+    parsed = UpdateListsForItemResponse.model_validate(data)
+    assert parsed.update_user_lists_for_item.item is None

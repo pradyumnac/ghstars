@@ -17,6 +17,7 @@ from ghstars.core.sync import (
     remove_star_from_lists,
     sync,
 )
+from ghstars.core.tagging import StarArchivedError, StarNotFoundError, tag_star
 from ghstars.core.taxonomy import ParsedListName, classify_list, parse_list_name
 
 __all__ = [
@@ -30,6 +31,8 @@ __all__ = [
     "RateLimitStatus",
     "RetriageEntry",
     "Star",
+    "StarArchivedError",
+    "StarNotFoundError",
     "StateStore",
     "SyncResult",
     "archive_star",
@@ -38,4 +41,5 @@ __all__ = [
     "reconcile_list_membership",
     "remove_star_from_lists",
     "sync",
+    "tag_star",
 ]

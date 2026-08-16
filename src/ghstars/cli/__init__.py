@@ -8,9 +8,12 @@ from ghstars.cli.deps import get_client, get_store
 from ghstars.cli.errors import fail
 from ghstars.core import (
     RateLimitExceededError,
+    StarArchivedError,
+    StarNotFoundError,
     archive_star,
     remove_star_from_lists,
     sync,
+    tag_star,
 )
 from ghstars.core.models import List, Star
 from ghstars.github import GitHubApiError
@@ -40,6 +43,14 @@ def sync_cmd(
         typer.echo(json.dumps(result.model_dump(mode="json")))
         return
     typer.echo(f"Synced {result.star_count} star(s), {result.list_count} list(s).")
+    if result.failed_tag_pushes:
+        names = ", ".join(result.failed_tag_pushes)
+        typer.echo(
+            f"warning: could not push pending tag(s) for: {names} "
+            "(the repo may have been unstarred since it was tagged). "
+            "Re-run `ghstars tag` if you still want it classified.",
+            err=True,
+        )
 
 
 def _render_records[ModelT: BaseModel](
@@ -154,6 +165,49 @@ def unstar_cmd(
             f"Unstarred {repo} on GitHub (no local record to archive — "
             "run `ghstars sync` to pick it up)."
         )
+
+
+@app.command("tag")
+def tag_cmd(
+    repo: str = typer.Argument(
+        ..., help="Full name of the starred repo to tag, e.g. owner/repo."
+    ),
+    list_name: str = typer.Argument(
+        ..., help="Name of the List to add it to, e.g. 'Explore: Tool'."
+    ),
+    private: bool = typer.Option(
+        False,
+        "--private",
+        help="Create the List private if it doesn't exist yet (default: public).",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Stage a repo for addition to a List. Run `ghstars sync` to push it.
+
+    A new List is created for real immediately (spec story 48); the
+    Star<->List membership itself is staged locally and pushed at the
+    next sync, so a concurrent GitHub-side change has something to be
+    checked against (ticket 05).
+    """
+    client = get_client()
+    store = get_store()
+    try:
+        updated = tag_star(client, store, repo, list_name, is_private=private)
+    except StarNotFoundError:
+        fail(f"no local record for {repo!r}. Run `ghstars sync` first.")
+    except StarArchivedError:
+        fail(f"{repo!r} is Archived (unstarred) locally — nothing to tag.")
+    except GitHubApiError as exc:
+        fail(str(exc))
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"full_name": repo, "pending_list_ids": updated.pending_list_ids}
+            )
+        )
+        return
+    typer.echo(f"Staged {repo} for {list_name!r}. Run `ghstars sync` to push it.")
 
 
 @app.command("lists")
