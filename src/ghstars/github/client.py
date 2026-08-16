@@ -12,6 +12,8 @@ from ghstars.github.schema import (
     OwnedReposResponse,
     PageInfo,
     RateLimitResponse,
+    RemoveStarResponse,
+    RepositoryIdResponse,
     StarredEdge,
     StarredResponse,
 )
@@ -75,15 +77,37 @@ query($cursor: String) {{
 
 _RATE_LIMIT_QUERY = "query { rateLimit { remaining limit } }"
 
+_REPOSITORY_ID_QUERY = """
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    id
+  }
+}
+"""
+
+_REMOVE_STAR_MUTATION = """
+mutation($starrableId: ID!) {
+  removeStar(input: {starrableId: $starrableId}) {
+    starrable {
+      id
+    }
+  }
+}
+"""
+
 
 class GitHubApiError(RuntimeError):
     """A `gh api graphql` call failed, timed out, or returned malformed data."""
 
 
-def _graphql(query: str, cursor: str | None = None) -> dict[str, object]:
+def _graphql(
+    query: str, cursor: str | None = None, **variables: str
+) -> dict[str, object]:
     cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
     if cursor is not None:
         cmd += ["-f", f"cursor={cursor}"]
+    for name, value in variables.items():
+        cmd += ["-f", f"{name}={value}"]
 
     try:
         result = subprocess.run(
@@ -155,10 +179,10 @@ def _parse_following_page(
 class RealGitHubClient:
     """ghstars.core.GitHubClient over `gh api graphql`.
 
-    Only fetch_stars and check_rate_limit are implemented here — List reads
-    land in ticket 03, List/membership mutations in ticket 04, unstar in
-    ticket 06. Those methods exist to satisfy the GitHubClient Protocol and
-    raise NotImplementedError until their own ticket lands.
+    fetch_stars, check_rate_limit, and remove_star are implemented here —
+    List reads land in ticket 03, List/membership mutations in ticket 04.
+    Those methods exist to satisfy the GitHubClient Protocol and raise
+    NotImplementedError until their own ticket lands.
     """
 
     def check_rate_limit(self) -> RateLimitStatus:
@@ -239,4 +263,28 @@ class RealGitHubClient:
         raise NotImplementedError("List membership push lands in ticket 04")
 
     def remove_star(self, item_id: str) -> None:
-        raise NotImplementedError("Unstar mutation lands in ticket 06")
+        """Unstar `item_id` (a `full_name`, e.g. `owner/repo`) for real.
+
+        GraphQL's `removeStar` mutation takes GitHub's opaque node ID
+        (`starrableId`), not `owner/repo` — so this first resolves the
+        node ID via `repository(owner, name) { id }`, then fires the
+        mutation. Both calls go through `_graphql`; the resolve step costs
+        one extra round trip per unstar, which is fine for a single,
+        explicitly user-initiated action (not a batch/paginated path).
+        """
+        owner, _, name = item_id.partition("/")
+        id_data = _graphql(_REPOSITORY_ID_QUERY, owner=owner, name=name)
+        repo = RepositoryIdResponse.model_validate(id_data).repository
+        if repo is None:
+            raise GitHubApiError(
+                f"repository {item_id!r} not found on GitHub "
+                "(it may have been renamed or deleted)"
+            )
+
+        mutation_data = _graphql(_REMOVE_STAR_MUTATION, starrableId=repo.id)
+        payload = RemoveStarResponse.model_validate(mutation_data).remove_star
+        if payload.starrable is None:
+            raise GitHubApiError(
+                f"removeStar for {item_id!r} returned no starrable "
+                "(GitHub may not have applied the mutation)"
+            )

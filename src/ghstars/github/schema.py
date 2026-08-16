@@ -95,3 +95,26 @@ class RateLimit(_GraphQLModel):
 
 class RateLimitResponse(_GraphQLModel):
     rate_limit: RateLimit
+
+
+class NodeId(_GraphQLModel):
+    """Any GraphQL object that returns just its opaque node `id`."""
+
+    id: str
+
+
+class RepositoryIdResponse(_GraphQLModel):
+    """`repository(owner, name) { id }` — resolves a full_name to GitHub's
+    opaque node ID, needed as `removeStar`'s `starrableId` input (GraphQL
+    mutations key on node ID, not `owner/repo`).
+    """
+
+    repository: NodeId | None = None
+
+
+class RemoveStarPayload(_GraphQLModel):
+    starrable: NodeId | None = None
+
+
+class RemoveStarResponse(_GraphQLModel):
+    remove_star: RemoveStarPayload

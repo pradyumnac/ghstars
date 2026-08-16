@@ -33,6 +33,17 @@ class GitHubClient(Protocol):
         self, item_id: str, list_ids: list[str]
     ) -> None: ...
 
-    def remove_star(self, item_id: str) -> None: ...
+    def remove_star(self, item_id: str) -> None:
+        """Unstar the repo for real (GitHub's `removeStar` mutation).
+
+        `item_id` is the Star's `full_name` (`owner/repo`) — the same key
+        `ghstars.core.state_store` and `FakeGitHubClient` use everywhere
+        else, not GitHub's opaque GraphQL node ID. A concrete client that
+        needs the node ID for its mutation (as `ghstars.github`'s does) is
+        responsible for resolving `full_name` -> node ID itself; that
+        translation is an implementation detail of the real client, not
+        part of this seam.
+        """
+        ...
 
     def check_rate_limit(self) -> RateLimitStatus: ...

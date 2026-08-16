@@ -9,7 +9,7 @@ from ghstars.core.models import (
     Star,
 )
 from ghstars.core.state_store import StateStore
-from ghstars.core.sync import RateLimitExceededError, SyncResult, sync
+from ghstars.core.sync import RateLimitExceededError, SyncResult, archive_star, sync
 
 __all__ = [
     "FakeGitHubClient",
@@ -23,5 +23,6 @@ __all__ = [
     "Star",
     "StateStore",
     "SyncResult",
+    "archive_star",
     "sync",
 ]
