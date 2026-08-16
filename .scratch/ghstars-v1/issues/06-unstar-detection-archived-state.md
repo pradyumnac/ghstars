@@ -13,7 +13,7 @@
 
 ## Comments
 
-Implemented in commit TBD.
+Implemented in commits `046f2b6`/`fc383a8`.
 
 `core/sync.py`: added `_carry_forward_archived()` — a small helper, deliberately
 kept separate from `sync()`'s main body per the ticket's note that ticket 03 is
