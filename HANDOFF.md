@@ -21,15 +21,24 @@ later ticket's `## Comments` (ticket 04 and 05 already have one such
 cross-reference — the push-then-pull ordering — that a consistency
 pass should confirm is still accurate once 05 actually lands).
 
-Checked (2026-08-16): no `mattpocock-skills` skill is purpose-built for
-this. `/domain-modeling` is vocabulary/term-level only;
-`/improve-codebase-architecture` is code-architecture, not spec/ticket
-content. This is the generic advisor pattern, not a named skill — spawn
-it directly rather than searching for a skill to wrap it in. Report
-findings only; this is exactly the report-only whole-project-review
-class of check per the project's review-process convention (see the
-"Review process" section elsewhere in this file), so don't auto-apply
-fixes from it without checking back first.
+Confirmed via a real `/mattpocock-skills:ask-matt` run (2026-08-16, not
+just inferred from its routing map): no skill in that map covers this.
+Walked the whole flow — main flow (grill-with-docs/to-spec/to-tickets/
+implement) doesn't apply, we're not creating spec or tickets; on-ramps
+(triage, diagnosing-bugs, wayfinder) don't apply, this is neither an
+external bug report, a bug, nor a foggy greenfield effort;
+`/improve-codebase-architecture` is code-architecture only, not
+spec/ticket document content; `/domain-modeling` would fix a vocabulary
+*finding* the audit surfaces, but isn't the audit tool itself;
+`/research` was the closest near-miss (background agent, cited findings
+file) but is framed around external primary sources, not cross-checking
+two of the project's own documents. This is the generic advisor
+pattern, not a named skill — spawn it directly rather than searching
+for a skill to wrap it in. Report findings only; this is exactly the
+report-only whole-project-review class of check per the project's
+review-process convention (see the "Review process" section elsewhere
+in this file), so don't auto-apply fixes from it without checking back
+first.
 
 ## Task rail
 
