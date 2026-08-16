@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import typer
 from pydantic import BaseModel
 
-from ghstars.cli.deps import get_client, get_store
+from ghstars.cli.deps import ensure_config_dir, get_client, get_store
 from ghstars.cli.errors import fail
 from ghstars.core import (
     RateLimitExceededError,
@@ -25,6 +25,12 @@ DEFAULT_STAR_FIELDS = ["full_name", "language", "stargazer_count"]
 
 LIST_FIELDS = set(List.model_fields.keys())
 DEFAULT_LISTS_FIELDS = ["name", "intent", "category", "is_private", "malformed"]
+
+
+@app.callback()
+def main() -> None:
+    """ghstars: classify GitHub starred repos into GitHub's native Lists."""
+    ensure_config_dir()
 
 
 @app.command("sync")
