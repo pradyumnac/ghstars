@@ -10,7 +10,7 @@
 - [x] Sync pushes the change via `updateUserListsForItem`, always sending the full desired `listIds` set, never a delta
 - [x] Retrying a timed-out write doesn't create a spurious conflict against the same prior attempt
 - [x] A List created by tagging defaults to public unless `--private`/an explicit `isPrivate` override is given
-- [ ] Phone/web view of Lists reflects local tagging changes after sync (story 7) — **not live-verified** (see Comments)
+- [x] Phone/web view of Lists reflects local tagging changes after sync (story 7)
 
 ## Comments
 
@@ -30,21 +30,20 @@ built here).
 replaces rather than merges, retrying a failed/partial push is a harmless
 no-op on GitHub's side.
 
-**Live verification blocker**: `createUserList` (and very likely
-`updateUserListsForItem`) requires the `user` OAuth scope, which the `gh`
-token used throughout this project does not have — confirmed via a real
-attempt against the live account, which failed with GitHub's own scope error.
-That error propagated cleanly through the existing hard-fail path (exit 1, no
-traceback, no partial local state, checked in both `--json` and plain-text
-modes) — so the *failure* path is live-verified, just not the success path.
-Documented in `README.md`'s new Authenticate section, since every real
-`ghstars` user hits this the first time they tag anything. The mutation
-shapes themselves were verified via live GraphQL schema introspection
-(input/output field names and types), and end-to-end behavior is covered by
-`tests/test_tagging.py`/`tests/test_sync.py` against `FakeGitHubClient`. The
-last checkbox above (phone/web reflecting the change) is consequently
-unchecked, not because the code doesn't do it, but because it was never
-actually observed against a real account.
+**Live verification**: initially blocked — `createUserList` (and, confirmed
+now, `updateUserListsForItem` too) requires the `user` OAuth scope, which the
+`gh` token didn't have. That failure propagated cleanly through the existing
+hard-fail path (exit 1, no traceback, no partial local state, checked in both
+`--json` and plain-text modes) — documented in `README.md`'s Authenticate
+section, since every real `ghstars` user hits this the first time they tag
+anything. Once the scope was granted, ran the full path for real: created a
+List (`zzz-ghstars-verify-delete-me`), tagged a real starred repo into it
+alongside its existing membership (confirmed the full-desired-set/no-delta
+behavior — both list IDs ended up in `pending_list_ids`), ran `ghstars sync`,
+and independently confirmed via a raw `gh api graphql node(id:)` query
+(bypassing ghstars entirely) that the List really contains the repo — the
+same thing phone/web would show. Local state settled correctly too:
+`list_ids` populated with both IDs, `pending_list_ids` cleared to `None`.
 
 **`/code-review` findings, all fixed** (see commit message for the full list):
 `tag_star()` didn't reject an already-Archived star; `_push_pending_list_membership`

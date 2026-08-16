@@ -93,6 +93,10 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
 
 48. As a developer, I want new Lists to default to public, matching my existing Lists, with an explicit `isPrivate` override available per List, so that I can keep sensitive groupings private without changing my established default.
 
+### TUI (addendum)
+
+49. As a developer, I want the TUI to show my remaining GitHub API rate limit, so that I can tell when I'm approaching a sync-blocking limit before it happens. Numbered out of sequence with the rest of the TUI section (24-27) to avoid renumbering every other story's cross-references elsewhere in this doc and the codebase.
+
 ## Implementation Decisions
 
 **Modules**
