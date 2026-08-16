@@ -1,6 +1,8 @@
 # ghstars
 
-TODO: one sentence.
+A terminal-first CLI for classifying your GitHub starred repos into
+GitHub's own Lists — github.com, your phone, and `ghstars` all stay in
+sync.
 
 ## Install
 
@@ -29,7 +31,9 @@ ghstars --help
 
 ## Configure
 
-See `docs/reference/configuration.md`.
+`ghstars` auto-creates `~/.ghstars/config/` on every run. It has no
+configurable options yet — taxonomy definitions and export mappings
+land with later tickets.
 
 ## Develop
 

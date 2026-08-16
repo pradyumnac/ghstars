@@ -12,3 +12,25 @@
 - [ ] Retriage Queue is local-only — never synced to GitHub, never a `UserList`
 - [ ] `ghstars retriage --json` lists queue contents
 - [ ] No auto-merge/union of conflicting classifications anywhere in the path
+- [ ] `sync()`'s push step is restructured to run the three-way comparison *before* deciding to push (see Comments) — the current ticket-04 push-then-pull order must change, this doesn't just layer on top of it
+
+## Comments (pre-implementation, from ticket 04's wrap-up analysis)
+
+Ticket 04's `_push_pending_list_membership()` currently pushes every
+pending edit **unconditionally**, at the very start of `sync()`, before
+`fetch_stars()`/`fetch_lists()` ever run in that same call. That was a
+deliberate but incomplete placeholder — the code comment says pushing
+is deferred to sync time "so a concurrent GitHub-side change has
+something to be checked against," but nothing in ticket 04 actually
+checks anything. It just pushes blindly, then pulls fresh state
+afterward and lets `reconcile_list_membership()` overwrite `list_ids`
+from that fresh pull. A concurrent conflicting GitHub-side edit is
+silently clobbered today, not "GitHub wins" as this ticket requires.
+
+This ticket needs to move the push to *after* the fresh
+`fetch_stars()`/`fetch_lists()` (so "current GitHub state" is actually
+known), diff it against the last-synced base and the pending edit, and
+only call `update_list_membership_for_item` when the merge says to —
+routing conflicts to the Retriage Queue instead of pushing. This is a
+restructuring of `sync()`'s control flow, not an additive change on
+top of ticket 04's current order.

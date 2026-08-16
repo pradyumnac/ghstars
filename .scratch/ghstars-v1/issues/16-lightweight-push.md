@@ -1,18 +1,17 @@
-# 16 — Lightweight push for a single pending tag edit
+# 16 — Push a tag edit immediately, like unstar already does
 
-**What to build:** a cheaper way to push one `ghstars tag` edit than running a full `ghstars sync`. Today the only push path is `sync()`, which always pays the full pull cost (~27 points on a 1,529-star account, see `docs/explanation/known-limitations.md`) on top of the 2-point push itself, even for a single tag change.
+**What to build:** make `ghstars tag` push its edit immediately, the same way `ghstars unstar` already does, instead of staging it as `pending_list_ids` for the next `ghstars sync` to push. This is **not** a generic "all write ops" ticket — analysis below shows `unstar` doesn't have the problem this ticket is about.
 
-**Not a webhook/hook system** — GitHub doesn't emit webhook events for personal starring or List-membership changes, so there's no inbound mechanism to build here. This is purely about the outbound path: push the pending edit(s) without also doing the full `fetch_stars`/`fetch_lists`/reconcile pipeline.
+**Why `unstar` doesn't need this:** `unstar_cmd` already calls `client.remove_star()` for real, synchronously, and updates local state (`archive_star`, `remove_star_from_lists`) in the same command — no follow-up `ghstars sync` is needed for either GitHub or local state to reflect it. It's Star-existence (the Archived axis, ticket 06), not List-membership, so it was never going to go through ticket 05's three-way merge regardless of timing — there's no "wait for conflict arbitration" reason to defer it, and it doesn't. `tag` is the only current write command that requires a second command (`sync`) to actually take effect on GitHub.
 
-**Blocked by:** 04, 05.
+**Blocked by:** 04, 05. Hard-blocked on 05 specifically: today, deferring the push doesn't actually buy any conflict-safety (see ticket 05's Comments — the current push is unconditional, not compared against anything). Making `tag` push immediately is only a *safe* trade once 05 exists and can run the same base-vs-current-vs-pending comparison synchronously inside `ghstars tag` itself, before pushing — otherwise this ticket would just be reintroducing the blind-overwrite problem 05 exists to fix, in a smaller window instead of a larger one.
 
 **Status:** ready-for-agent — needs design, not yet speced
 
-**Open questions to resolve before implementation (not yet decided):**
+**Open questions to resolve before implementation:**
 
-- [ ] What does correctness look like without the full pull? `reconcile_list_membership()` currently gives a pushed edit its final `list_ids` by re-deriving it from a fresh `fetch_lists()`. A lightweight push would need to either (a) optimistically set `list_ids` to the pushed `pending_list_ids` without re-fetching, accepting it could drift from GitHub truth until the next full sync, or (b) fetch just the affected List(s)' membership (cheap — 1-2 points) rather than every List.
-- [ ] Does this need ticket 05's three-way merge machinery first? Skipping the full pull means skipping the conflict-detection that a full sync would otherwise do — pushing blind is riskier than pushing after seeing current GitHub state. This ticket may not be safe to build before 05 lands.
-- [ ] New CLI surface: a `--push` flag on `ghstars tag` itself (tag + immediately push, skip staging)? A separate `ghstars push` command? Automatic push after N pending edits accumulate?
-- [ ] Does `_carry_forward_archived`'s need for a full current-stars fetch (to detect unstars) mean this can only ever skip the *Lists* portion of a sync, never the *stars* portion?
+- [ ] Once 05 exists, can `tag_star()` call the same three-way-merge logic synchronously (fetch current GitHub state for just the affected star/lists, compare against base + the new edit, push or Retriage) without paying for a full account-wide sync? This is the real efficiency question — narrowing the *comparison* to one star, not skipping it.
+- [ ] What happens to `pending_list_ids` and `_push_pending_list_membership` in `sync()` if `tag` stops staging edits? Does staged-and-deferred become a fallback path only (e.g. for a failed immediate push), or does it disappear entirely?
+- [ ] Does an immediate per-tag push change the API cost story? Trades ~27 points (full sync) for a handful of points per `tag` call — better if the user tags occasionally, worse if they tag many repos in a row without an intervening sync (N narrow round-trips vs. one batched sync). Worth measuring against real usage patterns, not just assuming immediate is strictly better.
 
-**Acceptance criteria:** none yet — write these once the open questions above are resolved into an actual design.
+**Acceptance criteria:** none yet — write these once 05 lands and the questions above are resolved into an actual design.
