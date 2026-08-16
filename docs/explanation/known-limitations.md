@@ -40,6 +40,17 @@ last sync.
 changed. On a 1,529-star account, a sync takes about 45-50 seconds,
 even when nothing changed since the last run.
 
+**Measured API cost** (same account, steady state, `rateLimit.cost`
+confirmed at 1 point per `gh api graphql` call for these query shapes):
+one plain sync costs **~27 points** — roughly 16 for paginating
+`starredRepositories`, 1 for owned forks, 2 for following, 1 for the
+Lists list, 1 per List for its items (7 here). Each pending tag push
+adds **2 more points** (see "Pending tag pushes are not batched"
+below). Against the 5000 points/hour budget, that's not a practical
+day-to-day problem — but it is a fixed cost paid on every sync no
+matter how small the actual change, including a single `ghstars tag`.
+See ticket 16 for a proposed lighter-weight push path.
+
 **Why stars can't go incremental easily:** `starredRepositories` is
 ordered newest-first, so *new* stars could in principle stop paging
 early once a known `starred_at` is reached. But unstar detection
