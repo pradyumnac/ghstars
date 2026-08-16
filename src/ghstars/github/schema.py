@@ -104,9 +104,8 @@ class NodeId(_GraphQLModel):
 
 
 class RepositoryIdResponse(_GraphQLModel):
-    """`repository(owner, name) { id }` — resolves a full_name to GitHub's
-    opaque node ID, needed as `removeStar`'s `starrableId` input (GraphQL
-    mutations key on node ID, not `owner/repo`).
+    """`repository(owner, name) { id }` resolves a full_name to GitHub's
+    opaque node ID. Needed as `removeStar`'s `starrableId` input.
     """
 
     repository: NodeId | None = None
@@ -142,10 +141,9 @@ class UserListsResponse(_GraphQLModel):
 
 
 class RepositoryItemNode(_GraphQLModel):
-    # None when the union member behind `... on Repository` didn't match
-    # (shouldn't happen -- `UserListItems`'s only possible type is
-    # Repository, confirmed via introspection -- but the field is nullable
-    # in the schema, so handle it defensively).
+    # None if `... on Repository` does not match. Should not happen —
+    # UserListItems only resolves to Repository (confirmed via
+    # introspection) — but the schema marks the field nullable.
     name_with_owner: str | None = None
 
 

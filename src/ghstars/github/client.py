@@ -24,7 +24,7 @@ from ghstars.github.schema import (
 
 PAGE_SIZE = 100
 # A sync makes several paginated calls; require enough headroom that one
-# doesn't get stuck mid-way through a large starred-repos list (story 13).
+# does not get stuck mid-way through a large starred-repos list (story 13).
 MIN_RATE_LIMIT_REMAINING = 50
 _GH_TIMEOUT_SECONDS = 30.0
 
@@ -203,11 +203,9 @@ def _parse_lists_page(data: dict[str, object]) -> tuple[list[UserListNode], Page
 
 
 def _list_items_query(list_id: str) -> str:
-    # `list_id` is a GitHub GraphQL node ID (opaque, e.g. "UL_kwDO..."); a
-    # per-list query needs it baked into the query text since `_graphql`
-    # only threads a `$cursor` variable through. json.dumps produces a
-    # valid, safely-escaped GraphQL string literal (same quoting rules as
-    # JSON), so this can't break out of the string even for odd IDs.
+    # list_id is opaque (e.g. "UL_kwDO..."). _graphql only threads a
+    # $cursor variable, so bake list_id into the query text. json.dumps
+    # escapes it safely as a GraphQL string literal.
     return f"""
 query($cursor: String) {{
   node(id: {json.dumps(list_id)}) {{
@@ -235,10 +233,10 @@ def _parse_list_items_page(
 class RealGitHubClient:
     """ghstars.core.GitHubClient over `gh api graphql`.
 
-    fetch_stars, fetch_lists, check_rate_limit, and remove_star are all
-    implemented here — only List/membership *mutations* (create_list,
-    update_list, delete_list, update_list_membership_for_item) remain
-    NotImplementedError, pending ticket 04.
+    fetch_stars, fetch_lists, check_rate_limit, and remove_star are
+    implemented. List/membership mutations (create_list, update_list,
+    delete_list, update_list_membership_for_item) raise
+    NotImplementedError until ticket 04.
     """
 
     def check_rate_limit(self) -> RateLimitStatus:
@@ -293,9 +291,8 @@ class RealGitHubClient:
     def fetch_lists(self) -> list[List]:
         """Fetch `viewer.lists` with each List's full item membership.
 
-        Raw `name`/`description`/etc. only -- Intent/Category classification
-        from `name` is a `ghstars.core.taxonomy` concern, applied by
-        `ghstars.core.sync.sync()`, not here.
+        Raw `name`/`description` only. `ghstars.core.taxonomy` classifies
+        Intent/Category in `sync()`, not here.
         """
         lists: list[List] = []
         for node in _paginate_all(_LISTS_QUERY, _parse_lists_page):
@@ -347,12 +344,10 @@ class RealGitHubClient:
     def remove_star(self, item_id: str) -> None:
         """Unstar `item_id` (a `full_name`, e.g. `owner/repo`) for real.
 
-        GraphQL's `removeStar` mutation takes GitHub's opaque node ID
-        (`starrableId`), not `owner/repo` — so this first resolves the
-        node ID via `repository(owner, name) { id }`, then fires the
-        mutation. Both calls go through `_graphql`; the resolve step costs
-        one extra round trip per unstar, which is fine for a single,
-        explicitly user-initiated action (not a batch/paginated path).
+        `removeStar` needs GitHub's node ID (`starrableId`), not
+        `owner/repo`. Resolve the node ID via `repository(owner, name)
+        { id }` first, then call the mutation. One extra round trip per
+        unstar; acceptable for a single user-initiated action.
         """
         owner, _, name = item_id.partition("/")
         id_data = _graphql(_REPOSITORY_ID_QUERY, owner=owner, name=name)

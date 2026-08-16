@@ -13,8 +13,8 @@ _DEFAULT_TIMEOUT = 5.0
 class StateStore:
     """Local snapshot of Stars/Lists under a directory, lockfile-guarded.
 
-    Never auto-committed to git and never auto-inits one (ADR 0002) — that's
-    the caller's choice, not this store's.
+    Never auto-commits to git and never auto-inits one (ADR 0002). The
+    caller decides.
     """
 
     def __init__(self, base_dir: Path) -> None:

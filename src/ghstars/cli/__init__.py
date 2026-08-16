@@ -6,7 +6,12 @@ from pydantic import BaseModel
 
 from ghstars.cli.deps import get_client, get_store
 from ghstars.cli.errors import fail
-from ghstars.core import RateLimitExceededError, archive_star, sync
+from ghstars.core import (
+    RateLimitExceededError,
+    archive_star,
+    remove_star_from_lists,
+    sync,
+)
 from ghstars.core.models import List, Star
 from ghstars.github import GitHubApiError
 
@@ -48,10 +53,9 @@ def _render_records[ModelT: BaseModel](
 ) -> None:
     """Shared `--json`/`--fields` rendering for list-returning commands.
 
-    Every list-returning command follows the same contract (spec stories
-    28-30): `--json` for structured output, `--fields` to select a subset
-    (validated against `field_names`, unknown fields hard-fail via `fail()`
-    rather than being silently ignored), plain-text otherwise.
+    Contract (spec stories 28-30): `--json` gives structured output.
+    `--fields` selects a subset, validated against `field_names`; an
+    unknown field hard-fails via `fail()`. Otherwise, print plain text.
     """
     selected: list[str] | None = None
     if fields is not None:
@@ -105,11 +109,9 @@ def unstar_cmd(
 ) -> None:
     """Unstar a repo on GitHub for real, then mark its local record Archived.
 
-    A real, visible mutation against the authenticated user's GitHub
-    account (spec story 8) — this is a control surface, not a local-only
-    shadow copy. The local record (if one exists) is never deleted; it is
-    kept and marked Archived (spec story 6), distinct from a List's
-    Retired Intent (see CONTEXT.md).
+    A real, visible mutation on the user's GitHub account (spec story 8).
+    The local record is never deleted; it is kept and marked Archived
+    (spec story 6), distinct from a List's Retired Intent (CONTEXT.md).
     """
     client = get_client()
     store = get_store()
@@ -118,10 +120,9 @@ def unstar_cmd(
     except GitHubApiError as exc:
         fail(str(exc))
 
-    # The GitHub-side unstar above already succeeded regardless of what
-    # follows; hold the lock across this read-modify-write so a concurrent
-    # `ghstars sync` can't read a stale snapshot and clobber this update
-    # (spec story 33), the same reasoning as sync()'s own locked span.
+    # The GitHub-side unstar already succeeded. Hold the lock across this
+    # read-modify-write so a concurrent `ghstars sync` cannot clobber it
+    # (spec story 33), same as sync()'s locked span.
     now = datetime.now(UTC)
     with store.lock():
         stars = store.load_stars()
@@ -133,6 +134,7 @@ def unstar_cmd(
             for star in stars
         ]
         store.save_stars(updated)
+        store.save_lists(remove_star_from_lists(store.load_lists(), repo))
 
     if json_output:
         typer.echo(

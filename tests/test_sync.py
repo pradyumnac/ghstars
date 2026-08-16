@@ -6,7 +6,7 @@ from conftest import StarFactory
 from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.models import List, RateLimitStatus
 from ghstars.core.state_store import StateStore
-from ghstars.core.sync import RateLimitExceededError, sync
+from ghstars.core.sync import RateLimitExceededError, remove_star_from_lists, sync
 
 
 def test_sync_fetches_and_persists_stars(
@@ -134,3 +134,18 @@ def test_sync_fetches_and_classifies_lists(tmp_path: Path) -> None:
     assert saved["L_3"].intent is None
     assert saved["L_3"].category is None
     assert saved["L_3"].malformed is True
+
+
+def test_remove_star_from_lists_drops_only_the_matching_star() -> None:
+    lists = [
+        List(id="L_1", name="Explore: A", slug="a", items=["x/y", "a/b"]),
+        List(id="L_2", name="Explore: B", slug="b", items=["a/b"]),
+        List(id="L_3", name="Explore: C", slug="c", items=[]),
+    ]
+
+    updated = remove_star_from_lists(lists, "a/b")
+
+    by_id = {lst.id: lst for lst in updated}
+    assert by_id["L_1"].items == ["x/y"]
+    assert by_id["L_2"].items == []
+    assert by_id["L_3"].items == []

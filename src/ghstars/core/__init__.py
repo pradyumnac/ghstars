@@ -9,7 +9,13 @@ from ghstars.core.models import (
     Star,
 )
 from ghstars.core.state_store import StateStore
-from ghstars.core.sync import RateLimitExceededError, SyncResult, archive_star, sync
+from ghstars.core.sync import (
+    RateLimitExceededError,
+    SyncResult,
+    archive_star,
+    remove_star_from_lists,
+    sync,
+)
 from ghstars.core.taxonomy import ParsedListName, classify_list, parse_list_name
 
 __all__ = [
@@ -28,5 +34,6 @@ __all__ = [
     "archive_star",
     "classify_list",
     "parse_list_name",
+    "remove_star_from_lists",
     "sync",
 ]

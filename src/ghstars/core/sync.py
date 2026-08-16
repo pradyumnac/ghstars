@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, ValidationError
 
 from ghstars.core.github_client import GitHubClient
-from ghstars.core.models import Star
+from ghstars.core.models import List, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.taxonomy import classify_list
 
@@ -29,23 +29,20 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
             f"rate limit exceeded: {status.remaining}/{status.limit} remaining"
         )
 
-    # Held across the whole read-diff-write span (StateStore's FileLock is
-    # reentrant within a thread, so load_stars/save_stars's own internal
-    # locking nests harmlessly) so a concurrent `ghstars unstar` can't read
-    # a stale snapshot and clobber this sync's write, or vice versa (spec
-    # story 33).
+    # Held across the whole read-diff-write span. FileLock is reentrant
+    # within a thread, so load_stars/save_stars's internal locking nests
+    # safely. This stops a concurrent `ghstars unstar` from reading a
+    # stale snapshot and clobbering this write, or vice versa (story 33).
     with store.lock():
         previous = _load_previous_stars(store)
         stars = client.fetch_stars()
         archived = _carry_forward_archived(previous, stars, now=datetime.now(UTC))
         all_stars = stars + archived
 
-        # Lists (ticket 03): fetched Lists carry only their raw `name` from
-        # GitHub -- classify_list() derives intent/category/malformed from
-        # it before persisting, so GitHub-side classification is always
-        # respected. Fetched before either save below, so a failure here
-        # never leaves stars.json updated while lists.json is stale (or
-        # vice versa).
+        # Fetched Lists carry only raw `name` from GitHub (spec story 2);
+        # classify_list() derives intent/category/malformed before persisting.
+        # Fetched before either save below, so a failure here never leaves
+        # stars.json updated while lists.json is stale, or vice versa.
         lists = [classify_list(lst) for lst in client.fetch_lists()]
 
         store.save_stars(all_stars)
@@ -54,14 +51,11 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
 
 
 def _load_previous_stars(store: StateStore) -> list[Star]:
-    """Load the prior snapshot for the archived-diff, self-healing on read.
+    """Load the prior snapshot for the archived-diff. Self-heals on read.
 
-    Before this ticket, `sync()` never read `stars.json` first — it just
-    overwrote it, so a corrupt or unreadable file could never block a
-    sync. Reading it now (to diff for unstars) must not take away that
-    self-healing property: a previous snapshot that fails to parse is
-    treated as "no history to diff against" rather than a fatal error that
-    would newly make `ghstars sync` itself unrecoverable.
+    A previous snapshot that fails to parse counts as "no history to
+    diff against," not a fatal error. `sync()` must stay recoverable
+    even when `stars.json` is corrupt.
     """
     try:
         return store.load_stars()
@@ -72,14 +66,13 @@ def _load_previous_stars(store: StateStore) -> list[Star]:
 def archive_star(star: Star, *, now: datetime) -> Star:
     """Mark a single Star Archived.
 
-    Archived is a Star property recording that the repo itself was
-    unstarred on GitHub — never an Intent, and never the same axis as a
-    List's Retired Intent (see CONTEXT.md's Archived/Retired entries). A
-    repo unstarred on GitHub also drops out of every GitHub List
-    automatically, so `list_ids` is cleared here to match.
+    Archived is a Star property: the repo was unstarred on GitHub.
+    Never an Intent; never the same axis as a List's Retired Intent
+    (CONTEXT.md). An unstarred repo drops out of every List
+    automatically, so clear `list_ids` too.
 
-    Shared by `sync()`'s unstar-detection diff (below) and the `ghstars
-    unstar` CLI command, so both call sites agree on what "archived" means.
+    Shared by `sync()`'s unstar diff and the `ghstars unstar` command,
+    so both agree on what "archived" means.
     """
     return star.model_copy(
         update={"archived": True, "archived_at": now, "list_ids": []}
@@ -89,16 +82,12 @@ def archive_star(star: Star, *, now: datetime) -> Star:
 def _carry_forward_archived(
     previous: list[Star], current: list[Star], *, now: datetime
 ) -> list[Star]:
-    """Diff a sync's previous local snapshot against a fresh fetch.
+    """Diff a sync's previous snapshot against a fresh fetch.
 
-    A Star present in `previous` but missing from `current` was unstarred
-    on GitHub since the last sync (spec story 5). It is never dropped
-    (story 6) — it is carried forward here, newly marked Archived. A Star
-    that was already Archived from an earlier sync is carried forward
-    unchanged, so repeated syncs don't keep bumping `archived_at`.
-
-    Deliberately kept as its own small helper, separate from `sync()`'s
-    main body, so this diff stays easy to reason about independently.
+    A Star in `previous` but missing from `current` was unstarred since
+    the last sync (story 5). Carry it forward, newly marked Archived
+    (story 6, never dropped). A Star already Archived stays unchanged,
+    so repeated syncs do not bump `archived_at` again.
     """
     current_names = {star.full_name for star in current}
     carried: list[Star] = []
@@ -107,3 +96,17 @@ def _carry_forward_archived(
             continue
         carried.append(star if star.archived else archive_star(star, now=now))
     return carried
+
+
+def remove_star_from_lists(lists: list[List], full_name: str) -> list[List]:
+    """Drop `full_name` from every List's `items`.
+
+    Mirrors `FakeGitHubClient.remove_star`. Used by `ghstars unstar` so
+    the local Lists cache stays fresh until the next sync.
+    """
+    return [
+        lst.model_copy(update={"items": [i for i in lst.items if i != full_name]})
+        if full_name in lst.items
+        else lst
+        for lst in lists
+    ]

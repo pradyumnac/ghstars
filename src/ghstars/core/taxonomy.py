@@ -1,16 +1,12 @@
-"""List name -> Intent/Category taxonomy parsing.
+"""List name to Intent/Category taxonomy parsing.
 
-Naming convention (spec.md "Naming convention & validation"): `{Intent}: {Category}`
-for Explore/Current/Retired/Reference; an unprefixed name is a **valid** General
-List (CONTEXT.md's own definition -- "a List with no Intent prefix ... outside
-the taxonomy entirely", a first-class category, not an error).
+Convention: `{Intent}: {Category}` for Explore/Current/Retired/Reference.
+An unprefixed name is valid General (CONTEXT.md), not an error.
 
-"Malformed" is reserved for names that look like they're *attempting* the
-Intent-prefix pattern but don't exactly match it: wrong case (`explore: Foo`),
-wrong separator (`Explore - Foo`), or an unrecognized word before a `: `
-separator (`Exploring: Foo`). Those are flagged for the user to rename, never
-silently guessed at. See ticket 03's Comments for the doc inconsistency this
-resolves between spec.md and CONTEXT.md, and the tradeoff this rule accepts.
+A malformed name attempts the Intent-prefix pattern but does not match
+it: wrong case (`explore: Foo`), wrong separator (`Explore - Foo`), or
+an unrecognized word before `: ` (`Exploring: Foo`). Flag these for the
+user to rename. Never guess an Intent.
 """
 
 import re
@@ -22,10 +18,9 @@ _INTENTS: tuple[Intent, ...] = ("Explore", "Current", "Retired", "Reference")
 _SEPARATOR = ": "
 _LEADING_WORD = re.compile(r"^[A-Za-z]+")
 _INTENTS_CASEFOLDED = {intent.casefold() for intent in _INTENTS}
-# Whatever follows the leading word, once it's optional whitespace then a
-# colon or dash, reads as an attempted separator -- as opposed to plain
-# whitespace-then-another-word, which is just a normal multi-word name
-# (e.g. "Explore Zone" is General, not an attempt at "Explore: Zone").
+# A colon or dash right after the leading word reads as an attempted
+# separator. Plain whitespace does not ("Explore Zone" is General, not
+# an attempt at "Explore: Zone").
 _SEPARATOR_ATTEMPT = re.compile(r"^\s*[-:]")
 
 
@@ -52,19 +47,15 @@ def parse_list_name(name: str) -> ParsedListName:
         if candidate.casefold() in _INTENTS_CASEFOLDED and _SEPARATOR_ATTEMPT.match(
             rest
         ):
-            # Right word (case-insensitively), and what follows it looks
-            # like an attempted separator rather than a normal word
-            # boundary -- wrong case and/or wrong separator, e.g.
-            # "explore: Foo" or "Explore - Foo". A bare "Explore" or a
-            # plain "Explore Zone" (no separator-like punctuation after
-            # the word) isn't an attempt -- General, not malformed.
+            # Case-insensitive word match plus an attempted separator:
+            # wrong case or wrong separator, e.g. "explore: Foo" or
+            # "Explore - Foo". A bare "Explore" or "Explore Zone" is
+            # General, not malformed.
             return ParsedListName(intent=None, category=None, malformed=True)
 
     if _SEPARATOR in name:
-        # Shaped like `{word}: {rest}` but `word` isn't a recognized
-        # Intent -- presumed an attempted/misspelled prefix rather than a
-        # deliberately colon-containing General List name (accepted
-        # tradeoff, see module docstring).
+        # `{word}: {rest}` where `word` is not a recognized Intent.
+        # Treated as a misspelled prefix, not a General name with a colon.
         return ParsedListName(intent=None, category=None, malformed=True)
 
     return ParsedListName(intent=None, category=None, malformed=False)
