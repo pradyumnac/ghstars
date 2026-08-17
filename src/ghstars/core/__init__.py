@@ -1,3 +1,11 @@
+from ghstars.core.category import (
+    CategoryNotFoundError,
+    DrainResult,
+    InvalidCategoryNameError,
+    RenameResult,
+    drain_category,
+    rename_category,
+)
 from ghstars.core.export import (
     DEFAULT_EXPORT_FIELDS,
     ExportConfig,
@@ -33,10 +41,19 @@ from ghstars.core.tagging import (
     TagResult,
     tag_star,
 )
-from ghstars.core.taxonomy import ParsedListName, classify_list, parse_list_name
+from ghstars.core.taxonomy import (
+    LIFECYCLE_INTENTS,
+    ParsedListName,
+    classify_list,
+    parse_list_name,
+    strip_lifecycle_siblings,
+)
 
 __all__ = [
     "DEFAULT_EXPORT_FIELDS",
+    "LIFECYCLE_INTENTS",
+    "CategoryNotFoundError",
+    "DrainResult",
     "ExportConfig",
     "ExportConfigError",
     "ExportEntry",
@@ -44,11 +61,13 @@ __all__ = [
     "FakeGitHubClient",
     "GitHubClient",
     "Intent",
+    "InvalidCategoryNameError",
     "List",
     "Nudge",
     "ParsedListName",
     "RateLimitExceededError",
     "RateLimitStatus",
+    "RenameResult",
     "RetriageEntry",
     "Star",
     "StarArchivedError",
@@ -58,12 +77,15 @@ __all__ = [
     "TagResult",
     "archive_star",
     "classify_list",
+    "drain_category",
     "load_export_config",
     "parse_list_name",
     "reconcile_list_membership",
     "remove_star_from_lists",
+    "rename_category",
     "run_export",
     "select_stars",
+    "strip_lifecycle_siblings",
     "sync",
     "tag_star",
 ]

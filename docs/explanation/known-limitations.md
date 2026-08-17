@@ -86,3 +86,12 @@ unclassified stars — every later sync only has to push newly-starred
 repos. Accepted as a one-time cost, not batched/throttled, matching
 the decision already made for pending tag pushes above. Revisit if a
 large first sync proves slow in practice.
+
+## `category drain` pushes are not batched either
+
+`drain_category()` (ticket 07) migrates each Star one at a time, the
+same 2-round-trip-per-Star cost as a pending tag push. A drain across
+N Stars costs 2N sequential `gh api graphql` calls, plus one call per
+newly-created destination List. A drain is a deliberate, occasional
+user action, not part of every sync, so this is accepted as-is —
+revisit only if a real drain across a very large Category proves slow.

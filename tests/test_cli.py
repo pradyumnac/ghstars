@@ -309,3 +309,125 @@ def test_tui_cmd_is_registered_on_the_top_level_app() -> None:
 
     assert result.exit_code == 0
     assert "tui" in result.output
+
+
+def test_category_rename_cmd_renames_the_lifecycle_variants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    explore = List(id="L_explore", name="Explore: Old", slug="explore-old")
+    current = List(id="L_current", name="Current: Old", slug="current-old")
+    lists = [explore, current]
+    store = StateStore(tmp_path)
+    store.save_lists(lists)
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient(lists=lists))
+
+    result = runner.invoke(app, ["category", "rename", "Old", "New"])
+
+    assert result.exit_code == 0
+    assert "Renamed 2 List(s) from 'Old' to 'New'." in result.output
+
+
+def test_category_rename_cmd_reports_skipped_as_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale_local = List(id="L_explore", name="Explore: Old", slug="explore-old")
+    store = StateStore(tmp_path)
+    store.save_lists([stale_local])
+    _use_store(monkeypatch, store)
+    live = List(id="L_explore", name="Explore: Elsewhere", slug="explore-elsewhere")
+    _use_client(monkeypatch, FakeGitHubClient(lists=[live]))
+
+    result = runner.invoke(app, ["category", "rename", "Old", "New", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload == {"renamed": [], "skipped": ["L_explore"]}
+
+
+def test_category_rename_cmd_fails_when_category_not_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient())
+
+    result = runner.invoke(app, ["category", "rename", "Nonexistent", "New"])
+
+    assert result.exit_code == 1
+    assert "no Explore/Current/Retired List found" in result.output
+
+
+def test_category_drain_cmd_migrates_stars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    explore_old = List(
+        id="L_1", name="Explore: Old", slug="explore-old", items=["pradyumnac/x"]
+    )
+    star = make_star("pradyumnac/x", list_ids=["L_1"])
+    store = StateStore(tmp_path)
+    store.save_lists([explore_old])
+    store.save_stars([star])
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[explore_old]))
+
+    result = runner.invoke(app, ["category", "drain", "Old", "New"])
+
+    assert result.exit_code == 0
+    assert "Migrated 1 Star(s) from 'Old' to 'New'." in result.output
+
+
+def test_category_drain_cmd_creates_a_private_destination_when_requested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    explore_old = List(
+        id="L_1", name="Explore: Old", slug="explore-old", items=["pradyumnac/x"]
+    )
+    star = make_star("pradyumnac/x", list_ids=["L_1"])
+    store = StateStore(tmp_path)
+    store.save_lists([explore_old])
+    store.save_stars([star])
+    _use_store(monkeypatch, store)
+    client = FakeGitHubClient(stars=[star], lists=[explore_old])
+    _use_client(monkeypatch, client)
+
+    result = runner.invoke(app, ["category", "drain", "Old", "New", "--private"])
+
+    assert result.exit_code == 0
+    created = next(lst for lst in client.fetch_lists() if lst.name == "Explore: New")
+    assert created.is_private is True
+
+
+def test_category_drain_cmd_reports_skipped_as_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    stale_local = List(
+        id="L_1", name="Explore: Old", slug="explore-old", items=["pradyumnac/x"]
+    )
+    store = StateStore(tmp_path)
+    store.save_lists([stale_local])
+    star = make_star("pradyumnac/x", list_ids=[])
+    store.save_stars([star])
+    _use_store(monkeypatch, store)
+    # Live: pradyumnac/x already left the source List since the snapshot.
+    live = List(id="L_1", name="Explore: Old", slug="explore-old", items=[])
+    _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[live]))
+
+    result = runner.invoke(app, ["category", "drain", "Old", "New", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload == {"migrated": [], "skipped": ["pradyumnac/x"]}
+
+
+def test_category_drain_cmd_fails_when_category_not_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient())
+
+    result = runner.invoke(app, ["category", "drain", "Nonexistent", "New"])
+
+    assert result.exit_code == 1
+    assert "no Explore/Current/Retired List found" in result.output

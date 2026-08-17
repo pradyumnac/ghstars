@@ -182,3 +182,22 @@ class UpdateListsForItemPayload(_GraphQLModel):
 
 class UpdateListsForItemResponse(_GraphQLModel):
     update_user_lists_for_item: UpdateListsForItemPayload
+
+
+class UpdateUserListPayload(_GraphQLModel):
+    list: UserListNode | None = None
+
+
+class UpdateUserListResponse(_GraphQLModel):
+    update_user_list: UpdateUserListPayload
+
+
+class DeleteUserListPayload(_GraphQLModel):
+    # GitHub's schema returns `user`/`clientMutationId` here, not the
+    # deleted List's identity -- nothing further to validate beyond a
+    # non-error response (confirmed via live introspection, ticket 07).
+    client_mutation_id: str | None = None
+
+
+class DeleteUserListResponse(_GraphQLModel):
+    delete_user_list: DeleteUserListPayload

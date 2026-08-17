@@ -7,6 +7,7 @@ from typing import cast
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.github.schema import (
     CreateUserListResponse,
+    DeleteUserListResponse,
     FollowingNode,
     FollowingResponse,
     OwnedRepoNode,
@@ -19,6 +20,7 @@ from ghstars.github.schema import (
     StarredEdge,
     StarredResponse,
     UpdateListsForItemResponse,
+    UpdateUserListResponse,
     UserListItemsNodeResponse,
     UserListNode,
     UserListsResponse,
@@ -111,6 +113,28 @@ mutation($name: String!, $description: String, $isPrivate: Boolean) {
       description
       isPrivate
     }
+  }
+}
+"""
+
+_UPDATE_LIST_MUTATION = """
+mutation($listId: ID!, $name: String, $description: String, $isPrivate: Boolean) {
+  updateUserList(input: {listId: $listId, name: $name, description: $description, isPrivate: $isPrivate}) {
+    list {
+      id
+      name
+      slug
+      description
+      isPrivate
+    }
+  }
+}
+"""
+
+_DELETE_LIST_MUTATION = """
+mutation($listId: ID!) {
+  deleteUserList(input: {listId: $listId}) {
+    clientMutationId
   }
 }
 """
@@ -273,8 +297,7 @@ class RealGitHubClient:
     """ghstars.core.GitHubClient over `gh api graphql`.
 
     Implemented: fetch_stars, fetch_lists, check_rate_limit, remove_star,
-    create_list, update_list_membership_for_item. update_list and
-    delete_list raise NotImplementedError until ticket 07.
+    create_list, update_list, delete_list, update_list_membership_for_item.
     """
 
     def check_rate_limit(self) -> RateLimitStatus:
@@ -388,10 +411,43 @@ class RealGitHubClient:
         description: str | None = None,
         is_private: bool | None = None,
     ) -> List:
-        raise NotImplementedError("List rename/description mutations land in ticket 07")
+        """Rename/redescribe/re-privacy an existing List via `updateUserList`.
+
+        Returns the raw List as GitHub updated it (no Intent/Category —
+        that's `ghstars.core.taxonomy`'s job at the caller, same
+        convention as `create_list`). An omitted (`None`) field is left
+        unchanged on GitHub's side — `updateUserList`'s input fields are
+        all optional aside from `listId` (confirmed via live
+        introspection, ticket 07).
+        """
+        data = _graphql(
+            _UPDATE_LIST_MUTATION,
+            listId=list_id,
+            name=name,
+            description=description,
+            isPrivate=is_private,
+        )
+        payload = UpdateUserListResponse.model_validate(data).update_user_list
+        if payload.list is None:
+            raise GitHubApiError(f"updateUserList for {list_id!r} returned no list")
+        node = payload.list
+        return List(
+            id=node.id,
+            name=node.name,
+            slug=node.slug,
+            description=node.description,
+            is_private=node.is_private,
+        )
 
     def delete_list(self, list_id: str) -> None:
-        raise NotImplementedError("List deletion lands in ticket 07")
+        """Delete a List for real via `deleteUserList`.
+
+        GitHub's payload doesn't echo the deleted List's identity back
+        (no `list` field on `DeleteUserListPayload`, confirmed via live
+        introspection) — a non-error response is confirmation enough.
+        """
+        data = _graphql(_DELETE_LIST_MUTATION, listId=list_id)
+        DeleteUserListResponse.model_validate(data)
 
     def update_list_membership_for_item(
         self, item_id: str, list_ids: list[str]
