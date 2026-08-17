@@ -8,37 +8,60 @@ of scope to fix right now.
 Delete a section once it lands in `TODO.md`, an ADR, `AGENTS.md`, or
 `README.md` — this file is a staging area, not a second source of truth.
 
-## Start next session with: spec/issues consistency audit
+## Spec/issues consistency audit — findings, awaiting triage (2026-08-17)
 
-Run an independent advisor review (fresh agent, no shared context —
-same pattern as this session's whole-project reviews) over
-`.scratch/ghstars-v1/spec.md` together with the full
-`.scratch/ghstars-v1/issues/*.md` ticket list. Look for inconsistencies
-between them and any observations worth surfacing — e.g. spec sections
-that no ticket covers, ticket scope that's drifted from what the spec
-says, acceptance criteria that no longer match a decision made in a
-later ticket's `## Comments` (ticket 04 and 05 already have one such
-cross-reference — the push-then-pull ordering — that a consistency
-pass should confirm is still accurate once 05 actually lands).
+**Status: done, unactioned.** Advisor agent (fresh, no shared context)
+completed a report-only pass over `.scratch/ghstars-v1/spec.md` and all 16
+`issues/*.md` files. Per convention, nothing below was auto-applied — land
+each item into its real home (a ticket's acceptance criteria/Comments,
+`docs/`, or a new ticket) once triaged, then delete it from this list.
 
-Confirmed via a real `/mattpocock-skills:ask-matt` run (2026-08-16, not
-just inferred from its routing map): no skill in that map covers this.
-Walked the whole flow — main flow (grill-with-docs/to-spec/to-tickets/
-implement) doesn't apply, we're not creating spec or tickets; on-ramps
-(triage, diagnosing-bugs, wayfinder) don't apply, this is neither an
-external bug report, a bug, nor a foggy greenfield effort;
-`/improve-codebase-architecture` is code-architecture only, not
-spec/ticket document content; `/domain-modeling` would fix a vocabulary
-*finding* the audit surfaces, but isn't the audit tool itself;
-`/research` was the closest near-miss (background agent, cited findings
-file) but is framed around external primary sources, not cross-checking
-two of the project's own documents. This is the generic advisor
-pattern, not a named skill — spawn it directly rather than searching
-for a skill to wrap it in. Report findings only; this is exactly the
-report-only whole-project-review class of check per the project's
-review-process convention (see the "Review process" section elsewhere
-in this file), so don't auto-apply fixes from it without checking back
-first.
+1. **Real gap — spec story 4 ("`Explore: General` default") has no owning
+   ticket.** Ticket 03 explicitly punts its matching checkbox to 04; ticket
+   04 (done) never picked it up — no acceptance criterion, no Comments
+   claim, and `grep -rn "General" src/` confirms no auto-assignment code
+   exists anywhere. New stars are never defaulted into `Explore: General`.
+2. **Real gap — spec story 16 (Intent mutual exclusivity) is unenforced and
+   unowned.** Spec + CONTEXT.md both require a Star sit in exactly one of
+   Explore/Current/Retired per Category at a time. No ticket (checked 03,
+   04, 05, 07, 09) enforces it, and `tagging.py`'s `tag_star()` just appends
+   to `pending_list_ids` — never removes a conflicting sibling variant.
+3. **Confirmed still accurate, needs a re-check on merge** — the 04/05
+   push-then-pull cross-reference. Ticket 05 hadn't landed at audit time
+   (still `ready-for-agent`, worktree agent was mid-run); `sync.py` still
+   does the unconditional push exactly as 05's Comments describe. **Re-run
+   this specific check once ticket 05's worktree branch merges to `main`**
+   — that's the point it could actually go stale.
+4. **Worth flagging before picking up 07** — ticket 07 (category drain)
+   does bulk List-membership migration but is only `Blocked by: 04`, not
+   05, even though ticket 16's own Comments establish that any
+   List-membership write bypassing 05's synchronous three-way merge risks
+   "reintroducing the blind-overwrite problem 05 exists to fix." Not a flat
+   contradiction (07 doesn't say which path drain uses) — but worth a
+   decision when 07 starts: route `drain` through the same merge-aware path
+   05 builds, or accept it's a different (admin-initiated, less
+   conflict-prone) mutation and document why it's exempt.
+5. **Minor drift** — ticket 13 (release gate) isn't blocked by ticket 14
+   (agent skill), despite spec's Further Notes calling the skill "a real
+   deliverable... shipped alongside ghstars." Possibly intentional (skill
+   doesn't block a package release) but inconsistent with the spec's
+   framing.
+6. **Minor, formally ungoverned** — spec story 39 (`config/` never
+   auto-committed) has no ticket-level criterion anywhere (unlike `state/`,
+   covered by ticket 11). `~/.ghstars/config/` scaffolding landed via an
+   out-of-ticket commit (`0fe4180`) whose own message admits "no ticket has
+   defined config/'s schema." Satisfied vacuously today, not by design.
+7. **Not new, still open** — ticket 03's CONTEXT.md question (whether a
+   colon-containing General List name like `"Notes: Misc"` needs an escape
+   hatch from the malformed-name heuristic) is still unresolved; already
+   correctly parked there for a `/domain-modeling` pass.
+8. **Minor** — spec story 23 (malformed names shouldn't silently break
+   export) isn't addressed in ticket 10's acceptance criteria. Ticket 03
+   covers the sync-side flagging; ticket 10 says nothing about how export
+   handles a malformed List name. Likely fine by construction, not explicit.
+
+No dangling story-number references anywhere in the tickets, and no ticket
+contradicts itself internally.
 
 ## Task rail
 
@@ -53,35 +76,73 @@ ticket `NN`). The ticket files are the actual source of truth (acceptance
 criteria, `## Comments` with implementation notes); this table is a status
 snapshot only.
 
+**Note (2026-08-17 session): harness task IDs below do NOT equal ticket
+numbers this round** — task #1 is the audit (not a ticket), task #2 is
+ticket 05. Listed here by ticket number regardless, per the mirroring
+convention; see harness `TaskList` for actual task IDs/owners if resuming
+these specific runs.
+
 | # | Ticket | Status | Blocked by |
 |---|---|---|---|
 | 1 | Core scaffolding, fake client, state store, CLI skeleton | done | — |
 | 2 | Real GitHub client — fetch stars | done | 1 |
 | 3 | Fetch Lists & parse taxonomy | done | 2 |
 | 4 | Local tagging & two-way sync push | done | 3 |
-| 5 | Three-way merge & Retriage Queue | **pending — frontier** | 4 |
+| 5 | Three-way merge & Retriage Queue | done — merged to `main` (`e48b704`) | 4 |
 | 6 | Unstar detection & Archived state | done | 2 |
-| 7 | Category rename & drain | **pending — frontier** | 4 |
+| 7 | Category rename & drain | pending — frontier after 5 lands | 4 |
 | 8 | Agent-mode status command & verify | pending | 3, 5 |
-| 9 | TUI tagging/bulk-tag/retag | **pending — frontier** | 4 |
-| 10 | Export engine | **pending — frontier** | 3 |
-| 11 | State diff | **pending — frontier** | 4 |
+| 9 | TUI tagging/bulk-tag/retag | pending — frontier after 5 lands | 4 |
+| 10 | Export engine | pending — frontier after 5 lands | 3 |
+| 11 | State diff | pending — frontier after 5 lands | 4 |
 | 12 | Nudges | pending | 8 |
 | 13 | Packaging & distribution (Linux) | pending | 5, 6, 7, 8, 9, 10, 11, 12 |
 | 14 | Accompanying agent skill (replaces github-stars) | pending | 4, 5, 6, 7, 8, 10, 11, 12 |
 | 15 | Windows & macOS release binaries | pending | 13 |
 | 16 | Push a tag edit immediately, like unstar already does | pending | 4, 5 |
+| — | Spec/issues consistency audit (not a ticket) | done — findings awaiting triage, see section above | — |
 
-Frontier right now: **5, 7, 9, 10, 11** — all unblocked, ready to grab. 16 is
-also nominally unblocked-by-count but hard-gated on 5's design landing first
-(see below).
+**Ticket 05: done.** Implemented in a worktree agent, ticket-scoped
+`/code-review` applied (2 real fixes, 1 deliberate no-op — see the ticket
+file's post-implementation Comments), independently re-verified by the
+supervisor (read the merge logic, confirmed the ADR 0001 citation is real,
+`mise run check` green pre- and post-merge), fast-forward merged to `main`
+at `e48b704` after explicit user confirmation (2026-08-17). Ticket 16's
+hard-block on 05 is now lifted (noted in its file), but 16 itself is not
+being picked up yet — see below.
+
+**Plan changed 2026-08-17, after the audit findings came back** (see the
+findings section above) — the previous plan to move straight to a
+7/9/10/11 parallel layer once 05 landed is now on **hold**. New sequence,
+per explicit user instruction:
+
+1. ~~Wait for ticket 05's worktree agent to finish, then wait for the user
+   to confirm it's resolved~~ — done, see above.
+2. Launch a **second advisor agent**, scoped to *solutioning*, not
+   findings — research spec.md/issues/codebase and propose best-practice,
+   clean-code solutions for the audit's identified issues (story 4
+   default, story 16 mutual exclusivity, and the other findings above).
+   **Propose-only — it must not implement anything.** Returns proposals;
+   the user takes them up one at a time. **This is the next step.**
+3. **Do not launch 07/09/10/11/16 (or any other frontier ticket) in
+   parallel until the audit-derived fixes are resolved.** The "Sequencing
+   strategy" section below still describes the *file-overlap* reasoning
+   for why 07/09/10/11 can run together once that layer starts — it's just
+   gated later than originally planned.
+
+See `~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_audit_findings_workflow.md`
+for the full reasoning behind this gate.
 
 ## Current state
 
-Tickets 01/02/03/04/06 are done, committed, and **pushed to `main`** on
+Tickets 01/02/03/04/06 are done, committed, and pushed to `main` on
 `pradyumnac/ghstars` (public GitHub repo — renamed from an unrelated old
 private Go repo of the same name, which now lives at
-`pradyumnac/ghstars-go-archived`). 85 tests pass, `mise run check` is clean.
+`pradyumnac/ghstars-go-archived`). **Ticket 05 is done and merged to local
+`main` (`e48b704`) but not yet pushed to `origin`** — local main is 1
+commit ahead of `origin/main` as of this session; push it before starting
+work in a new session/worktree off `origin/main` or it'll be missing this
+ticket. 96 tests pass, `mise run check` is clean.
 Local dev state (`~/.ghstars/state/stars.json`/`lists.json`) is live-synced
 against the real account (pradyumnac, 1530 stars, 7 Lists as of this
 session) — safe to run `ghstars sync`/`list`/`lists`/`tag` against it again.
@@ -164,10 +225,45 @@ them:
    `gh api graphql` calls in one sync (resolve node ID + mutation, per
    star), no GraphQL alias batching used.
 
-## Next steps
+## Sequencing strategy for the 5/7/9/10/11 frontier (decided 2026-08-17)
 
-Frontier is **5, 7, 9, 10, 11** (all unblocked). Given the two findings
-above, **05 first** is the strong recommendation — it unblocks 16's design
-question and fixes the conflict-handling gap that's silently present in the
-shipped code today (low real risk solo, since this account is the only
-writer right now, but worth closing before more write paths accumulate).
+**05 solo first, then 07/09/10/11 in parallel.** Reasoning, from reading all
+five ticket files this session:
+
+- **05** restructures `core/sync.py`'s control flow itself (push moves from
+  unconditional-at-start to conditional-after-fetch). Any other ticket
+  touching that file concurrently would be editing code mid-restructure —
+  worth avoiding even though nothing else in the frontier *should* need to
+  touch `sync.py`'s push logic.
+- **07** (category rename/drain) touches `core/lists.py`-equivalent + CLI +
+  the GitHub client's list-mutation calls — direct API mutations (rename,
+  bulk membership migration), not the `pending_list_ids` staging path 05
+  restructures. Low file overlap with 05.
+- **09** (TUI) is a new, mostly self-contained module — a thin wrapper
+  calling into `ghstars.core`, no core logic changes. Lowest risk.
+- **10** (export engine) is a new, config-driven module — reads
+  stars/lists, writes files. No core mutation path at all.
+- **11** (state diff) wraps `git diff`/`git log -p` against `state/` —
+  entirely new, no core changes, explicitly forbidden from touching git
+  init/commit behavior.
+
+07/09/10/11 have negligible file overlap with each other (list-mutation
+CLI, TUI, export, diff are four separate concerns) — once 05 lands, run
+them as one parallel worktree-agent layer, same pattern as the 03+06 round
+(see "Parallel-agent orchestration pattern" below): launch all four in one
+message, each told upfront what the others are touching so a real
+collision (if one turns up) gets handled by keeping diffs additive rather
+than avoided by scope-shrinking.
+
+**Review discipline for this layer** (per "Review process" above): each of
+05/07/09/10/11 gets its own ticket-scoped `/code-review` with autonomous
+fixes as it lands. After 07/09/10/11 all land (05 already reviewed solo
+before they start), run one report-only whole-project review over the
+combined layer — same as was done after 03+06.
+
+**Why 05 first, not just "some ticket first":** it fixes a real
+conflict-clobbering bug live in shipped code today (low actual risk solo,
+since this GitHub account is the only writer right now, but worth closing
+before more write paths accumulate) and unblocks ticket 16's design
+question, which cannot be scoped until 05's merge logic exists to call
+synchronously from `tag`.

@@ -15,3 +15,14 @@
 - [ ] Does an immediate per-tag push change the API cost story? Trades ~27 points (full sync) for a handful of points per `tag` call — better if the user tags occasionally, worse if they tag many repos in a row without an intervening sync (N narrow round-trips vs. one batched sync). Worth measuring against real usage patterns, not just assuming immediate is strictly better.
 
 **Acceptance criteria:** none yet — write these once 05 lands and the questions above are resolved into an actual design.
+
+## Comments (2026-08-17)
+
+Ticket 05 landed on `main` (`e48b704`) — the hard-block above is now
+resolved, `tag_star()` has the three-way-merge logic (in
+`core/sync.py`'s `_merge_pending_list_membership`) to call synchronously
+once this ticket is actually designed. Not picking this up yet: the
+current session is holding all new ticket work (this one included) until
+the spec/issues consistency audit's findings (story 4 default, story 16
+Intent mutual exclusivity, etc. — see `HANDOFF.md`) are solutioned and
+resolved.
