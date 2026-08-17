@@ -36,7 +36,7 @@ harness `TaskList` for live status if resuming with new tasks in flight.
 | 5   | Three-way merge & Retriage Queue                                                                    | done — merged to `main` (`e48b704`), confirmed pushed to `origin/main`                                  | 4                             |
 | 6   | Unstar detection & Archived state                                                                   | done                                                                                                    | 2                             |
 | 7   | Category rename & drain                                                                             | **done — merged to `main` (`4edd4e3`), `mise run check` green (197 tests)**                             | 4, 5                          |
-| 8   | Agent-mode status command & verify                                                                  | pending — **gated on 19**, per explicit user direction                                                 | 3, 5, 19                      |
+| 8   | Agent-mode status command & verify                                                                  | pending — **unblocked, 19 is done**, ready to pick up next                                              | 3, 5, 19                      |
 | 9   | TUI tagging/bulk-tag/retag                                                                          | **done — merged to `main` (`b04dba2`), `mise run check` green (157 tests)**                             | 4                             |
 | 10  | Export engine                                                                                       | **done — merged to `main` (`d768410`), `mise run check` green (145 tests)**                             | 3                             |
 | 11  | State diff                                                                                          | **done — merged to `main` (`6d8005a`), `mise run check` green (118 tests)**                             | 4                             |
@@ -47,7 +47,7 @@ harness `TaskList` for live status if resuming with new tasks in flight.
 | 16  | Push a tag edit immediately, like unstar already does                                               | pending — hold lifted now that 17 merged; not yet started                                               | 4, 5 (lifted)                 |
 | 17  | Mid-term bug fixes from the audit (Explore:General default, Intent exclusivity, 07/10/13 doc edits) | **done — merged to `main` (`4363a9b`)**                                                                 | 5                             |
 | 18  | Distinguish "cleared on GitHub" from "never classified" (edge case surfaced during 17's review)     | filed, needs design — **deliberately deferred, do not pick up until the main flow (05-12, 14) is done** | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
-| 19  | Architecture cleanup from the 07/09/10/11 advisor review                                            | **in progress — harness task #7, worktree agent — do this before 08**                                   | none                          |
+| 19  | Architecture cleanup from the 07/09/10/11 advisor review                                            | **done — merged to `main` (`1b6cca0`), `mise run check` green (198 tests)**                             | none                          |
 
 ## Current state
 
