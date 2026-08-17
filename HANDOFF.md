@@ -36,7 +36,7 @@ harness `TaskList` for live status if resuming with new tasks in flight.
 | 5   | Three-way merge & Retriage Queue                                                                    | done — merged to `main` (`e48b704`), confirmed pushed to `origin/main`                                  | 4                             |
 | 6   | Unstar detection & Archived state                                                                   | done                                                                                                    | 2                             |
 | 7   | Category rename & drain                                                                             | **done — merged to `main` (`4edd4e3`), `mise run check` green (197 tests)**                             | 4, 5                          |
-| 8   | Agent-mode status command & verify                                                                  | pending                                                                                                 | 3, 5                          |
+| 8   | Agent-mode status command & verify                                                                  | pending — **gated on 19**, per explicit user direction                                                 | 3, 5, 19                      |
 | 9   | TUI tagging/bulk-tag/retag                                                                          | **done — merged to `main` (`b04dba2`), `mise run check` green (157 tests)**                             | 4                             |
 | 10  | Export engine                                                                                       | **done — merged to `main` (`d768410`), `mise run check` green (145 tests)**                             | 3                             |
 | 11  | State diff                                                                                          | **done — merged to `main` (`6d8005a`), `mise run check` green (118 tests)**                             | 4                             |
@@ -47,6 +47,7 @@ harness `TaskList` for live status if resuming with new tasks in flight.
 | 16  | Push a tag edit immediately, like unstar already does                                               | pending — hold lifted now that 17 merged; not yet started                                               | 4, 5 (lifted)                 |
 | 17  | Mid-term bug fixes from the audit (Explore:General default, Intent exclusivity, 07/10/13 doc edits) | **done — merged to `main` (`4363a9b`)**                                                                 | 5                             |
 | 18  | Distinguish "cleared on GitHub" from "never classified" (edge case surfaced during 17's review)     | filed, needs design — **deliberately deferred, do not pick up until the main flow (05-12, 14) is done** | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
+| 19  | Architecture cleanup from the 07/09/10/11 advisor review                                            | **ready-for-agent — do this before 08, per explicit user direction**                                    | none                          |
 
 ## Current state
 
@@ -97,34 +98,15 @@ promoting into `AGENTS.md` or `docs/agents/` if it keeps proving out.
    a first sync against an account with many pre-existing unclassified
    stars.
 
-## Architecture-improvement suggestions (whole-project advisor review, 2026-08-17)
+## Architecture-improvement suggestions — landed
 
-Exploratory, report-only findings from the review over the merged
-07/09/10/11 layer — not urgent, no ticket filed yet, flagged here so
-they're not lost:
-
-- `src/ghstars/cli/__init__.py` is at 532 lines across ~10 commands.
-  Consider splitting into `cli/commands/*.py` (mirroring how `core/__init__.py`
-  already re-exports from submodules) before tickets 13 (packaging) and 14
-  (agent skill) add more surface.
-- `sync.py::_apply_pushed_membership` and `category.py::_apply_membership_diff`
-  are near-duplicate List-membership-mirroring logic — `category.py`'s own
-  docstring admits it's a private copy rather than an import. Worth a
-  shared helper before a third write path reimplements it again.
-- The "fetch fresh state, skip diverged" pattern is independently
-  implemented twice within `category.py` (rename and drain). A shared
-  "fetch-and-diff-against-local-snapshot" primitive could serve both, plus
-  any future ticket-07-shaped command.
-- `tag_star()`'s per-call `fetch_lists()` cost (already noted in
-  `tui/app.py`'s own docstring as a deferred issue) will compound as more
-  callers appear — TUI now, possibly ticket 14 later.
-- `GitHubClient`'s single `_graphql()` chokepoint is a good seam to later
-  mechanically enforce the no-auto-sync guarantee from ADR 0003 — e.g. a
-  test asserting zero live calls from a bare `ghstars tui` launch other
-  than `check_rate_limit()`.
-
-The sync-intentionality check from this same review landed as
+The exploratory findings from the 2026-08-17 whole-project advisor review
+(over the merged 07/09/10/11 layer) landed as
+[ticket 19](.scratch/ghstars-v1/issues/19-architecture-cleanup-post-layer.md),
+per explicit user direction to file them as a new ticket, gated to run
+**before ticket 08** (ticket 08's `Blocked by` now includes 19 — see Task
+rail above). The sync-intentionality check from the same review landed as
 [ADR 0003](docs/adr/0003-github-sync-is-always-explicit.md) — the one
 finding (`ghstars tui`'s automatic `check_rate_limit()` on launch) was
 confirmed by the user as an acceptable, documented exception, not a
-violation. No ticket needed for that part.
+violation.
