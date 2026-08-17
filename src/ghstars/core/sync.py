@@ -212,7 +212,7 @@ def _merge_pending_list_membership(
                 failed.append(star.full_name)
                 updated_stars.append(star)
                 continue
-            updated_lists = _apply_pushed_membership(
+            updated_lists = apply_membership_diff(
                 updated_lists, star.full_name, old_ids=star.list_ids, new_ids=local
             )
             updated_stars.append(star.model_copy(update={"list_ids": local}))
@@ -234,14 +234,24 @@ def _merge_pending_list_membership(
     return updated_stars, updated_lists, failed, conflicts
 
 
-def _apply_pushed_membership(
+def apply_membership_diff(
     lists: list[List], full_name: str, *, old_ids: list[str], new_ids: list[str]
 ) -> list[List]:
-    """Mirror a successful push's effect onto the already-fetched
-    `lists`' `items`, so `lists.json` and `stars.json` agree on the same
-    push without a second `fetch_lists()` round trip. Mirrors what
-    `client.update_list_membership_for_item` itself just did remotely
-    (see e.g. `FakeGitHubClient.update_list_membership_for_item`).
+    """Mirror a successful List-membership push's effect onto the
+    already-fetched `lists`' `items`, so a saved Lists snapshot agrees
+    with a saved Stars snapshot without a second `fetch_lists()` round
+    trip. Mirrors what `client.update_list_membership_for_item` itself
+    just did remotely (see e.g.
+    `FakeGitHubClient.update_list_membership_for_item`).
+
+    Shared by this module's own `_merge_pending_list_membership` (ticket
+    05) and `ghstars.core.category.drain_category` (ticket 07) -- the
+    same "which Lists gained/lost this item" diff either way, whether the
+    push came from a sync-time three-way merge or a bulk Category drain.
+    Extracted here (ticket 19) rather than kept as two near-identical
+    private copies; `category.py` already depends on this module
+    (`reconcile_list_membership`), so importing this one adds no new
+    cycle.
     """
     removed = set(old_ids) - set(new_ids)
     added = set(new_ids) - set(old_ids)

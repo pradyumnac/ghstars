@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List
 from ghstars.core.state_store import StateStore
-from ghstars.core.sync import reconcile_list_membership
+from ghstars.core.sync import apply_membership_diff, reconcile_list_membership
 from ghstars.core.taxonomy import (
     LIFECYCLE_INTENTS,
     classify_list,
@@ -119,7 +119,7 @@ def rename_category(
         if old == new:
             return RenameResult(renamed=[], skipped=[])
 
-        fresh_lists = [classify_list(lst) for lst in client.fetch_lists()]
+        fresh_lists = _fetch_fresh_lists(client)
         fresh_by_id = {lst.id: lst for lst in fresh_lists}
 
         renamed: list[str] = []
@@ -127,12 +127,8 @@ def rename_category(
         result_lists = fresh_lists
 
         for list_id, local_lst in targets.items():
-            fresh_lst = fresh_by_id.get(list_id)
-            if (
-                fresh_lst is None
-                or fresh_lst.intent != local_lst.intent
-                or fresh_lst.category != old
-            ):
+            fresh_lst = _undiverged(local_lst, fresh_by_id)
+            if fresh_lst is None:
                 # Deleted, renamed, or reclassified on GitHub since the
                 # local snapshot that triggered this rename.
                 skipped.append(list_id)
@@ -217,7 +213,7 @@ def drain_category(
         if from_category == to_category:
             return DrainResult(migrated=[], skipped=[])
 
-        fresh_lists = [classify_list(lst) for lst in client.fetch_lists()]
+        fresh_lists = _fetch_fresh_lists(client)
         fresh_stars = reconcile_list_membership(client.fetch_stars(), fresh_lists)
 
         fresh_lists_by_id = {lst.id: lst for lst in fresh_lists}
@@ -240,12 +236,8 @@ def drain_category(
 
         for local_from in from_targets:
             intent = local_from.intent
-            fresh_from = fresh_lists_by_id.get(local_from.id)
-            if (
-                fresh_from is None
-                or fresh_from.intent != intent
-                or fresh_from.category != from_category
-            ):
+            fresh_from = _undiverged(local_from, fresh_lists_by_id)
+            if fresh_from is None:
                 # The source List was deleted, renamed, or reclassified
                 # on GitHub since the local snapshot -- nothing here is
                 # safe to migrate against a moving target.
@@ -302,7 +294,7 @@ def drain_category(
                     skipped.append(full_name)
                     continue
 
-                result_lists = _apply_membership_diff(
+                result_lists = apply_membership_diff(
                     result_lists, full_name, old_ids=star.list_ids, new_ids=desired
                 )
                 # Patch only `list_ids` onto the existing local record (if
@@ -320,32 +312,36 @@ def drain_category(
     return DrainResult(migrated=migrated, skipped=skipped)
 
 
-def _apply_membership_diff(
-    lists: list[List], full_name: str, *, old_ids: list[str], new_ids: list[str]
-) -> list[List]:
-    """Mirror a successful membership push onto `lists`' `items`, so the
-    saved Lists snapshot agrees with the saved Stars snapshot without a
-    second `fetch_lists()` round trip.
+def _fetch_fresh_lists(client: GitHubClient) -> list[List]:
+    """Fetch and classify GitHub's current List state, right before
+    writing a bulk rename/drain (see module docstring's fetch-fresh-
+    skip-diverged design constraint).
 
-    Same shape as `ghstars.core.sync._apply_pushed_membership` (ticket
-    05) -- kept as a small private copy here rather than importing that
-    module-private helper across files.
+    Shared by `rename_category()` and `drain_category()` (ticket 19) --
+    the fetch half of the "fetch fresh, skip diverged" primitive; pair
+    with `_undiverged()` below.
     """
-    removed = set(old_ids) - set(new_ids)
-    added = set(new_ids) - set(old_ids)
-    if not removed and not added:
-        return lists
+    return [classify_list(lst) for lst in client.fetch_lists()]
 
-    result: list[List] = []
-    for lst in lists:
-        if lst.id in removed and full_name in lst.items:
-            result.append(
-                lst.model_copy(
-                    update={"items": [i for i in lst.items if i != full_name]}
-                )
-            )
-        elif lst.id in added and full_name not in lst.items:
-            result.append(lst.model_copy(update={"items": [*lst.items, full_name]}))
-        else:
-            result.append(lst)
-    return result
+
+def _undiverged(local: List, fresh_by_id: dict[str, List]) -> List | None:
+    """The fresh List matching `local.id`, or `None` if it has diverged
+    from the local snapshot that named `local` a rename/drain target --
+    deleted, renamed, or reclassified into a different Intent/Category on
+    GitHub since the last `ghstars sync`.
+
+    Shared by `rename_category()` and `drain_category()` (ticket 19),
+    extracted from what were two independent, identically-shaped
+    divergence checks -- the diff half of the "fetch fresh, skip
+    diverged" primitive; pair with `_fetch_fresh_lists()` above. Both
+    callers skip (report, never overwrite) a diverged target rather than
+    act against a moving target (module docstring).
+    """
+    fresh = fresh_by_id.get(local.id)
+    if (
+        fresh is None
+        or fresh.intent != local.intent
+        or fresh.category != local.category
+    ):
+        return None
+    return fresh
