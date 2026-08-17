@@ -8,67 +8,6 @@ of scope to fix right now.
 Delete a section once it lands in `TODO.md`, an ADR, `AGENTS.md`, or
 `README.md` — this file is a staging area, not a second source of truth.
 
-## In progress: 07/09/10/11 parallel layer
-
-Local `main` was already pushed and matched `origin/main` at the start of
-this session (confirmed via `git status` — nothing to do there). User chose
-the parallel-layer option: tickets 07, 09, 10, and 11 are being implemented
-concurrently, each in its own isolated worktree agent, each running its own
-ticket-scoped `/code-review` (autonomous fixes) before merge. Once all four
-are merged and `mise run check` is green, run one report-only whole-project
-advisor review over the combined layer (harness task #5), per "Review
-process" below. See "Task rail" for live status and harness task IDs.
-
-## Sync must always be intentful — never auto-triggered
-
-Explicit user direction (surfaced mid-session, during the 07/09/10/11
-layer): once the product is ready, the TUI, CLI, and the agent skill (ticket
-14) must never auto-pull or auto-sync GitHub state on their own. Every
-surface always serves from local state (`~/.ghstars/state/`); a real GitHub
-fetch happens only when the user explicitly runs `ghstars sync` (or
-equivalent explicit action), never as a side effect of opening the TUI,
-running an unrelated command, or an agent skill invocation.
-
-Not to be fixed in-place right now — user was explicit: don't touch
-already-running tasks (07 was still in a worktree agent when this came up).
-If the upcoming whole-project advisor review (harness task #5) finds a
-violation (e.g. `ghstars tui` or `ghstars export` calling `sync()` on
-startup), it goes through the confirmation gate and becomes a **new
-ticket**, not an in-session fix — same discipline as ticket 18. The advisor
-review has also been given this as an explicit check item, plus a secondary
-goal of general codebase-architecture improvement suggestions (report-only,
-per "Review process" below).
-
-**Two-round plan, per explicit user direction**: harness task #5 (whole-
-project advisor review) runs first, over the merged 07/09/10/11 layer.
-Once #5 lands, run a **second, dedicated** advisor round (harness task #6,
-blocked by #5) specifically deep-diving these two asks — sync-intentionality
-verification and architecture-improvement suggestions — rather than treating
-them as just bullet items inside #5's general pass.
-
-**Task #5 result (done)**: report-only, no files touched. Part 1 (project
-health): merge-conflict resolutions verified clean (AST-diffed imports/
-`__all__`), no bugs, coverage thorough. Part 2.1 (sync-intentfulness audit):
-**one finding, needs user confirmation before becoming a ticket** —
-`src/ghstars/tui/app.py:236-242` (`on_mount`) unconditionally calls
-`check_rate_limit()` (a real `gh api graphql` call) the instant `ghstars
-tui` launches, no user action required. It's read-only rate-limit metadata
-(no Star/List data pulled, nothing written to `state/`), and ticket 09's
-own spec/tests call for it explicitly — but it still fails the letter of
-"real GitHub fetch only via explicit `ghstars sync`." Everything else
-audited clean: `category rename`/`drain`'s fresh-fetch is confirmed as the
-narrow ticket-17 exception, not a creeping pattern; TUI tag/bulk-tag/retag
-only fire on explicit keypress; `diff`/`export` never touch `GitHubClient`.
-Part 2.2 (architecture, exploratory): `cli/__init__.py` at 532 lines,
-consider splitting into `cli/commands/*.py` before tickets 13/14 add more;
-`sync.py::_apply_pushed_membership` and `category.py::_apply_membership_diff`
-are near-duplicate List-membership-mirroring logic, worth a shared helper;
-the "fetch fresh, skip diverged" pattern is independently implemented twice
-within `category.py`; `tag_star()`'s per-call `fetch_lists()` cost will
-compound as more callers (TUI, future ticket 14) appear; `GitHubClient`'s
-single `_graphql()` chokepoint is a good seam to mechanically enforce the
-no-auto-sync guarantee later (e.g. a call-counter assertion in tests).
-
 ## Task rail
 
 Mirror of the session-scoped Task tool (`TaskCreate`/`TaskUpdate`/
@@ -80,10 +19,13 @@ hides the difference between "no plan" and "forgot to mirror one."
 Mirrors `.scratch/ghstars-v1/issues/*.md`, ticket-for-ticket (task ID N ==
 ticket `NN`) where possible. The ticket files are the actual source of
 truth (acceptance criteria, `## Comments` with implementation notes); this
-table is a status snapshot only. **This session's harness task IDs do not
-equal ticket numbers**: harness task #1 = ticket 07, #2 = ticket 09, #3 =
-ticket 10, #4 = ticket 11, #5 = whole-project advisor review (blocked by
-1-4) — check harness `TaskList` for live status if resuming.
+table is a status snapshot only. The 07/09/10/11 parallel layer is fully
+done as of this session: harness tasks #1-4 (tickets 07/09/10/11) all
+merged to `main`; task #5 (whole-project advisor review) completed and its
+findings are resolved — see "Architecture-improvement suggestions" below
+for the one open item; task #6 (a planned second advisor round) was
+cancelled by explicit user direction as redundant with #5's depth. Check
+harness `TaskList` for live status if resuming with new tasks in flight.
 
 | #   | Ticket                                                                                              | Status                                                                                                  | Blocked by                    |
 | --- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------- |
@@ -155,33 +97,34 @@ promoting into `AGENTS.md` or `docs/agents/` if it keeps proving out.
    a first sync against an account with many pre-existing unclassified
    stars.
 
-## Sequencing strategy for the 7/9/10/11 frontier (decided 2026-08-17, partly superseded)
+## Architecture-improvement suggestions (whole-project advisor review, 2026-08-17)
 
-07/09/10/11 as one parallel layer once 17 merges. **Superseded at
-session-end**: 17 has merged, but the explicit user instruction was to
-pick up 07 alone next session (see "Start next session with" at the top),
-not the full four-ticket parallel layer. The file-overlap reasoning below
-is still accurate background if/when 09/10/11 do get picked up alongside
-or after 07 — just no longer the committed plan for what happens
-immediately next.
+Exploratory, report-only findings from the review over the merged
+07/09/10/11 layer — not urgent, no ticket filed yet, flagged here so
+they're not lost:
 
-- **07** (category rename/drain) touches CLI + the GitHub client's
-  list-mutation calls directly — not the `pending_list_ids` staging path
-  05/17 touch. Low file overlap.
-- **09** (TUI) is a new, mostly self-contained module — a thin wrapper
-  calling into `ghstars.core`, no core logic changes. Lowest risk.
-- **10** (export engine) is a new, config-driven module — reads
-  stars/lists, writes files. No core mutation path at all.
-- **11** (state diff) wraps `git diff`/`git log -p` against `state/` —
-  entirely new, no core changes, explicitly forbidden from touching git
-  init/commit behavior.
+- `src/ghstars/cli/__init__.py` is at 532 lines across ~10 commands.
+  Consider splitting into `cli/commands/*.py` (mirroring how `core/__init__.py`
+  already re-exports from submodules) before tickets 13 (packaging) and 14
+  (agent skill) add more surface.
+- `sync.py::_apply_pushed_membership` and `category.py::_apply_membership_diff`
+  are near-duplicate List-membership-mirroring logic — `category.py`'s own
+  docstring admits it's a private copy rather than an import. Worth a
+  shared helper before a third write path reimplements it again.
+- The "fetch fresh state, skip diverged" pattern is independently
+  implemented twice within `category.py` (rename and drain). A shared
+  "fetch-and-diff-against-local-snapshot" primitive could serve both, plus
+  any future ticket-07-shaped command.
+- `tag_star()`'s per-call `fetch_lists()` cost (already noted in
+  `tui/app.py`'s own docstring as a deferred issue) will compound as more
+  callers appear — TUI now, possibly ticket 14 later.
+- `GitHubClient`'s single `_graphql()` chokepoint is a good seam to later
+  mechanically enforce the no-auto-sync guarantee from ADR 0003 — e.g. a
+  test asserting zero live calls from a bare `ghstars tui` launch other
+  than `check_rate_limit()`.
 
-07/09/10/11 have negligible file overlap with each other — once ticket 17
-merges, run them as one parallel worktree-agent layer, same pattern as the
-03+06 round (see "Parallel-agent orchestration pattern" above): launch all
-four in one message, each told upfront what the others are touching.
-
-**Review discipline for this layer** (per "Review process" above): each of
-07/09/10/11 gets its own ticket-scoped `/code-review` with autonomous
-fixes as it lands. After all four land, run one report-only whole-project
-review over the combined layer — same as was done after 03+06.
+The sync-intentionality check from this same review landed as
+[ADR 0003](docs/adr/0003-github-sync-is-always-explicit.md) — the one
+finding (`ghstars tui`'s automatic `check_rate_limit()` on launch) was
+confirmed by the user as an acceptable, documented exception, not a
+violation. No ticket needed for that part.
