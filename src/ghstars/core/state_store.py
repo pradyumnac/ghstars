@@ -51,7 +51,7 @@ class StateStore:
     ) -> None:
         with self.lock(timeout=lock_timeout):
             payload = [star.model_dump(mode="json") for star in stars]
-            _atomic_write(self._stars_path, json.dumps(payload, indent=2))
+            atomic_write(self._stars_path, json.dumps(payload, indent=2))
 
     def load_lists(self, *, lock_timeout: float = _DEFAULT_TIMEOUT) -> list[List]:
         with self.lock(timeout=lock_timeout):
@@ -65,7 +65,7 @@ class StateStore:
     ) -> None:
         with self.lock(timeout=lock_timeout):
             payload = [lst.model_dump(mode="json") for lst in lists]
-            _atomic_write(self._lists_path, json.dumps(payload, indent=2))
+            atomic_write(self._lists_path, json.dumps(payload, indent=2))
 
     def load_retriage(
         self, *, lock_timeout: float = _DEFAULT_TIMEOUT
@@ -85,12 +85,17 @@ class StateStore:
     ) -> None:
         with self.lock(timeout=lock_timeout):
             payload = [entry.model_dump(mode="json") for entry in entries]
-            _atomic_write(self._retriage_path, json.dumps(payload, indent=2))
+            atomic_write(self._retriage_path, json.dumps(payload, indent=2))
 
 
-def _atomic_write(path: Path, content: str) -> None:
+def atomic_write(path: Path, content: str) -> None:
     """Write via a same-directory temp file + rename, so a reader never sees
     a truncated file and a process killed mid-write never corrupts `path`.
+
+    Public (not module-private) because `ghstars.core.export.run_export`
+    shares it -- an export output file, read by some downstream pipeline
+    of the user's own, needs the same guarantee as `stars.json`/
+    `lists.json` here.
     """
     tmp_path = path.with_name(f"{path.name}.tmp")
     tmp_path.write_text(content)

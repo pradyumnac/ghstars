@@ -31,9 +31,10 @@ ghstars --help
 
 ## Configure
 
-`ghstars` auto-creates `~/.ghstars/config/` on every run. It has no
-configurable options yet — taxonomy definitions and export mappings
-land with later tickets.
+`ghstars` auto-creates `~/.ghstars/config/` on every run. Taxonomy
+definitions land with a later ticket. Export mappings go in
+`~/.ghstars/config/export.toml` — see
+[`docs/how-to/export.md`](docs/how-to/export.md).
 
 ## Develop
 

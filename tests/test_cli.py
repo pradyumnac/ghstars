@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 from conftest import NOW, StarFactory
 from typer.testing import CliRunner
 
@@ -29,6 +30,10 @@ def _use_store(monkeypatch: pytest.MonkeyPatch, store: StateStore) -> None:
 
 def _use_client(monkeypatch: pytest.MonkeyPatch, client: FakeGitHubClient) -> None:
     monkeypatch.setattr(cli_module, "get_client", lambda: client)
+
+
+def _use_export_config(monkeypatch: pytest.MonkeyPatch, path: Path) -> None:
+    monkeypatch.setattr(cli_module, "get_export_config_path", lambda: path)
 
 
 def test_retriage_json_lists_queue_contents(
@@ -135,3 +140,161 @@ def test_tag_cmd_reports_no_removed_list_ids_when_nothing_stripped(
 
     assert result.exit_code == 0
     assert "removed from" not in result.output
+
+
+def test_export_cmd_reports_no_exports_configured_when_no_config_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path / "state")
+    _use_store(monkeypatch, store)
+    _use_export_config(monkeypatch, tmp_path / "export.toml")
+
+    result = runner.invoke(app, ["export"])
+
+    assert result.exit_code == 0
+    assert "No exports configured" in result.output
+
+
+def test_export_cmd_writes_configured_yaml_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    tool = List(
+        id="L_1",
+        name="Current: Tool",
+        slug="current-tool",
+        intent="Current",
+        category="Tool",
+        items=["pradyumnac/ghstars"],
+    )
+    star = make_star("pradyumnac/ghstars", description="a tool")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([star])
+    store.save_lists([tool])
+    _use_store(monkeypatch, store)
+
+    config_path = tmp_path / "export.toml"
+    config_path.write_text(
+        """
+[[exports]]
+name = "tools"
+list_name = "Current: Tool"
+output = "tools.yaml"
+format = "yaml"
+"""
+    )
+    _use_export_config(monkeypatch, config_path)
+
+    output_dir = tmp_path / "cwd"
+    output_dir.mkdir()
+    monkeypatch.chdir(output_dir)
+
+    result = runner.invoke(app, ["export"])
+
+    assert result.exit_code == 0
+    assert "Wrote 1 star(s) to" in result.output
+    loaded = yaml.safe_load((output_dir / "tools.yaml").read_text())
+    assert loaded == [
+        {
+            "full_name": "pradyumnac/ghstars",
+            "html_url": star.html_url,
+            "description": "a tool",
+        }
+    ]
+
+
+def test_export_cmd_json_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    tool = List(
+        id="L_1",
+        name="Current: Tool",
+        slug="current-tool",
+        intent="Current",
+        category="Tool",
+        items=["pradyumnac/ghstars"],
+    )
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([star])
+    store.save_lists([tool])
+    _use_store(monkeypatch, store)
+
+    config_path = tmp_path / "export.toml"
+    config_path.write_text(
+        """
+[[exports]]
+name = "tools"
+list_name = "Current: Tool"
+output = "tools.json"
+format = "json"
+"""
+    )
+    _use_export_config(monkeypatch, config_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["export", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload == [
+        {
+            "name": "tools",
+            "output": str(tmp_path / "tools.json"),
+            "format": "json",
+            "star_count": 1,
+            "skipped_malformed_lists": [],
+        }
+    ]
+
+
+def test_export_cmd_warns_about_skipped_malformed_lists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    malformed = List(
+        id="L_1",
+        name="explore- Tool",
+        slug="explore-tool",
+        malformed=True,
+        items=["pradyumnac/ghstars"],
+    )
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([star])
+    store.save_lists([malformed])
+    _use_store(monkeypatch, store)
+
+    config_path = tmp_path / "export.toml"
+    config_path.write_text(
+        """
+[[exports]]
+name = "exploring"
+category = "Tool"
+intent = "Explore"
+output = "exploring.yaml"
+format = "yaml"
+"""
+    )
+    _use_export_config(monkeypatch, config_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["export"])
+
+    assert result.exit_code == 0
+    assert "skipped malformed" in result.output
+    assert "explore- Tool" in result.output
+
+
+def test_export_cmd_fails_on_invalid_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path / "state")
+    _use_store(monkeypatch, store)
+
+    config_path = tmp_path / "export.toml"
+    config_path.write_text("not valid [[ toml")
+    _use_export_config(monkeypatch, config_path)
+
+    result = runner.invoke(app, ["export"])
+
+    assert result.exit_code == 1
+    assert "error:" in result.output
