@@ -19,6 +19,33 @@ are merged and `mise run check` is green, run one report-only whole-project
 advisor review over the combined layer (harness task #5), per "Review
 process" below. See "Task rail" for live status and harness task IDs.
 
+## Sync must always be intentful — never auto-triggered
+
+Explicit user direction (surfaced mid-session, during the 07/09/10/11
+layer): once the product is ready, the TUI, CLI, and the agent skill (ticket
+14) must never auto-pull or auto-sync GitHub state on their own. Every
+surface always serves from local state (`~/.ghstars/state/`); a real GitHub
+fetch happens only when the user explicitly runs `ghstars sync` (or
+equivalent explicit action), never as a side effect of opening the TUI,
+running an unrelated command, or an agent skill invocation.
+
+Not to be fixed in-place right now — user was explicit: don't touch
+already-running tasks (07 was still in a worktree agent when this came up).
+If the upcoming whole-project advisor review (harness task #5) finds a
+violation (e.g. `ghstars tui` or `ghstars export` calling `sync()` on
+startup), it goes through the confirmation gate and becomes a **new
+ticket**, not an in-session fix — same discipline as ticket 18. The advisor
+review has also been given this as an explicit check item, plus a secondary
+goal of general codebase-architecture improvement suggestions (report-only,
+per "Review process" below).
+
+**Two-round plan, per explicit user direction**: harness task #5 (whole-
+project advisor review) runs first, over the merged 07/09/10/11 layer.
+Once #5 lands, run a **second, dedicated** advisor round (harness task #6,
+blocked by #5) specifically deep-diving these two asks — sync-intentionality
+verification and architecture-improvement suggestions — rather than treating
+them as just bullet items inside #5's general pass.
+
 ## Task rail
 
 Mirror of the session-scoped Task tool (`TaskCreate`/`TaskUpdate`/
@@ -45,9 +72,9 @@ ticket 10, #4 = ticket 11, #5 = whole-project advisor review (blocked by
 | 6   | Unstar detection & Archived state                                                                   | done                                                                                                    | 2                             |
 | 7   | Category rename & drain                                                                             | **in progress — harness task #1, worktree agent**                                                       | 4, 5                          |
 | 8   | Agent-mode status command & verify                                                                  | pending                                                                                                 | 3, 5                          |
-| 9   | TUI tagging/bulk-tag/retag                                                                          | **in progress — harness task #2, worktree agent**                                                       | 4                             |
-| 10  | Export engine                                                                                       | **in progress — harness task #3, worktree agent**                                                       | 3                             |
-| 11  | State diff                                                                                          | **in progress — harness task #4, worktree agent**                                                       | 4                             |
+| 9   | TUI tagging/bulk-tag/retag                                                                          | **done — merged to `main` (`b04dba2`), `mise run check` green (157 tests)**                             | 4                             |
+| 10  | Export engine                                                                                       | **done — merged to `main` (`d768410`), `mise run check` green (145 tests)**                             | 3                             |
+| 11  | State diff                                                                                          | **done — merged to `main` (`6d8005a`), `mise run check` green (118 tests)**                             | 4                             |
 | 12  | Nudges                                                                                              | pending                                                                                                 | 8                             |
 | 13  | Packaging & distribution (Linux)                                                                    | pending                                                                                                 | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
 | 14  | Accompanying agent skill (replaces github-stars)                                                    | pending                                                                                                 | 4, 5, 6, 7, 8, 10, 11, 12     |
