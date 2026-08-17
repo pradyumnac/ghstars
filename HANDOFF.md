@@ -8,126 +8,17 @@ of scope to fix right now.
 Delete a section once it lands in `TODO.md`, an ADR, `AGENTS.md`, or
 `README.md` — this file is a staging area, not a second source of truth.
 
-## Spec/issues consistency audit — findings, solutioned, awaiting user pick (2026-08-17)
+## Audit findings — landed (2026-08-17)
 
-**Status: findings done, solutions proposed, nothing implemented.** See the
-"Solutioning proposals" section immediately below for the proposed fixes —
-land that section's items into real tickets as the user picks each one up,
-then delete both this section and that one. Advisor agent (fresh, no
-shared context) completed a report-only pass over
-`.scratch/ghstars-v1/spec.md` and all 16 `issues/*.md` files. Per convention, nothing below was auto-applied — land
-each item into its real home (a ticket's acceptance criteria/Comments,
-`docs/`, or a new ticket) once triaged, then delete it from this list.
-
-1. **Real gap — spec story 4 ("`Explore: General` default") has no owning
-   ticket.** Ticket 03 explicitly punts its matching checkbox to 04; ticket
-   04 (done) never picked it up — no acceptance criterion, no Comments
-   claim, and `grep -rn "General" src/` confirms no auto-assignment code
-   exists anywhere. New stars are never defaulted into `Explore: General`.
-2. **Real gap — spec story 16 (Intent mutual exclusivity) is unenforced and
-   unowned.** Spec + CONTEXT.md both require a Star sit in exactly one of
-   Explore/Current/Retired per Category at a time. No ticket (checked 03,
-   04, 05, 07, 09) enforces it, and `tagging.py`'s `tag_star()` just appends
-   to `pending_list_ids` — never removes a conflicting sibling variant.
-3. **Confirmed still accurate, needs a re-check on merge** — the 04/05
-   push-then-pull cross-reference. Ticket 05 hadn't landed at audit time
-   (still `ready-for-agent`, worktree agent was mid-run); `sync.py` still
-   does the unconditional push exactly as 05's Comments describe. **Re-run
-   this specific check once ticket 05's worktree branch merges to `main`**
-   — that's the point it could actually go stale.
-4. **Worth flagging before picking up 07** — ticket 07 (category drain)
-   does bulk List-membership migration but is only `Blocked by: 04`, not
-   05, even though ticket 16's own Comments establish that any
-   List-membership write bypassing 05's synchronous three-way merge risks
-   "reintroducing the blind-overwrite problem 05 exists to fix." Not a flat
-   contradiction (07 doesn't say which path drain uses) — but worth a
-   decision when 07 starts: route `drain` through the same merge-aware path
-   05 builds, or accept it's a different (admin-initiated, less
-   conflict-prone) mutation and document why it's exempt.
-5. **Minor drift** — ticket 13 (release gate) isn't blocked by ticket 14
-   (agent skill), despite spec's Further Notes calling the skill "a real
-   deliverable... shipped alongside ghstars." Possibly intentional (skill
-   doesn't block a package release) but inconsistent with the spec's
-   framing.
-6. **Minor, formally ungoverned** — spec story 39 (`config/` never
-   auto-committed) has no ticket-level criterion anywhere (unlike `state/`,
-   covered by ticket 11). `~/.ghstars/config/` scaffolding landed via an
-   out-of-ticket commit (`0fe4180`) whose own message admits "no ticket has
-   defined config/'s schema." Satisfied vacuously today, not by design.
-7. **Not new, still open** — ticket 03's CONTEXT.md question (whether a
-   colon-containing General List name like `"Notes: Misc"` needs an escape
-   hatch from the malformed-name heuristic) is still unresolved; already
-   correctly parked there for a `/domain-modeling` pass.
-8. **Minor** — spec story 23 (malformed names shouldn't silently break
-   export) isn't addressed in ticket 10's acceptance criteria. Ticket 03
-   covers the sync-side flagging; ticket 10 says nothing about how export
-   handles a malformed List name. Likely fine by construction, not explicit.
-
-No dangling story-number references anywhere in the tickets, and no ticket
-contradicts itself internally.
-
-## Solutioning proposals for the audit findings — awaiting user pick (2026-08-17)
-
-Second advisor agent (fresh, no shared context, propose-only per this
-session's audit-findings-workflow gate — see
-`~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_audit_findings_workflow.md`).
-**Nothing implemented.** Grounded in the post-05 codebase (`e48b704`),
-spec.md, CONTEXT.md, ADRs 0001/0002, and the relevant ticket files. Take
-these up one at a time; land each into a real ticket/ADR/doc edit as it's
-picked up, then delete its bullet here.
-
-1. **`Explore: General` default (finding 1).** Implement inside `sync()`,
-   after `_merge_pending_list_membership()` returns and before the
-   retriage/save block: any non-archived star with still-empty `list_ids`
-   at that point has never been classified by anyone. Lazily
-   create/find the `Explore: General` List, push membership directly
-   (safe as a full-replace — nothing else to preserve on an empty
-   `list_ids`), isolate per-star failures like the merge step does. Not
-   routed through 05's three-way merge — a synthetic default has no
-   staged local edit or remote opinion to reconcile against, so
-   conflict arbitration is structurally moot here. **Proposed new
-   ticket** `17-default-explore-general-classification.md`, blocked by
-   05. Open questions: batch/throttle the first-sync cost for accounts
-   with many unclassified stars? sequence before or after ticket 08
-   (whose `status` count already assumes this exists)?
-2. **Intent mutual exclusivity (finding 2).** Enforce in
-   `core/tagging.py`'s `tag_star()`: when the target List's intent is
-   Explore/Current/Retired, first strip any id belonging to a sibling
-   List of the same Category+other-lifecycle-Intent from `pending_list_ids`,
-   then append the new one. **Auto-resolve, not hard-error** — spec story
-   17 (move Current→Retired via a single `tag` call) requires exactly
-   this behavior. Not silent: extend `tag_star()`'s return (a small
-   `TagResult`, matching `SyncResult`'s pattern) so `tag_cmd` can report
-   what got removed. `Reference` and General Lists are exempt (no
-   lifecycle, per CONTEXT.md/story 18). No `sync.py` change needed —
-   `tag_star()` always reads fresh state, so exclusivity is already clean
-   by the time `_merge_pending_list_membership` sees it. **Proposed new
-   ticket** `18-intent-mutual-exclusivity.md`, blocked by 03, 04 (not 05).
-   Open question: report the removed List by name or just id/count in
-   CLI output?
-3. **Ticket 07 gating on 05 (finding 4).** Gate it — don't exempt it.
-   `drain`'s bulk membership migration is the same blind-overwrite risk
-   class 05 fixes, just batched (one bad drain can clobber several
-   concurrent edits at once). Proposed middle ground, lighter than full
-   Retriage: `drain`/`rename` fetch fresh state first (already needed for
-   the live-List-existence check `tag_star()` does today), then skip
-   *and report* — never silently overwrite — any star whose live
-   `list_ids` already diverged from what triggered the migration. **Amend
-   ticket 07 directly** (still `ready-for-agent`, safe to edit in place):
-   add `Blocked by: 04, 05` and a new AC for the fetch-then-skip-diverged
-   rule. Open question: partial-completion (skip stragglers, migrate the
-   rest) vs. all-or-nothing atomic drain — needs a user call before
-   implementation.
-4. **Three minor items, lighter fixes:**
-   - Ticket 13: add `14` to its `Blocked by:` list (spec explicitly calls
-     the skill a real deliverable, not a stretch goal).
-   - `config/` governance (story 39): no new ticket — add a short note to
-     ADR 0002 or `known-limitations.md` documenting that `~/.ghstars/config/`
-     scaffolding is one-time, idempotent, git-untouched, so the ad-hoc
-     commit that introduced it (`0fe4180`) has a documented owner.
-   - Ticket 10 malformed-name handling (story 23): add one AC line —
-     export skips and reports a malformed List rather than exporting it
-     under a guessed Intent/Category.
+The spec/issues consistency audit and its solutioning follow-up (both run
+2026-08-17) are landed as **ticket 17**
+(`.scratch/ghstars-v1/issues/17-audit-findings-mid-term-fixes.md`), which
+bundles all four findings/proposals as one ticket's scope of work per user
+direction, rather than the solutioning pass's original suggestion of two
+new tickets (17/18) plus direct amends to 07/10/13. Ticket 17 is
+self-contained (states its own design rationale and open questions in its
+`## Comments`) — no need to keep the original findings/proposals text here.
+Being implemented next; see the Task rail below.
 
 ## Task rail
 
@@ -143,10 +34,11 @@ criteria, `## Comments` with implementation notes); this table is a status
 snapshot only.
 
 **Note (2026-08-17 session): harness task IDs below do NOT equal ticket
-numbers this round** — task #1 is the audit (not a ticket), task #2 is
-ticket 05. Listed here by ticket number regardless, per the mirroring
-convention; see harness `TaskList` for actual task IDs/owners if resuming
-these specific runs.
+numbers this round** — task IDs 1-3 were the audit/solutioning agents and
+ticket 05, in that order; ticket 17's implementation is task #4. Listed
+here by ticket number regardless, per the mirroring convention; see
+harness `TaskList` for actual task IDs/owners if resuming these specific
+runs.
 
 | # | Ticket | Status | Blocked by |
 |---|---|---|---|
@@ -156,49 +48,34 @@ these specific runs.
 | 4 | Local tagging & two-way sync push | done | 3 |
 | 5 | Three-way merge & Retriage Queue | done — merged to `main` (`e48b704`) | 4 |
 | 6 | Unstar detection & Archived state | done | 2 |
-| 7 | Category rename & drain | pending — frontier after 5 lands | 4 |
+| 7 | Category rename & drain | pending — 17 will edit this file's Blocked-by/AC, not implement it | 4 (17 will add 5) |
 | 8 | Agent-mode status command & verify | pending | 3, 5 |
-| 9 | TUI tagging/bulk-tag/retag | pending — frontier after 5 lands | 4 |
-| 10 | Export engine | pending — frontier after 5 lands | 3 |
-| 11 | State diff | pending — frontier after 5 lands | 4 |
+| 9 | TUI tagging/bulk-tag/retag | pending — held, see below | 4 |
+| 10 | Export engine | pending — 17 will add an AC to this file | 3 |
+| 11 | State diff | pending — held, see below | 4 |
 | 12 | Nudges | pending | 8 |
-| 13 | Packaging & distribution (Linux) | pending | 5, 6, 7, 8, 9, 10, 11, 12 |
+| 13 | Packaging & distribution (Linux) | pending — 17 will add 14 to Blocked-by | 5, 6, 7, 8, 9, 10, 11, 12 |
 | 14 | Accompanying agent skill (replaces github-stars) | pending | 4, 5, 6, 7, 8, 10, 11, 12 |
 | 15 | Windows & macOS release binaries | pending | 13 |
-| 16 | Push a tag edit immediately, like unstar already does | pending | 4, 5 |
-| — | Spec/issues consistency audit (not a ticket) | done — solutioned, see sections above | — |
-| — | Solutioning: propose fixes for audit findings (not a ticket) | done — proposals awaiting user pick, see section above | — |
+| 16 | Push a tag edit immediately, like unstar already does | pending — held, see below | 4, 5 (lifted) |
+| 17 | Mid-term bug fixes from the audit (Explore:General default, Intent exclusivity, 07/10/13 doc edits) | **in progress** (harness task #4, worktree agent) | 5 |
 
-**Ticket 05: done.** Implemented in a worktree agent, ticket-scoped
-`/code-review` applied (2 real fixes, 1 deliberate no-op — see the ticket
-file's post-implementation Comments), independently re-verified by the
-supervisor (read the merge logic, confirmed the ADR 0001 citation is real,
-`mise run check` green pre- and post-merge), fast-forward merged to `main`
-at `e48b704` after explicit user confirmation (2026-08-17). Ticket 16's
-hard-block on 05 is now lifted (noted in its file), but 16 itself is not
-being picked up yet — see below.
+**Ticket 05: done**, merged to `main` at `e48b704` (2026-08-17), see prior
+session notes below for the full verification trail. Ticket 16's hard-block
+on 05 is lifted (noted in its file), but 16 itself is still held per the
+plan below.
 
-**Plan changed 2026-08-17, after the audit findings came back** (see the
-findings section above) — the previous plan to move straight to a
-7/9/10/11 parallel layer once 05 landed is now on **hold**. New sequence,
-per explicit user instruction:
+**Ticket 17: in progress**, launched 2026-08-17 as a worktree agent,
+bundling all four audit findings/proposals as one ticket's scope per user
+direction — see `.scratch/ghstars-v1/issues/17-audit-findings-mid-term-fixes.md`
+for the full scope and design rationale.
 
-1. ~~Wait for ticket 05's worktree agent to finish, then wait for the user
-   to confirm it's resolved~~ — done, see above.
-2. Launch a **second advisor agent**, scoped to *solutioning*, not
-   findings — research spec.md/issues/codebase and propose best-practice,
-   clean-code solutions for the audit's identified issues (story 4
-   default, story 16 mutual exclusivity, and the other findings above).
-   **Propose-only — it must not implement anything.** Returns proposals;
-   the user takes them up one at a time. **This is the next step.**
-3. **Do not launch 07/09/10/11/16 (or any other frontier ticket) in
-   parallel until the audit-derived fixes are resolved.** The "Sequencing
-   strategy" section below still describes the *file-overlap* reasoning
-   for why 07/09/10/11 can run together once that layer starts — it's just
-   gated later than originally planned.
-
-See `~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_audit_findings_workflow.md`
-for the full reasoning behind this gate.
+**07/09/10/11/16 remain held** until ticket 17 lands — per the
+audit-findings-workflow gate
+(`~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_audit_findings_workflow.md`).
+Ticket 17 itself touches 07/10/13's *files* (dependency/AC edits only,
+not implementation), which is why those three show a "17 will edit"
+note above rather than being fully held.
 
 ## Current state
 
