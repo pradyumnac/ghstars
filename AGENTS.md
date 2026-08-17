@@ -4,6 +4,13 @@ Managed by the `handoff` skill.
 
 - handoff_file: HANDOFF.md
 
+## Decision records
+
+Managed by the `adr-lifecycle` skill.
+
+- adr_dir: docs/adr
+- index_file: docs/adr/INDEX.md
+
 ## Agent skills
 
 ### Issue tracker
