@@ -47,7 +47,7 @@ harness `TaskList` for live status if resuming with new tasks in flight.
 | 16  | Push a tag edit immediately, like unstar already does                                               | pending — hold lifted now that 17 merged; not yet started                                               | 4, 5 (lifted)                 |
 | 17  | Mid-term bug fixes from the audit (Explore:General default, Intent exclusivity, 07/10/13 doc edits) | **done — merged to `main` (`4363a9b`)**                                                                 | 5                             |
 | 18  | Distinguish "cleared on GitHub" from "never classified" (edge case surfaced during 17's review)     | filed, needs design — **deliberately deferred, do not pick up until the main flow (05-12, 14) is done** | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
-| 19  | Architecture cleanup from the 07/09/10/11 advisor review                                            | **ready-for-agent — do this before 08, per explicit user direction**                                    | none                          |
+| 19  | Architecture cleanup from the 07/09/10/11 advisor review                                            | **in progress — harness task #7, worktree agent — do this before 08**                                   | none                          |
 
 ## Current state
 
