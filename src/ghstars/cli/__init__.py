@@ -272,6 +272,18 @@ def lists_cmd(
     )
 
 
+@app.command("tui")
+def tui_cmd() -> None:
+    """Launch the interactive TUI for tagging, bulk-tagging, and retagging.
+
+    Imports `ghstars.tui` lazily so every other subcommand keeps starting
+    up without paying for Textual's import cost.
+    """
+    from ghstars.tui import TuiApp
+
+    TuiApp(client=get_client(), store=get_store()).run()
+
+
 @app.command("retriage")
 def retriage_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),

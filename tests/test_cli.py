@@ -298,3 +298,14 @@ def test_export_cmd_fails_on_invalid_config(
 
     assert result.exit_code == 1
     assert "error:" in result.output
+
+
+def test_tui_cmd_is_registered_on_the_top_level_app() -> None:
+    """`ghstars tui` (ticket 09) is wired in additively -- confirm it's
+    listed without actually launching the Textual event loop, which
+    needs a real terminal and would hang under `CliRunner`.
+    """
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "tui" in result.output
