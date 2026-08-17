@@ -8,11 +8,14 @@ of scope to fix right now.
 Delete a section once it lands in `TODO.md`, an ADR, `AGENTS.md`, or
 `README.md` — this file is a staging area, not a second source of truth.
 
-## Spec/issues consistency audit — findings, awaiting triage (2026-08-17)
+## Spec/issues consistency audit — findings, solutioned, awaiting user pick (2026-08-17)
 
-**Status: done, unactioned.** Advisor agent (fresh, no shared context)
-completed a report-only pass over `.scratch/ghstars-v1/spec.md` and all 16
-`issues/*.md` files. Per convention, nothing below was auto-applied — land
+**Status: findings done, solutions proposed, nothing implemented.** See the
+"Solutioning proposals" section immediately below for the proposed fixes —
+land that section's items into real tickets as the user picks each one up,
+then delete both this section and that one. Advisor agent (fresh, no
+shared context) completed a report-only pass over
+`.scratch/ghstars-v1/spec.md` and all 16 `issues/*.md` files. Per convention, nothing below was auto-applied — land
 each item into its real home (a ticket's acceptance criteria/Comments,
 `docs/`, or a new ticket) once triaged, then delete it from this list.
 
@@ -63,6 +66,69 @@ each item into its real home (a ticket's acceptance criteria/Comments,
 No dangling story-number references anywhere in the tickets, and no ticket
 contradicts itself internally.
 
+## Solutioning proposals for the audit findings — awaiting user pick (2026-08-17)
+
+Second advisor agent (fresh, no shared context, propose-only per this
+session's audit-findings-workflow gate — see
+`~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_audit_findings_workflow.md`).
+**Nothing implemented.** Grounded in the post-05 codebase (`e48b704`),
+spec.md, CONTEXT.md, ADRs 0001/0002, and the relevant ticket files. Take
+these up one at a time; land each into a real ticket/ADR/doc edit as it's
+picked up, then delete its bullet here.
+
+1. **`Explore: General` default (finding 1).** Implement inside `sync()`,
+   after `_merge_pending_list_membership()` returns and before the
+   retriage/save block: any non-archived star with still-empty `list_ids`
+   at that point has never been classified by anyone. Lazily
+   create/find the `Explore: General` List, push membership directly
+   (safe as a full-replace — nothing else to preserve on an empty
+   `list_ids`), isolate per-star failures like the merge step does. Not
+   routed through 05's three-way merge — a synthetic default has no
+   staged local edit or remote opinion to reconcile against, so
+   conflict arbitration is structurally moot here. **Proposed new
+   ticket** `17-default-explore-general-classification.md`, blocked by
+   05. Open questions: batch/throttle the first-sync cost for accounts
+   with many unclassified stars? sequence before or after ticket 08
+   (whose `status` count already assumes this exists)?
+2. **Intent mutual exclusivity (finding 2).** Enforce in
+   `core/tagging.py`'s `tag_star()`: when the target List's intent is
+   Explore/Current/Retired, first strip any id belonging to a sibling
+   List of the same Category+other-lifecycle-Intent from `pending_list_ids`,
+   then append the new one. **Auto-resolve, not hard-error** — spec story
+   17 (move Current→Retired via a single `tag` call) requires exactly
+   this behavior. Not silent: extend `tag_star()`'s return (a small
+   `TagResult`, matching `SyncResult`'s pattern) so `tag_cmd` can report
+   what got removed. `Reference` and General Lists are exempt (no
+   lifecycle, per CONTEXT.md/story 18). No `sync.py` change needed —
+   `tag_star()` always reads fresh state, so exclusivity is already clean
+   by the time `_merge_pending_list_membership` sees it. **Proposed new
+   ticket** `18-intent-mutual-exclusivity.md`, blocked by 03, 04 (not 05).
+   Open question: report the removed List by name or just id/count in
+   CLI output?
+3. **Ticket 07 gating on 05 (finding 4).** Gate it — don't exempt it.
+   `drain`'s bulk membership migration is the same blind-overwrite risk
+   class 05 fixes, just batched (one bad drain can clobber several
+   concurrent edits at once). Proposed middle ground, lighter than full
+   Retriage: `drain`/`rename` fetch fresh state first (already needed for
+   the live-List-existence check `tag_star()` does today), then skip
+   *and report* — never silently overwrite — any star whose live
+   `list_ids` already diverged from what triggered the migration. **Amend
+   ticket 07 directly** (still `ready-for-agent`, safe to edit in place):
+   add `Blocked by: 04, 05` and a new AC for the fetch-then-skip-diverged
+   rule. Open question: partial-completion (skip stragglers, migrate the
+   rest) vs. all-or-nothing atomic drain — needs a user call before
+   implementation.
+4. **Three minor items, lighter fixes:**
+   - Ticket 13: add `14` to its `Blocked by:` list (spec explicitly calls
+     the skill a real deliverable, not a stretch goal).
+   - `config/` governance (story 39): no new ticket — add a short note to
+     ADR 0002 or `known-limitations.md` documenting that `~/.ghstars/config/`
+     scaffolding is one-time, idempotent, git-untouched, so the ad-hoc
+     commit that introduced it (`0fe4180`) has a documented owner.
+   - Ticket 10 malformed-name handling (story 23): add one AC line —
+     export skips and reports a malformed List rather than exporting it
+     under a guessed Intent/Category.
+
 ## Task rail
 
 Mirror of the session-scoped Task tool (`TaskCreate`/`TaskUpdate`/
@@ -100,7 +166,8 @@ these specific runs.
 | 14 | Accompanying agent skill (replaces github-stars) | pending | 4, 5, 6, 7, 8, 10, 11, 12 |
 | 15 | Windows & macOS release binaries | pending | 13 |
 | 16 | Push a tag edit immediately, like unstar already does | pending | 4, 5 |
-| — | Spec/issues consistency audit (not a ticket) | done — findings awaiting triage, see section above | — |
+| — | Spec/issues consistency audit (not a ticket) | done — solutioned, see sections above | — |
+| — | Solutioning: propose fixes for audit findings (not a ticket) | done — proposals awaiting user pick, see section above | — |
 
 **Ticket 05: done.** Implemented in a worktree agent, ticket-scoped
 `/code-review` applied (2 real fixes, 1 deliberate no-op — see the ticket
