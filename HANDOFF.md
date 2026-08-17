@@ -46,6 +46,29 @@ blocked by #5) specifically deep-diving these two asks — sync-intentionality
 verification and architecture-improvement suggestions — rather than treating
 them as just bullet items inside #5's general pass.
 
+**Task #5 result (done)**: report-only, no files touched. Part 1 (project
+health): merge-conflict resolutions verified clean (AST-diffed imports/
+`__all__`), no bugs, coverage thorough. Part 2.1 (sync-intentfulness audit):
+**one finding, needs user confirmation before becoming a ticket** —
+`src/ghstars/tui/app.py:236-242` (`on_mount`) unconditionally calls
+`check_rate_limit()` (a real `gh api graphql` call) the instant `ghstars
+tui` launches, no user action required. It's read-only rate-limit metadata
+(no Star/List data pulled, nothing written to `state/`), and ticket 09's
+own spec/tests call for it explicitly — but it still fails the letter of
+"real GitHub fetch only via explicit `ghstars sync`." Everything else
+audited clean: `category rename`/`drain`'s fresh-fetch is confirmed as the
+narrow ticket-17 exception, not a creeping pattern; TUI tag/bulk-tag/retag
+only fire on explicit keypress; `diff`/`export` never touch `GitHubClient`.
+Part 2.2 (architecture, exploratory): `cli/__init__.py` at 532 lines,
+consider splitting into `cli/commands/*.py` before tickets 13/14 add more;
+`sync.py::_apply_pushed_membership` and `category.py::_apply_membership_diff`
+are near-duplicate List-membership-mirroring logic, worth a shared helper;
+the "fetch fresh, skip diverged" pattern is independently implemented twice
+within `category.py`; `tag_star()`'s per-call `fetch_lists()` cost will
+compound as more callers (TUI, future ticket 14) appear; `GitHubClient`'s
+single `_graphql()` chokepoint is a good seam to mechanically enforce the
+no-auto-sync guarantee later (e.g. a call-counter assertion in tests).
+
 ## Task rail
 
 Mirror of the session-scoped Task tool (`TaskCreate`/`TaskUpdate`/
