@@ -9,3 +9,4 @@
 - [ ] Export mapping (List/Category → output file + format) is read from config, not hardcoded
 - [ ] `ghstars export` produces output matching an example `tools.yaml`-shaped mapping
 - [ ] The "Explore, not yet tried" query is answerable via a config-driven mapping, no special-cased command
+- [ ] Export skips and reports a malformed List rather than exporting it under a guessed Intent/Category

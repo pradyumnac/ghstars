@@ -22,6 +22,7 @@ class SyncResult(BaseModel):
     star_count: int
     list_count: int
     failed_tag_pushes: list[str] = []
+    failed_default_pushes: list[str] = []
 
 
 def sync(client: GitHubClient, store: StateStore) -> SyncResult:
@@ -58,6 +59,30 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
             client, previous=previous, current=all_stars, lists=lists, now=now
         )
 
+        # Anything still unclassified after the merge above has never
+        # been touched by a real user tag or a conflict resolution --
+        # default it into `Explore: General` (spec story 4) rather than
+        # leaving it to slip through with no landing spot at all.
+        #
+        # Two sets are excluded on purpose, even though both can leave
+        # `list_ids` empty: a star whose real tag push just failed this
+        # same sync (`failed_tag_pushes`) still has a genuine pending
+        # edit the user asked for -- defaulting it would silently
+        # replace that intent with an unrelated List, and `sync_cmd`'s
+        # "re-run `ghstars tag`" message would then be actively wrong.
+        # A star that just lost a three-way merge conflict (`conflicts`)
+        # is protected by ticket 05's explicit invariant -- "the losing
+        # local edit is never applied" -- and defaulting it here would
+        # be a different kind of silent application of an edit GitHub
+        # never actually accepted.
+        already_handled = {
+            *failed_tag_pushes,
+            *(entry.star_full_name for entry in conflicts),
+        }
+        all_stars, lists, failed_default_pushes = _apply_default_classification(
+            client, stars=all_stars, lists=lists, excluded=already_handled
+        )
+
         # Durability: the Retriage Queue write lands *before* stars.json/
         # lists.json. Those two already reflect pending_list_ids cleared
         # (fetch_stars() never returns it), so a crash between the two
@@ -75,6 +100,7 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
         star_count=len(all_stars),
         list_count=len(lists),
         failed_tag_pushes=failed_tag_pushes,
+        failed_default_pushes=failed_default_pushes,
     )
 
 
@@ -235,6 +261,102 @@ def _apply_pushed_membership(
         else:
             result.append(lst)
     return result
+
+
+_EXPLORE_GENERAL = "Explore: General"
+
+
+def _apply_default_classification(
+    client: GitHubClient, *, stars: list[Star], lists: list[List], excluded: set[str]
+) -> tuple[list[Star], list[List], list[str]]:
+    """Put each never-classified Star into `Explore: General` (spec
+    story 4). Run this after `_merge_pending_list_membership()`.
+
+    A target is a Star with empty `list_ids`, not Archived, and not in
+    `excluded`. `excluded` holds two kinds of star that can also have
+    empty `list_ids` here, but for a different reason -- do not default
+    these:
+
+    - A star in `failed_tag_pushes`: its real tag push failed this same
+      sync. It still has a genuine user intent behind it. Defaulting it
+      would silently replace that intent with an unrelated List.
+    - A star with a losing conflict this sync: ticket 05 promises the
+      losing edit is "never applied." Defaulting it here would break
+      that promise in a different way.
+
+    A true target has never been classified by anyone. A real user tag
+    would already have been applied or sent to `excluded` above. That
+    is what makes a direct push safe here. There is no staged local
+    edit and no remote opinion to reconcile a synthetic default
+    against, so this does not go through ticket 05's three-way merge.
+
+    Look up `Explore: General` by name in the already-fetched `lists`.
+    Create it on GitHub (public, per story 48, matching `tag_star()`'s
+    convention in `core/tagging.py`) only if it is missing. This is
+    lazy, not eager, and happens at most once per call, even when
+    several stars need it. If creation itself fails, no target can be
+    pushed -- report every target as failed and return `stars`/`lists`
+    unchanged, rather than let the exception escape `sync()` and lose
+    already-computed retriage/push results from earlier in the same
+    call.
+
+    Each push is isolated the same way `_merge_pending_list_membership`
+    isolates its own pushes: one star's failure (e.g. a race that
+    unstarred or deleted the List between the merge above and this
+    call) must not abort the sync or any other star's default push.
+    Every target lands in the same single List, so the `lists` update
+    is batched once after the push loop, not rebuilt per star -- O(N)
+    for N targets, not O(N x len(lists)).
+
+    Catches `Exception` broadly, on purpose, for the same reason
+    documented on `_merge_pending_list_membership`: `ghstars.core`
+    depends only on the `GitHubClient` Protocol, never on a concrete
+    implementation's error types.
+    """
+    targets = [
+        star
+        for star in stars
+        if not star.archived and not star.list_ids and star.full_name not in excluded
+    ]
+    if not targets:
+        return stars, lists, []
+
+    explore_general = next((lst for lst in lists if lst.name == _EXPLORE_GENERAL), None)
+    if explore_general is None:
+        try:
+            explore_general = classify_list(
+                client.create_list(_EXPLORE_GENERAL, is_private=False)
+            )
+        except Exception:  # noqa: BLE001 -- broad on purpose, see docstring
+            return stars, lists, [star.full_name for star in targets]
+        lists = [*lists, explore_general]
+
+    failed: list[str] = []
+    pushed: list[str] = []
+    for star in targets:
+        try:
+            client.update_list_membership_for_item(star.full_name, [explore_general.id])
+        except Exception:  # noqa: BLE001 -- broad on purpose, see docstring
+            failed.append(star.full_name)
+            continue
+        pushed.append(star.full_name)
+
+    if pushed:
+        lists = [
+            lst.model_copy(update={"items": [*lst.items, *pushed]})
+            if lst.id == explore_general.id
+            else lst
+            for lst in lists
+        ]
+
+    pushed_set = set(pushed)
+    updated_stars = [
+        star.model_copy(update={"list_ids": [explore_general.id]})
+        if star.full_name in pushed_set
+        else star
+        for star in stars
+    ]
+    return updated_stars, lists, failed
 
 
 def archive_star(star: Star, *, now: datetime) -> Star:

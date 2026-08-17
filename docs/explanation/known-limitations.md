@@ -75,3 +75,14 @@ sync's own fetches. GraphQL supports batching independent operations
 into one request via aliases; this doesn't use that. Fine at the scale
 one person tags between syncs; would need revisiting if that scale
 changed.
+
+## Default-classification pushes are not batched either
+
+`_apply_default_classification` (ticket 17, spec story 4) pushes each
+never-classified Star into `Explore: General` one at a time, same
+sequential cost shape as the pending-tag-push case above. This mostly
+matters once, on a first sync against an existing account with many
+unclassified stars — every later sync only has to push newly-starred
+repos. Accepted as a one-time cost, not batched/throttled, matching
+the decision already made for pending tag pushes above. Revisit if a
+large first sync proves slow in practice.

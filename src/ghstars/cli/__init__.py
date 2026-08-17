@@ -65,6 +65,14 @@ def sync_cmd(
             "Re-run `ghstars tag` if you still want it classified.",
             err=True,
         )
+    if result.failed_default_pushes:
+        names = ", ".join(result.failed_default_pushes)
+        typer.echo(
+            f"warning: could not push default classification for: {names} "
+            "(the repo or the 'Explore: General' List may have changed "
+            "concurrently). Re-run `ghstars sync` to retry.",
+            err=True,
+        )
 
 
 def _render_records[ModelT: BaseModel](
@@ -206,7 +214,7 @@ def tag_cmd(
     client = get_client()
     store = get_store()
     try:
-        updated = tag_star(client, store, repo, list_name, is_private=private)
+        result = tag_star(client, store, repo, list_name, is_private=private)
     except StarNotFoundError:
         fail(f"no local record for {repo!r}. Run `ghstars sync` first.")
     except StarArchivedError:
@@ -217,11 +225,18 @@ def tag_cmd(
     if json_output:
         typer.echo(
             json.dumps(
-                {"full_name": repo, "pending_list_ids": updated.pending_list_ids}
+                {
+                    "full_name": repo,
+                    "pending_list_ids": result.star.pending_list_ids,
+                    "removed_list_ids": result.removed_list_ids,
+                }
             )
         )
         return
-    typer.echo(f"Staged {repo} for {list_name!r}. Run `ghstars sync` to push it.")
+    message = f"Staged {repo} for {list_name!r}. Run `ghstars sync` to push it."
+    if result.removed_list_ids:
+        message += f" (removed from {len(result.removed_list_ids)} other List(s))"
+    typer.echo(message)
 
 
 @app.command("lists")
