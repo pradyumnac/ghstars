@@ -1,0 +1,291 @@
+"""Tests for the TUI (ticket 09): single-item tagging, bulk tagging,
+retagging, List visibility display, and the rate limit bar.
+
+Uses Textual's own `App.run_test()` pilot -- no real terminal, no
+network. Every client is `FakeGitHubClient`; mutations only ever touch
+`tmp_path` via a real `StateStore`. `tag_star()`'s own mutating work
+runs in a `@work(thread=True)` worker, so tests await
+`app.workers.wait_for_complete()` after triggering it.
+"""
+
+from pathlib import Path
+
+from conftest import StarFactory
+from textual.widgets import DataTable, Input
+
+from ghstars.core.fake_client import FakeGitHubClient
+from ghstars.core.models import List, RateLimitStatus
+from ghstars.core.state_store import StateStore
+from ghstars.tui.app import ListPickerScreen, RateLimitBar, TuiApp, _visibility_label
+
+
+def _table(app: TuiApp) -> DataTable[str]:
+    return app.query_one("#stars-table", DataTable)
+
+
+async def test_stars_table_shows_membership_with_visibility(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    private_list = List(
+        id="L1", name="Current: Tool", slug="current-tool", is_private=True
+    )
+    star = make_star("pradyumnac/ghstars", list_ids=["L1"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([private_list])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        row = _table(app).get_row_at(0)
+
+    assert row[1] == "pradyumnac/ghstars"
+    assert "Current: Tool" in row[3]
+    assert _visibility_label(True) in row[3]
+    assert "pending" not in row[3]
+
+
+async def test_pending_tag_is_shown_before_any_sync(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    public_list = List(id="L2", name="Explore: Tool", slug="explore-tool")
+    star = make_star("pradyumnac/ghstars", pending_list_ids=["L2"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([public_list])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        row = _table(app).get_row_at(0)
+
+    assert "Explore: Tool" in row[3]
+    assert "pending sync" in row[3]
+
+
+async def test_rate_limit_bar_shows_remaining_after_mount(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    client = FakeGitHubClient(
+        rate_limit=RateLimitStatus(remaining=42, limit=5000, ok=True)
+    )
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        bar = app.query_one("#rate-limit-bar", RateLimitBar)
+        text = bar.render()
+
+    assert "42" in str(text)
+    assert "5000" in str(text)
+
+
+async def test_rate_limit_bar_flags_when_not_ok(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    client = FakeGitHubClient(
+        rate_limit=RateLimitStatus(remaining=10, limit=5000, ok=False)
+    )
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        bar = app.query_one("#rate-limit-bar", RateLimitBar)
+        has_low_class = "-low" in bar.classes
+
+    assert has_low_class
+
+
+async def test_single_item_tag_stages_pending_list_ids(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+    client = FakeGitHubClient(stars=[star])
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("t")
+        await pilot.pause()
+        assert isinstance(app.screen, ListPickerScreen)
+        app.screen.query_one("#new-list-input", Input).value = "Explore: Foo"
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    updated = next(s for s in store.load_stars() if s.full_name == "pradyumnac/ghstars")
+    assert updated.pending_list_ids is not None
+    new_list = next(lst for lst in store.load_lists() if lst.name == "Explore: Foo")
+    assert updated.pending_list_ids == [new_list.id]
+
+
+async def test_bulk_tag_applies_to_every_selected_star(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    target = List(id="L_target", name="Explore: Foo", slug="explore-foo")
+    star_a = make_star("pradyumnac/a")
+    star_b = make_star("pradyumnac/b")
+    store = StateStore(tmp_path)
+    store.save_stars([star_a, star_b])
+    store.save_lists([target])
+    client = FakeGitHubClient(stars=[star_a, star_b], lists=[target])
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+        table.focus()
+        # Both rows are sorted by full_name: pradyumnac/a, pradyumnac/b.
+        await pilot.press("space")  # select row 0 (pradyumnac/a)
+        await pilot.press("down")
+        await pilot.press("space")  # select row 1 (pradyumnac/b)
+        await pilot.press("t")
+        await pilot.pause()
+        assert isinstance(app.screen, ListPickerScreen)
+        picker_table = app.screen.query_one("#picker-table", DataTable)
+        picker_table.focus()
+        await pilot.press("enter")  # select the existing "Explore: Foo" row
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    stars = {s.full_name: s for s in store.load_stars()}
+    assert stars["pradyumnac/a"].pending_list_ids == ["L_target"]
+    assert stars["pradyumnac/b"].pending_list_ids == ["L_target"]
+
+
+async def test_toggle_select_preserves_cursor_position(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Regression test (code review finding): `action_toggle_select` must
+    not rebuild the whole table (`DataTable.clear()` resets the cursor
+    to row 0), or a "move down, select, move down, select" bulk
+    selection silently lands on the wrong rows after the first toggle.
+    """
+    stars = [make_star(f"pradyumnac/{name}") for name in ("a", "b", "c", "d")]
+    store = StateStore(tmp_path)
+    store.save_stars(stars)
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+        table.focus()
+        # Rows sorted by full_name: a, b, c, d.
+        await pilot.press("down")  # row 1 (b)
+        await pilot.press("down")  # row 2 (c)
+        await pilot.press("space")  # select c; cursor must stay on row 2
+        assert table.cursor_row == 2
+        await pilot.press("down")  # must move to row 3 (d), not row 1
+        assert table.cursor_row == 3
+        await pilot.press("space")  # select d
+        selected = set(app._selected)
+
+    assert selected == {"pradyumnac/c", "pradyumnac/d"}
+
+
+async def test_retag_moves_star_between_intents_in_same_category(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    current = List(id="L_current", name="Current: Tool", slug="current-tool")
+    retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
+    star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([current, retired])
+    client = FakeGitHubClient(stars=[star], lists=[current, retired])
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("t")
+        await pilot.pause()
+        picker_table = app.screen.query_one("#picker-table", DataTable)
+        picker_table.focus()
+        # Retired: Tool sorts before Current: Tool alphabetically ("R" < "C"? no,
+        # 'C' < 'R', so Current: Tool is row 0, Retired: Tool is row 1).
+        await pilot.press("down")
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    updated = next(s for s in store.load_stars() if s.full_name == "pradyumnac/ghstars")
+    assert updated.pending_list_ids == ["L_retired"]
+
+
+async def test_double_tag_press_does_not_stack_two_pickers(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Regression test (code review finding): a fast double `t` press,
+    both dispatched before the first `_open_picker` worker reaches
+    `push_screen_wait`, must not schedule two picker screens.
+    """
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        app.action_tag_selected()
+        app.action_tag_selected()
+        await pilot.pause()
+        screen_count = len(app.screen_stack)
+
+    assert screen_count == 2  # the base screen, plus exactly one picker
+
+
+async def test_lists_overview_shows_public_and_private_explicitly(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    public_list = List(id="L_pub", name="Reference: Docs", slug="reference-docs")
+    private_list = List(
+        id="L_priv", name="Current: Secret", slug="current-secret", is_private=True
+    )
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([public_list, private_list])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("l")
+        await pilot.pause()
+        overview = app.screen.query_one("#overview-table", DataTable)
+        rows = [overview.get_row_at(i) for i in range(overview.row_count)]
+
+    by_name = {row[0]: row for row in rows}
+    assert _visibility_label(False) in by_name["Reference: Docs"][3]
+    assert _visibility_label(True) in by_name["Current: Secret"][3]
+
+
+async def test_tag_with_no_star_selected_does_not_open_the_picker(
+    tmp_path: Path,
+) -> None:
+    store = StateStore(tmp_path)
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("t")
+        await pilot.pause()
+        screen_count = len(app.screen_stack)
+
+    # No Star was synced, so the table is empty and there is nothing to
+    # tag. The picker must never open onto zero targets.
+    assert screen_count == 1

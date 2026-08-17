@@ -135,3 +135,14 @@ def test_tag_cmd_reports_no_removed_list_ids_when_nothing_stripped(
 
     assert result.exit_code == 0
     assert "removed from" not in result.output
+
+
+def test_tui_cmd_is_registered_on_the_top_level_app() -> None:
+    """`ghstars tui` (ticket 09) is wired in additively -- confirm it's
+    listed without actually launching the Textual event loop, which
+    needs a real terminal and would hang under `CliRunner`.
+    """
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "tui" in result.output
