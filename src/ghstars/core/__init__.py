@@ -1,3 +1,13 @@
+from ghstars.core.export import (
+    DEFAULT_EXPORT_FIELDS,
+    ExportConfig,
+    ExportConfigError,
+    ExportEntry,
+    ExportEntryResult,
+    load_export_config,
+    run_export,
+    select_stars,
+)
 from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import (
@@ -26,6 +36,11 @@ from ghstars.core.tagging import (
 from ghstars.core.taxonomy import ParsedListName, classify_list, parse_list_name
 
 __all__ = [
+    "DEFAULT_EXPORT_FIELDS",
+    "ExportConfig",
+    "ExportConfigError",
+    "ExportEntry",
+    "ExportEntryResult",
     "FakeGitHubClient",
     "GitHubClient",
     "Intent",
@@ -43,9 +58,12 @@ __all__ = [
     "TagResult",
     "archive_star",
     "classify_list",
+    "load_export_config",
     "parse_list_name",
     "reconcile_list_membership",
     "remove_star_from_lists",
+    "run_export",
+    "select_stars",
     "sync",
     "tag_star",
 ]
