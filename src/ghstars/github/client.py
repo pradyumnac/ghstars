@@ -293,6 +293,21 @@ def _parse_list_items_page(
     return conn.nodes, conn.page_info
 
 
+def _batched_repository_id_query(full_names: list[str]) -> str:
+    # One `repository(owner, name) { id }` selection per full_name, each
+    # under its own alias (`r0`, `r1`, ...) so a single request resolves
+    # every node ID at once (ticket 16). owner/name are baked into the
+    # query text, same pattern as `_list_items_query`'s list_id -- _graphql
+    # only threads a $cursor variable, not a variable per repo.
+    # json.dumps escapes each part safely as a GraphQL string literal.
+    fields = "\n".join(
+        f"  r{index}: repository(owner: {json.dumps(owner)}, name: {json.dumps(name)}) {{ id }}"
+        for index, full_name in enumerate(full_names)
+        for owner, _, name in [full_name.partition("/")]
+    )
+    return f"query {{\n{fields}\n}}"
+
+
 class RealGitHubClient:
     """ghstars.core.GitHubClient over `gh api graphql`.
 
@@ -460,6 +475,14 @@ class RealGitHubClient:
         `owner/repo`; resolved the same way `remove_star` does.
         """
         node_id = self._resolve_repository_node_id(item_id)
+        self.update_list_membership_for_node(node_id, list_ids)
+
+    def update_list_membership_for_node(
+        self, node_id: str, list_ids: list[str]
+    ) -> None:
+        """Same mutation as `update_list_membership_for_item`, given an
+        already-resolved node ID — no extra round trip (ticket 16).
+        """
         data = _graphql(
             _UPDATE_LIST_MEMBERSHIP_MUTATION, itemId=node_id, listIds=list_ids
         )
@@ -468,9 +491,32 @@ class RealGitHubClient:
         ).update_user_lists_for_item
         if payload.item is None:
             raise GitHubApiError(
-                f"updateUserListsForItem for {item_id!r} returned no item "
-                "(GitHub may not have applied the mutation)"
+                f"updateUserListsForItem for node {node_id!r} returned no "
+                "item (GitHub may not have applied the mutation)"
             )
+
+    def resolve_repository_node_ids(self, full_names: list[str]) -> dict[str, str]:
+        """Resolve several `full_name`s to node IDs in one aliased GraphQL
+        request instead of one round trip per repo (ticket 16). GitHub's
+        rate-limit points are charged by query complexity, not request
+        count, so this saves round trips, not points — see
+        docs/explanation/known-limitations.md.
+
+        A `full_name` missing from the result was not found on GitHub
+        (renamed/deleted since it was starred) and is simply omitted —
+        not raised here, so one bad repo in a batch does not fail the
+        whole lookup. The caller falls back to
+        `_resolve_repository_node_id`'s per-item error for that repo.
+        """
+        if not full_names:
+            return {}
+        data = _graphql(_batched_repository_id_query(full_names))
+        resolved: dict[str, str] = {}
+        for index, full_name in enumerate(full_names):
+            node = data.get(f"r{index}")
+            if isinstance(node, dict) and isinstance(node.get("id"), str):
+                resolved[full_name] = cast(str, node["id"])
+        return resolved
 
     def remove_star(self, item_id: str) -> None:
         """Unstar `item_id` (a `full_name`, e.g. `owner/repo`) for real."""

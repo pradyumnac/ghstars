@@ -79,6 +79,20 @@ class FakeGitHubClient:
     def update_list_membership_for_item(
         self, item_id: str, list_ids: list[str]
     ) -> None:
+        self._update_membership(item_id, list_ids)
+
+    def update_list_membership_for_node(
+        self, node_id: str, list_ids: list[str]
+    ) -> None:
+        # No separate node-ID space in this fake -- full_name doubles as
+        # the "node ID" everywhere else in this class (see
+        # resolve_repository_node_ids below). Kept as its own method
+        # (not a call to update_list_membership_for_item) so a test can
+        # override one without silently affecting the other, same as the
+        # real client's two distinct methods.
+        self._update_membership(node_id, list_ids)
+
+    def _update_membership(self, item_id: str, list_ids: list[str]) -> None:
         star = self._stars[item_id]
         previous_ids = set(star.list_ids)
         new_ids = set(list_ids)
@@ -94,6 +108,12 @@ class FakeGitHubClient:
             self._lists[list_id] = lst.model_copy(
                 update={"items": [*lst.items, item_id]}
             )
+
+    def resolve_repository_node_ids(self, full_names: list[str]) -> dict[str, str]:
+        # Identity map for every known Star; a full_name this fake has
+        # never heard of is simply omitted, same contract as the real
+        # client for a renamed/deleted repo.
+        return {name: name for name in full_names if name in self._stars}
 
     def remove_star(self, item_id: str) -> None:
         star = self._stars.pop(item_id)

@@ -6,3 +6,4 @@ Rationale lives in each file under `docs/adr/`; this is an index only.
 | ADR | Status | Implemented | Decision |
 | --- | --- | --- | --- |
 | [0003](0003-github-sync-is-always-explicit.md) | accepted | not-started | GitHub sync is always explicit, never auto-triggered |
+| [0004](0004-pending-tag-staging-and-retriage-stay-dormant.md) | accepted | done | Pending-tag staging and the Retriage Queue stay in place, dormant, after ticket 16 |

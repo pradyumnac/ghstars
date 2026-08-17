@@ -14,7 +14,7 @@ from conftest import StarFactory
 from textual.widgets import DataTable, Input
 
 from ghstars.core.fake_client import FakeGitHubClient
-from ghstars.core.models import List, RateLimitStatus
+from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
 from ghstars.tui.app import ListPickerScreen, RateLimitBar, TuiApp, _visibility_label
 
@@ -45,9 +45,14 @@ async def test_stars_table_shows_membership_with_visibility(
     assert "pending" not in row[3]
 
 
-async def test_pending_tag_is_shown_before_any_sync(
+async def test_stale_pending_list_ids_is_ignored_by_the_table(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
+    """`tag_star()` no longer writes `pending_list_ids` (ticket 16) --
+    the field is dormant, kept only for `sync()`'s fallback path (ADR
+    0004). A leftover value from before the upgrade must not resurrect
+    the old "[pending sync]" display; the table only ever shows
+    `list_ids`, which is already live."""
     public_list = List(id="L2", name="Explore: Tool", slug="explore-tool")
     star = make_star("pradyumnac/ghstars", pending_list_ids=["L2"])
     store = StateStore(tmp_path)
@@ -59,8 +64,8 @@ async def test_pending_tag_is_shown_before_any_sync(
         await pilot.pause()
         row = _table(app).get_row_at(0)
 
-    assert "Explore: Tool" in row[3]
-    assert "pending sync" in row[3]
+    assert "Explore: Tool" not in row[3]
+    assert "pending sync" not in row[3]
 
 
 async def test_rate_limit_bar_shows_remaining_after_mount(
@@ -102,7 +107,7 @@ async def test_rate_limit_bar_flags_when_not_ok(
     assert has_low_class
 
 
-async def test_single_item_tag_stages_pending_list_ids(
+async def test_single_item_tag_pushes_immediately(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     star = make_star("pradyumnac/ghstars")
@@ -124,9 +129,11 @@ async def test_single_item_tag_stages_pending_list_ids(
         await pilot.pause()
 
     updated = next(s for s in store.load_stars() if s.full_name == "pradyumnac/ghstars")
-    assert updated.pending_list_ids is not None
     new_list = next(lst for lst in store.load_lists() if lst.name == "Explore: Foo")
-    assert updated.pending_list_ids == [new_list.id]
+    assert updated.list_ids == [new_list.id]
+    assert updated.pending_list_ids is None
+    # Pushed for real on GitHub too, not just staged locally.
+    assert client.fetch_stars()[0].list_ids == [new_list.id]
 
 
 async def test_bulk_tag_applies_to_every_selected_star(
@@ -159,8 +166,67 @@ async def test_bulk_tag_applies_to_every_selected_star(
         await pilot.pause()
 
     stars = {s.full_name: s for s in store.load_stars()}
-    assert stars["pradyumnac/a"].pending_list_ids == ["L_target"]
-    assert stars["pradyumnac/b"].pending_list_ids == ["L_target"]
+    assert stars["pradyumnac/a"].list_ids == ["L_target"]
+    assert stars["pradyumnac/b"].list_ids == ["L_target"]
+
+
+async def test_bulk_tag_batches_node_id_lookups_but_single_tag_does_not(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Ticket 16: more than one target resolves every node ID in one
+    batched call up front; a single target skips it entirely (no
+    batching win for one repo, matches tag_star()'s own default path)."""
+
+    class _SpyClient(FakeGitHubClient):
+        def __init__(self, stars: list[Star], lists: list[List]) -> None:
+            super().__init__(stars=stars, lists=lists)
+            self.batch_lookup_calls: list[list[str]] = []
+
+        def resolve_repository_node_ids(self, full_names: list[str]) -> dict[str, str]:
+            self.batch_lookup_calls.append(list(full_names))
+            return super().resolve_repository_node_ids(full_names)
+
+    target = List(id="L_target", name="Explore: Foo", slug="explore-foo")
+    star_a = make_star("pradyumnac/a")
+    star_b = make_star("pradyumnac/b")
+    store = StateStore(tmp_path)
+    store.save_stars([star_a, star_b])
+    store.save_lists([target])
+    client = _SpyClient(stars=[star_a, star_b], lists=[target])
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+        table.focus()
+        await pilot.press("space")  # select row 0 (pradyumnac/a)
+        await pilot.press("down")
+        await pilot.press("space")  # select row 1 (pradyumnac/b)
+        await pilot.press("t")
+        await pilot.pause()
+        picker_table = app.screen.query_one("#picker-table", DataTable)
+        picker_table.focus()
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert len(client.batch_lookup_calls) == 1
+    assert sorted(client.batch_lookup_calls[0]) == ["pradyumnac/a", "pradyumnac/b"]
+
+    client.batch_lookup_calls.clear()
+    app2 = TuiApp(client=client, store=store)
+    async with app2.run_test() as pilot:
+        await pilot.pause()
+        _table(app2).focus()
+        await pilot.press("t")
+        await pilot.pause()
+        picker_table = app2.screen.query_one("#picker-table", DataTable)
+        picker_table.focus()
+        await pilot.press("enter")
+        await app2.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert client.batch_lookup_calls == []
 
 
 async def test_toggle_select_preserves_cursor_position(
@@ -197,7 +263,12 @@ async def test_toggle_select_preserves_cursor_position(
 async def test_retag_moves_star_between_intents_in_same_category(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    current = List(id="L_current", name="Current: Tool", slug="current-tool")
+    current = List(
+        id="L_current",
+        name="Current: Tool",
+        slug="current-tool",
+        items=["pradyumnac/ghstars"],
+    )
     retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
     star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
     store = StateStore(tmp_path)
@@ -221,7 +292,7 @@ async def test_retag_moves_star_between_intents_in_same_category(
         await pilot.pause()
 
     updated = next(s for s in store.load_stars() if s.full_name == "pradyumnac/ghstars")
-    assert updated.pending_list_ids == ["L_retired"]
+    assert updated.list_ids == ["L_retired"]
 
 
 async def test_double_tag_press_does_not_stack_two_pickers(

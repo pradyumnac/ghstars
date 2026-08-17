@@ -38,7 +38,13 @@ from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, 
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
-from ghstars.core.tagging import StarArchivedError, StarNotFoundError, tag_star
+from ghstars.core.tagging import (
+    StarArchivedError,
+    StarListMembershipDriftError,
+    StarNotFoundError,
+    TagPushError,
+    tag_star,
+)
 from ghstars.github import GitHubApiError
 
 _LOCK = "\U0001f512"
@@ -256,20 +262,14 @@ class TuiApp(App[None]):
         by_id = self._lists_by_id()
         for star in sorted(self._stars, key=lambda s: s.full_name):
             mark = "[x]" if star.full_name in self._selected else "[ ]"
-            # `tag_star()` only ever writes `pending_list_ids` -- the real
-            # push happens at the next `ghstars sync`. Show that staged
-            # edit immediately, falling back to the last-synced
-            # `list_ids`, so tagging visibly does something before sync
-            # runs (spec: this TUI never calls `ghstars.core.sync`).
-            pending_ids = star.pending_list_ids
-            display_ids = pending_ids if pending_ids is not None else star.list_ids
+            # `tag_star()` pushes to GitHub immediately (ticket 16), so
+            # `list_ids` is already live by the time this renders -- no
+            # separate "pending" state to show here anymore.
             memberships = ", ".join(
                 f"{by_id[lid].name} ({_visibility_label(by_id[lid].is_private)})"
-                for lid in display_ids
+                for lid in star.list_ids
                 if lid in by_id
             )
-            if pending_ids is not None:
-                memberships = f"{memberships or '-'} [pending sync]"
             table.add_row(
                 mark,
                 star.full_name,
@@ -382,12 +382,40 @@ class TuiApp(App[None]):
         first star (identical behavior to before: a real fetch) and
         threads each result's `lists` into the next call, so the whole
         batch shares at most one live `fetch_lists()` round trip instead
-        of paying it per star.
+        of paying it per star. Trade-off: `tag_star()`'s drift check
+        (ticket 16) for star N+1 sees star N's own already-applied
+        change correctly, but not a change some other process makes
+        directly to star N+1 while star N's push is still in flight --
+        see the caveat on `tag_star()`'s own docstring. A single-item
+        tag never threads `lists`, so it does not have this gap.
+
+        `tag_star()` also pushes each star to GitHub immediately (ticket
+        16), which needs GitHub's node ID per star. For more than one
+        target, this resolves every target's node ID in one batched
+        `resolve_repository_node_ids()` call up front rather than paying
+        `tag_star()`'s internal one-round-trip-per-star resolution N
+        times -- see docs/explanation/known-limitations.md. A single
+        target skips this (no batching win for one repo). A `full_name`
+        missing from the batch result (lookup failed, or the repo was
+        renamed/deleted) just falls back to `tag_star()`'s own
+        resolution for that one star -- isolated the same way a push
+        failure already is below, not a reason to fail the whole batch.
+        The membership-update pushes themselves stay sequential, one per
+        star, preserving this loop's existing per-star failure isolation
+        and the incremental notification below.
         """
         tagged = 0
         removed_total = 0
         errors: list[str] = []
         lists: list[List] | None = None
+        node_ids: dict[str, str] = {}
+        if len(targets) > 1:
+            try:
+                node_ids = self._client.resolve_repository_node_ids(targets)
+            except Exception:  # noqa: BLE001 -- an optimization, not required;
+                # fall back to tag_star()'s own per-star resolution on any
+                # failure rather than failing the whole batch over it.
+                node_ids = {}
         for full_name in targets:
             try:
                 result = tag_star(
@@ -397,8 +425,15 @@ class TuiApp(App[None]):
                     choice.list_name,
                     is_private=choice.is_private,
                     lists=lists,
+                    node_id=node_ids.get(full_name),
                 )
-            except (StarNotFoundError, StarArchivedError, GitHubApiError) as exc:
+            except (
+                StarNotFoundError,
+                StarArchivedError,
+                StarListMembershipDriftError,
+                TagPushError,
+                GitHubApiError,
+            ) as exc:
                 errors.append(f"{full_name}: {exc}")
                 continue
             except Exception as exc:  # noqa: BLE001 -- see docstring above

@@ -88,7 +88,12 @@ def test_retriage_plain_text_reports_no_conflicts_when_the_queue_is_empty(
 def test_tag_cmd_reports_removed_list_ids_in_plain_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
-    current = List(id="L_current", name="Current: Tool", slug="current-tool")
+    current = List(
+        id="L_current",
+        name="Current: Tool",
+        slug="current-tool",
+        items=["pradyumnac/ghstars"],
+    )
     retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
     star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
     store = StateStore(tmp_path)
@@ -106,7 +111,12 @@ def test_tag_cmd_reports_removed_list_ids_in_plain_text(
 def test_tag_cmd_reports_removed_list_ids_as_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
-    current = List(id="L_current", name="Current: Tool", slug="current-tool")
+    current = List(
+        id="L_current",
+        name="Current: Tool",
+        slug="current-tool",
+        items=["pradyumnac/ghstars"],
+    )
     retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
     star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
     store = StateStore(tmp_path)
@@ -122,7 +132,7 @@ def test_tag_cmd_reports_removed_list_ids_as_json(
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["removed_list_ids"] == ["L_current"]
-    assert payload["pending_list_ids"] == ["L_retired"]
+    assert payload["list_ids"] == ["L_retired"]
 
 
 def test_tag_cmd_reports_no_removed_list_ids_when_nothing_stripped(

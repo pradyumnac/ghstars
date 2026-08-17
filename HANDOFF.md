@@ -22,8 +22,8 @@ truth (acceptance criteria, `## Comments` with implementation notes); this
 table is a status snapshot only. Check harness `TaskList` for live status
 if resuming with new tasks in flight.
 
-Tickets 1-7, 9-11, 17, and 19 are done and merged to `main` — see each
-ticket's own `Status:`/`## Comments` for details.
+Tickets 1-7, 9-11, 16, 17, and 19 are done and merged to `main` — see
+each ticket's own `Status:`/`## Comments` for details.
 
 Status column below is taken verbatim (or near-verbatim) from each ticket
 file's own `Status:` line, reconciled 2026-08-17 — the previous version of
@@ -39,7 +39,6 @@ it's unblocked — check the Blocked-by column too.
 | 13 | Packaging & distribution (Linux)                          | ready-for-agent — blocked                                      | 5, 6, 7, 8, 9, 10, 11, 12, 14  |
 | 14 | Accompanying agent skill (replaces github-stars)          | **ticket file has no `Status:` line** — add one before picking up | 4, 5, 6, 7, 8, 10, 11, 12      |
 | 15 | Windows & macOS release binaries                          | ready-for-agent — blocked                                      | 13                             |
-| 16 | Push a tag edit immediately, like unstar already does     | ticket file says "ready-for-agent — needs design, not yet speced" (self-contradictory label) — treat as needs-design, not ready | 4, 5 |
 | 18 | Distinguish "cleared on GitHub" from "never classified"   | needs design, not yet speced — no acceptance criteria yet — deliberately deferred until 05-12, 14 done | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
 
 ## Current state

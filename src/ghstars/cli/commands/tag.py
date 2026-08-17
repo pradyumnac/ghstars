@@ -1,11 +1,18 @@
 import json
 
 import typer
+from filelock import Timeout
 
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
 from ghstars.cli.errors import fail
-from ghstars.core import StarArchivedError, StarNotFoundError, tag_star
+from ghstars.core import (
+    StarArchivedError,
+    StarListMembershipDriftError,
+    StarNotFoundError,
+    TagPushError,
+    tag_star,
+)
 from ghstars.github import GitHubApiError
 
 
@@ -24,12 +31,12 @@ def tag_cmd(
     ),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
-    """Stage a repo for addition to a List. Run `ghstars sync` to push it.
+    """Add a repo to a List and push it to GitHub immediately (ticket 16).
 
     A new List is created for real immediately (spec story 48); the
-    Star<->List membership itself is staged locally and pushed at the
-    next sync, so a concurrent GitHub-side change has something to be
-    checked against (ticket 05).
+    Star<->List membership itself is pushed in the same call, right
+    after checking that local state agrees with GitHub's current
+    membership for this repo (see `tag_star`'s docstring).
     """
     client = cli.get_client()
     store = cli.get_store()
@@ -39,21 +46,35 @@ def tag_cmd(
         fail(f"no local record for {repo!r}. Run `ghstars sync` first.")
     except StarArchivedError:
         fail(f"{repo!r} is Archived (unstarred) locally — nothing to tag.")
+    except StarListMembershipDriftError as exc:
+        fail(str(exc))
+    except TagPushError as exc:
+        fail(str(exc))
     except GitHubApiError as exc:
         fail(str(exc))
+    except Timeout:
+        # `tag_star()` holds the state lock across its GitHub push now
+        # (ticket 16), longer than before -- a concurrent `ghstars`
+        # command waiting on the same lock can time out here instead of
+        # the usual quick acquire. A clean error beats a raw traceback;
+        # the repo was not modified either way (the lock never acquired).
+        fail(
+            "could not acquire the local state lock — another ghstars "
+            "command may be running. Try again."
+        )
 
     if json_output:
         typer.echo(
             json.dumps(
                 {
                     "full_name": repo,
-                    "pending_list_ids": result.star.pending_list_ids,
+                    "list_ids": result.star.list_ids,
                     "removed_list_ids": result.removed_list_ids,
                 }
             )
         )
         return
-    message = f"Staged {repo} for {list_name!r}. Run `ghstars sync` to push it."
+    message = f"Tagged {repo} into {list_name!r}."
     if result.removed_list_ids:
         message += f" (removed from {len(result.removed_list_ids)} other List(s))"
     typer.echo(message)

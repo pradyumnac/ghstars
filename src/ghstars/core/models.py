@@ -20,10 +20,13 @@ class Star(BaseModel):
     archived_at: datetime | None = None
     last_checked: datetime
     list_ids: list[str] = []
-    # The full desired list_ids set, staged locally by `ghstars tag` but
-    # not yet pushed to GitHub. None means no pending edit. Cleared by the
-    # next sync's push step, which sends this (never a delta) via
-    # updateUserListsForItem, then re-derives list_ids from the fresh pull.
+    # The full desired list_ids set, staged locally for a later sync to
+    # push. None means no pending edit. `ghstars tag` pushes immediately
+    # instead of setting this since ticket 16 -- nothing in the codebase
+    # currently writes this field. Left in place, unused, as ready-built
+    # conflict-arbitration infrastructure (ADR 0004): `sync()`'s
+    # `_merge_pending_list_membership` still reads and clears it, in case
+    # a future feature (e.g. an offline mode) reintroduces a producer.
     pending_list_ids: list[str] | None = None
 
 

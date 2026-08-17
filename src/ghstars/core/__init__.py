@@ -37,7 +37,9 @@ from ghstars.core.sync import (
 )
 from ghstars.core.tagging import (
     StarArchivedError,
+    StarListMembershipDriftError,
     StarNotFoundError,
+    TagPushError,
     TagResult,
     tag_star,
 )
@@ -71,9 +73,11 @@ __all__ = [
     "RetriageEntry",
     "Star",
     "StarArchivedError",
+    "StarListMembershipDriftError",
     "StarNotFoundError",
     "StateStore",
     "SyncResult",
+    "TagPushError",
     "TagResult",
     "archive_star",
     "classify_list",

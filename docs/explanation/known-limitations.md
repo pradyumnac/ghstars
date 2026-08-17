@@ -44,12 +44,12 @@ even when nothing changed since the last run.
 confirmed at 1 point per `gh api graphql` call for these query shapes):
 one plain sync costs **~27 points** — roughly 16 for paginating
 `starredRepositories`, 1 for owned forks, 2 for following, 1 for the
-Lists list, 1 per List for its items (7 here). Each pending tag push
-adds **2 more points** (see "Pending tag pushes are not batched"
-below). Against the 5000 points/hour budget, that's not a practical
-day-to-day problem — but it is a fixed cost paid on every sync no
-matter how small the actual change, including a single `ghstars tag`.
-See ticket 16 for a proposed lighter-weight push path.
+Lists list, 1 per List for its items (7 here). Against the 5000
+points/hour budget, that's not a practical day-to-day problem — but it
+is a fixed cost paid on every sync no matter how small the actual
+change. Since ticket 16, a single `ghstars tag` no longer needs to wait
+for (or trigger) a sync at all — it pushes immediately, at its own
+much smaller cost (see "`ghstars tag` pushes are not batched" below).
 
 **Why stars can't go incremental easily:** `starredRepositories` is
 ordered newest-first, so *new* stars could in principle stop paging
@@ -64,17 +64,29 @@ full diff at all. They exist only to compute two `Star` fields and
 could be fetched less often (e.g. cached, refreshed on a longer
 interval) without touching star/unstar correctness.
 
-## Pending tag pushes are not batched
+## `ghstars tag` pushes are not batched (per single-tag call)
 
-Each `ghstars tag` stages a pending edit locally; `sync()` pushes them
-one at a time. `update_list_membership_for_item` first resolves the
-repo's GitHub node ID (`_resolve_repository_node_id`, one round trip),
-then sends the mutation (a second round trip) — so N pending tags cost
-2N sequential `gh api graphql` calls in that one sync, on top of the
-sync's own fetches. GraphQL supports batching independent operations
-into one request via aliases; this doesn't use that. Fine at the scale
-one person tags between syncs; would need revisiting if that scale
-changed.
+Since ticket 16, `ghstars tag` pushes its edit to GitHub immediately,
+in the same call — it no longer stages a pending edit for `sync()` to
+push later (see ADR 0004 for why the older staged-edit machinery stays
+in the codebase, unused, rather than being deleted). Each push still
+costs two round trips: `update_list_membership_for_item` first resolves
+the repo's GitHub node ID (`_resolve_repository_node_id`), then sends
+the mutation. A single `ghstars tag` call was always going to pay this
+regardless of when the push happens; GraphQL's request-aliasing
+batching only helps when there is more than one repo to resolve/push
+in the same operation, which a single CLI invocation never has.
+
+The TUI's bulk-tag path *does* batch what it can: it resolves every
+selected star's node ID in one aliased `resolve_repository_node_ids()`
+request up front (`RealGitHubClient`, `github/client.py`), instead of
+paying the resolution round trip per star. The membership-update
+mutations themselves stay sequential, one per star — batching those too
+via aliasing was considered and rejected (breaks per-star failure
+isolation and the TUI's incremental progress notification; GitHub's
+rate-limit points are charged by query complexity, not request count,
+so it would not even save quota) unless a real bulk-tag workload proves
+the ID-lookup batch alone isn't enough.
 
 ## Default-classification pushes are not batched either
 
