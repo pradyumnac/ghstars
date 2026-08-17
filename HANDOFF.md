@@ -25,15 +25,22 @@ if resuming with new tasks in flight.
 Tickets 1-7, 9-11, 17, and 19 are done and merged to `main` — see each
 ticket's own `Status:`/`## Comments` for details.
 
-| #  | Ticket                                                            | Status                                                       | Blocked by                    |
-| -- | ------------------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------ |
-| 8  | Agent-mode status command & verify                                | **ready — unblocked, pick up next**                           | 3, 5, 19                      |
-| 12 | Nudges                                                            | pending                                                        | 8                              |
-| 13 | Packaging & distribution (Linux)                                  | pending                                                        | 5, 6, 7, 8, 9, 10, 11, 12, 14  |
-| 14 | Accompanying agent skill (replaces github-stars)                  | pending                                                        | 4, 5, 6, 7, 8, 10, 11, 12      |
-| 15 | Windows & macOS release binaries                                  | pending                                                        | 13                             |
-| 16 | Push a tag edit immediately, like unstar already does             | pending — hold lifted                                          | 4, 5                           |
-| 18 | Distinguish "cleared on GitHub" from "never classified"           | filed, needs design — deliberately deferred until 05-12, 14 done | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
+Status column below is taken verbatim (or near-verbatim) from each ticket
+file's own `Status:` line, reconciled 2026-08-17 — the previous version of
+this table used "pending" loosely for several tickets whose files actually
+already say `ready-for-agent`; that mismatch is fixed here. "Ready" only
+means the ticket is speced and workable once its blockers clear, not that
+it's unblocked — check the Blocked-by column too.
+
+| #  | Ticket                                                    | Status                                                          | Blocked by                    |
+| -- | ------------------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------ |
+| 8  | Agent-mode status command & verify                        | **ready-for-agent — unblocked, pick up next**                  | 3, 5, 19 (all done)            |
+| 12 | Nudges                                                    | ready-for-agent — blocked                                      | 8                              |
+| 13 | Packaging & distribution (Linux)                          | ready-for-agent — blocked                                      | 5, 6, 7, 8, 9, 10, 11, 12, 14  |
+| 14 | Accompanying agent skill (replaces github-stars)          | **ticket file has no `Status:` line** — add one before picking up | 4, 5, 6, 7, 8, 10, 11, 12      |
+| 15 | Windows & macOS release binaries                          | ready-for-agent — blocked                                      | 13                             |
+| 16 | Push a tag edit immediately, like unstar already does     | ticket file says "ready-for-agent — needs design, not yet speced" (self-contradictory label) — treat as needs-design, not ready | 4, 5 |
+| 18 | Distinguish "cleared on GitHub" from "never classified"   | needs design, not yet speced — no acceptance criteria yet — deliberately deferred until 05-12, 14 done | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
 
 ## Current state
 
@@ -42,23 +49,41 @@ live-synced against the real account (pradyumnac, 1530 stars, 7 Lists as
 of the last live sync) — safe to run `ghstars sync`/`list`/`lists`/`tag`
 against it again.
 
-## Review process (from project memory, not yet in any committed doc)
+## Dev flow & review process
 
-- **Ticket-scoped review**: run `/code-review` on the ticket's own diff, apply
-  fixes autonomously (self-directed, no need to check back with the user
-  unless a finding is a genuine design decision, not a code-quality one).
-- **Whole-project review**: once per completed _layer_ (a batch of parallel
-  tickets), after they're all merged — a fresh advisor agent reviews overall
-  project health. **Report-only**: surface findings to the user, do not
-  auto-apply fixes from this pass.
-- Keep the Task rail (harness `TaskList`) updated at the end of every round,
-  not batched up for later.
+Picking up the next ticket batch:
 
-This convention lives in this session's memory files
-(`~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_two_stage_code_review.md`,
-`project_ghstars_ticket_workflow.md`, `feedback_audit_findings_workflow.md`),
-not in any file inside the repo — worth promoting into `AGENTS.md` or
-`docs/agents/` if it keeps proving out.
+1. Compute the frontier — tickets whose blockers are all `done`, per each
+   ticket file's `Status:` line (cross-check against the Task rail table
+   above, which mirrors it).
+2. Launch one fresh (non-fork) `general-purpose` agent per frontier ticket,
+   in a single message, each with `isolation: "worktree"`. Give each a
+   self-contained prompt: ticket path, relevant spec sections, existing code
+   map, scope boundaries against sibling tickets running concurrently, and
+   any known collision files.
+3. **Ticket-scoped review**: each agent runs `/code-review` on its own diff
+   and applies fixes autonomously — no need to check back with the user
+   unless a finding is a genuine design decision, not a code-quality one.
+4. Supervisor reviews each agent's diff, merges its worktree branch into
+   `main` (resolve conflicts by hand, never by discarding either side),
+   updates the ticket file's `Status:`/`## Comments`, and updates this Task
+   rail table + harness `TaskList` — every round, not batched up for later.
+5. Once every ticket in a layer is merged, run one **whole-project review**:
+   a fresh advisor agent reviews overall project health. **Report-only** —
+   surface findings to the user, do not auto-apply fixes from this pass.
+6. Clean up: `git worktree remove` + `git branch -d` a merged ticket's
+   worktree once its merge commit is confirmed on `main` — these aren't
+   auto-cleaned and accumulate as clutter otherwise.
+
+Operational notes:
+
+- A worktree agent that hits a background session/API limit mid-task fails
+  with a `status: failed` task notification, but its worktree and partial
+  diff survive — resume it with `SendMessage` to its `agentId` (not a fresh
+  agent) and it picks up with full context.
+- Real, state-changing GitHub mutations (unstar, list create/update,
+  rename/drain) must never be invoked for real during development/testing —
+  see "Live-testing constraints" below.
 
 ## Live-testing constraints on the `gh` account (pradyumnac)
 
