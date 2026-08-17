@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from typing import NoReturn
 
 import typer
 from pydantic import BaseModel
@@ -7,11 +8,15 @@ from pydantic import BaseModel
 from ghstars.cli.deps import ensure_config_dir, get_client, get_store
 from ghstars.cli.errors import fail
 from ghstars.core import (
+    CategoryNotFoundError,
+    InvalidCategoryNameError,
     RateLimitExceededError,
     StarArchivedError,
     StarNotFoundError,
     archive_star,
+    drain_category,
     remove_star_from_lists,
+    rename_category,
     sync,
     tag_star,
 )
@@ -19,6 +24,10 @@ from ghstars.core.models import List, RetriageEntry, Star
 from ghstars.github import GitHubApiError
 
 app = typer.Typer(no_args_is_help=True)
+category_app = typer.Typer(
+    no_args_is_help=True, help="Rename or bulk-migrate a Category across its Lists."
+)
+app.add_typer(category_app, name="category")
 
 STAR_FIELDS = set(Star.model_fields.keys())
 DEFAULT_STAR_FIELDS = ["full_name", "language", "stargazer_count"]
@@ -282,3 +291,110 @@ def retriage_cmd(
         json_output=json_output,
         fields=fields,
     )
+
+
+def _category_not_found(category: str) -> NoReturn:
+    fail(
+        f"no Explore/Current/Retired List found for category {category!r}. "
+        "Run `ghstars sync` first, or check for a typo."
+    )
+
+
+@category_app.command("rename")
+def category_rename_cmd(
+    old: str = typer.Argument(..., help="Existing Category name, e.g. 'Old Tool'."),
+    new: str = typer.Argument(..., help="New Category name to rename it to."),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Rename a Category across its Explore/Current/Retired Lists.
+
+    Renames every Explore/Current/Retired List for `old` to the same
+    Intent under `new`, consistently, in one operation (ticket 07).
+    Fetches fresh GitHub state right before writing and skips (reports,
+    never overwrites) any List whose live state has already diverged
+    from the last `ghstars sync` — e.g. renamed or reclassified
+    concurrently on github.com or the phone app.
+    """
+    # Stripped up front so every message below (success, skip warning,
+    # not-found) reports the same normalized name `rename_category()`
+    # actually matched against, not the raw (possibly whitespace-padded)
+    # CLI argument.
+    old = old.strip()
+    new = new.strip()
+    client = get_client()
+    store = get_store()
+    try:
+        result = rename_category(client, store, old, new)
+    except InvalidCategoryNameError as exc:
+        fail(str(exc))
+    except CategoryNotFoundError:
+        _category_not_found(old)
+    except GitHubApiError as exc:
+        fail(str(exc))
+
+    if json_output:
+        typer.echo(json.dumps(result.model_dump(mode="json")))
+        return
+    typer.echo(f"Renamed {len(result.renamed)} List(s) from {old!r} to {new!r}.")
+    if result.skipped:
+        ids = ", ".join(result.skipped)
+        typer.echo(
+            f"warning: skipped {len(result.skipped)} List(s) whose live state "
+            f"already diverged since the last sync: {ids}. Run `ghstars sync` "
+            "then retry if you still want them renamed.",
+            err=True,
+        )
+
+
+@category_app.command("drain")
+def category_drain_cmd(
+    from_category: str = typer.Argument(..., help="Category to migrate Stars out of."),
+    to_category: str = typer.Argument(..., help="Category to migrate Stars into."),
+    private: bool = typer.Option(
+        False,
+        "--private",
+        help="Create any destination List private if it doesn't exist yet "
+        "(default: public).",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Bulk-migrate every Star from one Category into another.
+
+    Migrates each Star into the same lifecycle Intent under
+    `to_category` it already held under `from_category` — Explore stays
+    Explore, Current stays Current, Retired stays Retired (ticket 07).
+    Fetches fresh GitHub state right before writing and skips (reports,
+    never overwrites) any Star whose live List membership has already
+    diverged from the last `ghstars sync`.
+    """
+    # Stripped up front, same reasoning as category_rename_cmd above.
+    from_category = from_category.strip()
+    to_category = to_category.strip()
+    client = get_client()
+    store = get_store()
+    try:
+        result = drain_category(
+            client, store, from_category, to_category, is_private=private
+        )
+    except InvalidCategoryNameError as exc:
+        fail(str(exc))
+    except CategoryNotFoundError:
+        _category_not_found(from_category)
+    except GitHubApiError as exc:
+        fail(str(exc))
+
+    if json_output:
+        typer.echo(json.dumps(result.model_dump(mode="json")))
+        return
+    typer.echo(
+        f"Migrated {len(result.migrated)} Star(s) from "
+        f"{from_category!r} to {to_category!r}."
+    )
+    if result.skipped:
+        names = ", ".join(result.skipped)
+        typer.echo(
+            f"warning: skipped {len(result.skipped)} Star(s) whose live List "
+            f"membership already diverged since the last sync: {names}. Run "
+            "`ghstars sync` then retry if you still want them migrated.",
+            err=True,
+        )

@@ -15,6 +15,13 @@ from dataclasses import dataclass
 from ghstars.core.models import Intent, List
 
 _INTENTS: tuple[Intent, ...] = ("Explore", "Current", "Retired", "Reference")
+
+# Explore, Current, and Retired are mutually exclusive per Category. A
+# Star sits in exactly one of these at a time (spec story 16,
+# CONTEXT.md). Reference and unprefixed General Lists (intent=None) are
+# not part of this lifecycle -- they never take part in exclusivity.
+LIFECYCLE_INTENTS: frozenset[Intent] = frozenset({"Explore", "Current", "Retired"})
+
 _SEPARATOR = ": "
 _LEADING_WORD = re.compile(r"^[A-Za-z]+")
 _INTENTS_CASEFOLDED = {intent.casefold() for intent in _INTENTS}
@@ -71,3 +78,40 @@ def classify_list(lst: List) -> List:
             "malformed": parsed.malformed,
         }
     )
+
+
+def strip_lifecycle_siblings(
+    list_ids: list[str], *, lists: list[List], target: List
+) -> tuple[list[str], list[str]]:
+    """Remove any sibling List id sharing `target`'s Category but a
+    different lifecycle Intent (Explore/Current/Retired) from `list_ids`.
+
+    This is the mutual-exclusivity invariant (spec story 16, CONTEXT.md):
+    a Star sits in at most one of Explore/Current/Retired per Category
+    at a time. Reference and General (`intent=None`) Lists are exempt --
+    never a strip candidate, and `target` itself is a no-op source when
+    it is not a lifecycle List.
+
+    Returns `(new_ids, removed_ids)`. `removed_ids` is empty when
+    `target`'s intent is not lifecycle, or no sibling was present in
+    `list_ids`.
+
+    Shared by `ghstars.core.tagging.tag_star` (the original site of this
+    check, ticket 17) and `ghstars.core.category.drain_category` (ticket
+    07) -- any write path that sets a Star's final List membership needs
+    this same invariant, not a re-derived copy (per ticket 17's
+    post-implementation note on generalizing it later).
+    """
+    if target.intent not in LIFECYCLE_INTENTS:
+        return list_ids, []
+    sibling_ids = {
+        item.id
+        for item in lists
+        if item.category == target.category
+        and item.intent in LIFECYCLE_INTENTS
+        and item.intent != target.intent
+    }
+    removed = [i for i in list_ids if i in sibling_ids]
+    if not removed:
+        return list_ids, []
+    return [i for i in list_ids if i not in sibling_ids], removed

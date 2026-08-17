@@ -1,0 +1,351 @@
+"""Category rename & drain (ticket 07).
+
+`ghstars category rename` renames a Category across its Explore/Current/
+Retired List variants in one operation, instead of the user manually
+renaming each one by hand. `ghstars category drain` bulk-migrates every
+Star from one Category into another, matching each Star's existing
+lifecycle Intent -- Explore stays Explore, Current stays Current,
+Retired stays Retired. Neither command ever crosses Intents; that stays
+`ghstars tag`'s job, one Star at a time.
+
+Both commands are scoped to CONTEXT.md's Category vocabulary
+specifically -- Explore/Current/Retired Lists only. Reference Lists use
+"Topic" for their after-colon label (CONTEXT.md), a different concept;
+General Lists (`intent=None`) have no Category at all. Neither command
+touches either.
+
+Design constraint, added to ticket 07's own acceptance criteria during
+ticket 17's review: both commands fetch fresh GitHub state right before
+computing/writing the bulk change, and skip-and-report -- never
+silently overwrite -- any List or Star whose live state has already
+diverged from the local snapshot that triggered the operation (e.g. a
+concurrent edit made on github.com or the phone app since the last
+`ghstars sync`). This is a lighter fetch-then-skip-diverged rule than
+ticket 05's three-way merge: neither command has a user-staged local
+pending edit to preserve, just a computed migration/rename intent, so a
+diverged target is simply skipped, not routed to the Retriage Queue
+(ticket 17's design rationale).
+"""
+
+from pydantic import BaseModel
+
+from ghstars.core.github_client import GitHubClient
+from ghstars.core.models import List
+from ghstars.core.state_store import StateStore
+from ghstars.core.sync import reconcile_list_membership
+from ghstars.core.taxonomy import (
+    LIFECYCLE_INTENTS,
+    classify_list,
+    strip_lifecycle_siblings,
+)
+
+
+class InvalidCategoryNameError(Exception):
+    """`rename`/`drain` was given a blank Category name."""
+
+
+class CategoryNotFoundError(Exception):
+    """`rename`/`drain` targeted a Category with no Explore/Current/
+    Retired List, per the local snapshot from the last `ghstars sync`.
+
+    Raised before any GitHub call is made -- there is nothing to fetch
+    fresh state for if the local snapshot names nothing to act on.
+    """
+
+
+class RenameResult(BaseModel):
+    """The result of `rename_category()`.
+
+    Reports by List id, not name, matching `TagResult`'s convention
+    (`ghstars.core.tagging`) -- id and count only, until a caller
+    actually needs names.
+    """
+
+    renamed: list[str] = []
+    skipped: list[str] = []
+
+
+class DrainResult(BaseModel):
+    """The result of `drain_category()`. Reports Star `full_name`s."""
+
+    migrated: list[str] = []
+    skipped: list[str] = []
+
+
+def rename_category(
+    client: GitHubClient, store: StateStore, old: str, new: str
+) -> RenameResult:
+    """Rename Category `old` to `new` across its Explore/Current/Retired
+    List variants, consistently, in one operation.
+
+    Uses `store.load_lists()` -- the local snapshot from the last sync
+    -- to decide *which* Lists this rename targets (the "trigger").
+    Then fetches fresh GitHub state (`client.fetch_lists()`) right
+    before writing, and skips (reports, never overwrites) any target
+    whose live name/Category/Intent has already diverged from that
+    local snapshot -- e.g. someone renamed or reclassified the same
+    List on github.com since the last `ghstars sync` (see module
+    docstring). Also skips a target when the destination name is
+    already taken by a *different* live List, rather than creating a
+    same-name duplicate.
+
+    A renamed List's new name is always `f"{intent}: {new}"`, built
+    from the fixed Intent prefix plus `new` verbatim -- this can never
+    produce a malformed name (`ghstars.core.taxonomy.parse_list_name`
+    always matches the exact prefix first), satisfying ticket 07's
+    "no malformed names produced" acceptance criterion structurally,
+    not via a separate validation step.
+    """
+    old = old.strip()
+    new = new.strip()
+    if not old or not new:
+        raise InvalidCategoryNameError("category name cannot be blank")
+
+    with store.lock():
+        # Re-classify defensively rather than trusting `lists.json` was
+        # already classified when it was saved (every current write
+        # path -- `sync()`, `tag_star()` -- does, but this stays correct
+        # even if that invariant is ever violated). Idempotent: a
+        # correctly classified List reclassifies to the same result.
+        local_lists = [classify_list(lst) for lst in store.load_lists()]
+        targets = {
+            lst.id: lst
+            for lst in local_lists
+            if lst.intent in LIFECYCLE_INTENTS and lst.category == old
+        }
+        if not targets:
+            raise CategoryNotFoundError(old)
+
+        if old == new:
+            return RenameResult(renamed=[], skipped=[])
+
+        fresh_lists = [classify_list(lst) for lst in client.fetch_lists()]
+        fresh_by_id = {lst.id: lst for lst in fresh_lists}
+
+        renamed: list[str] = []
+        skipped: list[str] = []
+        result_lists = fresh_lists
+
+        for list_id, local_lst in targets.items():
+            fresh_lst = fresh_by_id.get(list_id)
+            if (
+                fresh_lst is None
+                or fresh_lst.intent != local_lst.intent
+                or fresh_lst.category != old
+            ):
+                # Deleted, renamed, or reclassified on GitHub since the
+                # local snapshot that triggered this rename.
+                skipped.append(list_id)
+                continue
+
+            new_name = f"{fresh_lst.intent}: {new}"
+            name_taken = any(
+                lst.id != list_id and lst.name == new_name for lst in fresh_lists
+            )
+            if name_taken:
+                skipped.append(list_id)
+                continue
+
+            try:
+                updated = client.update_list(list_id, name=new_name)
+            except Exception:  # noqa: BLE001 -- Protocol-only errors, see sync.py's precedent
+                skipped.append(list_id)
+                continue
+            classified = classify_list(updated)
+            result_lists = [
+                classified if lst.id == list_id else lst for lst in result_lists
+            ]
+            renamed.append(list_id)
+
+        store.save_lists(result_lists)
+    return RenameResult(renamed=renamed, skipped=skipped)
+
+
+def drain_category(
+    client: GitHubClient,
+    store: StateStore,
+    from_category: str,
+    to_category: str,
+    *,
+    is_private: bool = False,
+) -> DrainResult:
+    """Bulk-migrate every Star from Category `from_category` into
+    Category `to_category`, one lifecycle Intent at a time -- a Star
+    currently in `Explore: {from_category}` lands in
+    `Explore: {to_category}`, `Current` stays `Current`, `Retired`
+    stays `Retired`.
+
+    Uses `store.load_lists()` -- the local snapshot from the last sync
+    -- to decide which Stars this drain targets (the "trigger"). Then
+    fetches fresh GitHub state (`client.fetch_lists()`,
+    `client.fetch_stars()`) right before computing/writing the bulk
+    change, and skips (reports, never overwrites) any Star whose live
+    List membership has already diverged from that local snapshot --
+    e.g. someone already moved it, untagged it, or unstarred it on
+    github.com since the last `ghstars sync` (ticket 07's fresh-state-
+    check acceptance criterion, added during ticket 17's review; see
+    module docstring).
+
+    A destination List missing for a given Intent is created lazily, at
+    most once per Intent, public by default unless `is_private` (spec
+    story 48, matching `ghstars.core.tagging.tag_star`'s convention).
+
+    Migrating a Star can surface the same mutual-exclusivity conflict
+    `tag_star` resolves (ticket 17, spec story 16): the Star might
+    already sit in a *different* lifecycle List under `to_category`
+    (e.g. draining `Explore: from` into `Explore: to`, while the Star
+    already sits in `Current: to` for unrelated reasons). Reuses
+    `ghstars.core.taxonomy.strip_lifecycle_siblings` -- the same
+    invariant, not a re-derived copy.
+    """
+    from_category = from_category.strip()
+    to_category = to_category.strip()
+    if not from_category or not to_category:
+        raise InvalidCategoryNameError("category name cannot be blank")
+
+    with store.lock():
+        # Re-classify defensively, same reasoning as `rename_category`.
+        local_lists = [classify_list(lst) for lst in store.load_lists()]
+        from_targets = [
+            lst
+            for lst in local_lists
+            if lst.intent in LIFECYCLE_INTENTS and lst.category == from_category
+        ]
+        if not from_targets:
+            raise CategoryNotFoundError(from_category)
+
+        if from_category == to_category:
+            return DrainResult(migrated=[], skipped=[])
+
+        fresh_lists = [classify_list(lst) for lst in client.fetch_lists()]
+        fresh_stars = reconcile_list_membership(client.fetch_stars(), fresh_lists)
+
+        fresh_lists_by_id = {lst.id: lst for lst in fresh_lists}
+        # Fresh state is only ever read from here -- live membership and
+        # archived checks -- never written back wholesale. `fetch_stars()`
+        # always returns brand-new Star objects with `pending_list_ids`
+        # reset to None (see FakeGitHubClient.fetch_stars's own comment) and
+        # `archived=False` by construction, so saving these directly would
+        # silently wipe every OTHER star's staged `ghstars tag` edit and
+        # Archived history, not just the ones this drain actually touches.
+        # `local_stars_by_name` is the real save target: the existing local
+        # snapshot, patched in-place with only the migrated stars' new
+        # `list_ids`, everything else left untouched.
+        fresh_stars_by_name = {star.full_name: star for star in fresh_stars}
+        local_stars_by_name = {star.full_name: star for star in store.load_stars()}
+
+        migrated: list[str] = []
+        skipped: list[str] = []
+        result_lists = fresh_lists
+
+        for local_from in from_targets:
+            intent = local_from.intent
+            fresh_from = fresh_lists_by_id.get(local_from.id)
+            if (
+                fresh_from is None
+                or fresh_from.intent != intent
+                or fresh_from.category != from_category
+            ):
+                # The source List was deleted, renamed, or reclassified
+                # on GitHub since the local snapshot -- nothing here is
+                # safe to migrate against a moving target.
+                skipped.extend(local_from.items)
+                continue
+
+            live_members = set(fresh_from.items)
+            eligible: list[str] = []
+            for full_name in local_from.items:
+                star = fresh_stars_by_name.get(full_name)
+                if full_name not in live_members or star is None or star.archived:
+                    # Diverged since the snapshot: already moved off the
+                    # source List, or unstarred, on GitHub/phone.
+                    skipped.append(full_name)
+                    continue
+                eligible.append(full_name)
+
+            if not eligible:
+                continue
+
+            to_list = next(
+                (
+                    lst
+                    for lst in result_lists
+                    if lst.intent == intent and lst.category == to_category
+                ),
+                None,
+            )
+            if to_list is None:
+                try:
+                    created = client.create_list(
+                        f"{intent}: {to_category}", is_private=is_private
+                    )
+                except Exception:  # noqa: BLE001 -- Protocol-only errors, see sync.py's precedent
+                    skipped.extend(eligible)
+                    continue
+                to_list = classify_list(created)
+                result_lists = [*result_lists, to_list]
+
+            for full_name in eligible:
+                star = fresh_stars_by_name[full_name]
+                without_source = [i for i in star.list_ids if i != fresh_from.id]
+                if to_list.id in without_source:
+                    desired = without_source
+                else:
+                    stripped, _removed = strip_lifecycle_siblings(
+                        without_source, lists=result_lists, target=to_list
+                    )
+                    desired = [*stripped, to_list.id]
+
+                try:
+                    client.update_list_membership_for_item(full_name, desired)
+                except Exception:  # noqa: BLE001 -- Protocol-only errors, see sync.py's precedent
+                    skipped.append(full_name)
+                    continue
+
+                result_lists = _apply_membership_diff(
+                    result_lists, full_name, old_ids=star.list_ids, new_ids=desired
+                )
+                # Patch only `list_ids` onto the existing local record (if
+                # any) -- preserves that star's own `pending_list_ids`,
+                # `archived` state, and every other field untouched.
+                local_record = local_stars_by_name.get(full_name)
+                if local_record is not None:
+                    local_stars_by_name[full_name] = local_record.model_copy(
+                        update={"list_ids": desired}
+                    )
+                migrated.append(full_name)
+
+        store.save_stars(list(local_stars_by_name.values()))
+        store.save_lists(result_lists)
+    return DrainResult(migrated=migrated, skipped=skipped)
+
+
+def _apply_membership_diff(
+    lists: list[List], full_name: str, *, old_ids: list[str], new_ids: list[str]
+) -> list[List]:
+    """Mirror a successful membership push onto `lists`' `items`, so the
+    saved Lists snapshot agrees with the saved Stars snapshot without a
+    second `fetch_lists()` round trip.
+
+    Same shape as `ghstars.core.sync._apply_pushed_membership` (ticket
+    05) -- kept as a small private copy here rather than importing that
+    module-private helper across files.
+    """
+    removed = set(old_ids) - set(new_ids)
+    added = set(new_ids) - set(old_ids)
+    if not removed and not added:
+        return lists
+
+    result: list[List] = []
+    for lst in lists:
+        if lst.id in removed and full_name in lst.items:
+            result.append(
+                lst.model_copy(
+                    update={"items": [i for i in lst.items if i != full_name]}
+                )
+            )
+        elif lst.id in added and full_name not in lst.items:
+            result.append(lst.model_copy(update={"items": [*lst.items, full_name]}))
+        else:
+            result.append(lst)
+    return result

@@ -1,7 +1,11 @@
 import pytest
 
 from ghstars.core.models import Intent, List
-from ghstars.core.taxonomy import classify_list, parse_list_name
+from ghstars.core.taxonomy import (
+    classify_list,
+    parse_list_name,
+    strip_lifecycle_siblings,
+)
 
 
 @pytest.mark.parametrize(
@@ -89,3 +93,100 @@ def test_classify_list_general_is_not_malformed() -> None:
     assert classified.intent is None
     assert classified.category is None
     assert classified.malformed is False
+
+
+def test_strip_lifecycle_siblings_removes_a_same_category_different_intent_id() -> None:
+    current = List(
+        id="L_current",
+        name="Current: Tool",
+        slug="current-tool",
+        intent="Current",
+        category="Tool",
+    )
+    retired = List(
+        id="L_retired",
+        name="Retired: Tool",
+        slug="retired-tool",
+        intent="Retired",
+        category="Tool",
+    )
+
+    new_ids, removed = strip_lifecycle_siblings(
+        ["L_current"], lists=[current, retired], target=retired
+    )
+
+    assert new_ids == []
+    assert removed == ["L_current"]
+
+
+def test_strip_lifecycle_siblings_leaves_different_category_ids_alone() -> None:
+    explore_a = List(
+        id="L_a", name="Explore: A", slug="a", intent="Explore", category="A"
+    )
+    current_b = List(
+        id="L_b", name="Current: B", slug="b", intent="Current", category="B"
+    )
+
+    new_ids, removed = strip_lifecycle_siblings(
+        ["L_a"], lists=[explore_a, current_b], target=current_b
+    )
+
+    assert sorted(new_ids) == ["L_a"]
+    assert removed == []
+
+
+def test_strip_lifecycle_siblings_exempts_reference_targets() -> None:
+    explore_tool = List(
+        id="L_explore",
+        name="Explore: Tool",
+        slug="explore-tool",
+        intent="Explore",
+        category="Tool",
+    )
+    reference_tool = List(
+        id="L_ref",
+        name="Reference: Tool",
+        slug="ref-tool",
+        intent="Reference",
+        category="Tool",
+    )
+
+    new_ids, removed = strip_lifecycle_siblings(
+        ["L_explore"], lists=[explore_tool, reference_tool], target=reference_tool
+    )
+
+    assert new_ids == ["L_explore"]
+    assert removed == []
+
+
+def test_strip_lifecycle_siblings_exempts_general_ids_from_stripping() -> None:
+    current_tool = List(
+        id="L_current",
+        name="Current: Tool",
+        slug="current-tool",
+        intent="Current",
+        category="Tool",
+    )
+    general = List(id="L_general", name="Vendored skills", slug="vendored-skills")
+
+    new_ids, removed = strip_lifecycle_siblings(
+        ["L_general"], lists=[current_tool, general], target=current_tool
+    )
+
+    assert new_ids == ["L_general"]
+    assert removed == []
+
+
+def test_strip_lifecycle_siblings_is_a_no_op_when_no_sibling_present() -> None:
+    retired = List(
+        id="L_retired",
+        name="Retired: Tool",
+        slug="retired-tool",
+        intent="Retired",
+        category="Tool",
+    )
+
+    new_ids, removed = strip_lifecycle_siblings([], lists=[retired], target=retired)
+
+    assert new_ids == []
+    assert removed == []

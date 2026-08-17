@@ -1,16 +1,9 @@
 from pydantic import BaseModel
 
 from ghstars.core.github_client import GitHubClient
-from ghstars.core.models import Intent, Star
+from ghstars.core.models import Star
 from ghstars.core.state_store import StateStore
-from ghstars.core.taxonomy import classify_list
-
-# Explore, Current, and Retired are mutually exclusive per Category. A
-# Star sits in exactly one of these at a time (spec story 16,
-# CONTEXT.md). Reference and unprefixed General Lists (intent=None) are
-# not part of this lifecycle. They never take part in this exclusivity
-# check.
-_LIFECYCLE_INTENTS: frozenset[Intent] = frozenset({"Explore", "Current", "Retired"})
+from ghstars.core.taxonomy import classify_list, strip_lifecycle_siblings
 
 
 class StarNotFoundError(Exception):
@@ -54,11 +47,10 @@ def tag_star(
     Creates the List for real immediately if it does not exist yet.
     Checks live GitHub state for that (`client.fetch_lists()`), not the
     local cache — a stale cache could otherwise create a duplicate List
-    GitHub already has under the same name, with no `ghstars` command
-    to clean it up (delete_list lands in ticket 07). Stages the
-    Star<->List membership as `pending_list_ids` only; the actual push
-    happens at the next sync, so ticket 05's three-way merge can
-    arbitrate any conflict there.
+    GitHub already has under the same name. Stages the Star<->List
+    membership as `pending_list_ids` only; the actual push happens at
+    the next sync, so ticket 05's three-way merge can arbitrate any
+    conflict there.
 
     Suppose the target List's intent is Explore, Current, or Retired.
     Then this strips any sibling List first: same Category, a
@@ -96,18 +88,9 @@ def tag_star(
             else star.list_ids
         )
 
-        removed_list_ids: list[str] = []
-        if lst.intent in _LIFECYCLE_INTENTS:
-            sibling_ids = {
-                item.id
-                for item in lists
-                if item.category == lst.category
-                and item.intent in _LIFECYCLE_INTENTS
-                and item.intent != lst.intent
-            }
-            removed_list_ids = [i for i in current if i in sibling_ids]
-            if removed_list_ids:
-                current = [i for i in current if i not in sibling_ids]
+        current, removed_list_ids = strip_lifecycle_siblings(
+            current, lists=lists, target=lst
+        )
 
         new_ids = current if lst.id in current else [*current, lst.id]
         updated = star.model_copy(update={"pending_list_ids": new_ids})

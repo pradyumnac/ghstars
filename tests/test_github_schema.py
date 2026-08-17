@@ -9,6 +9,7 @@ with no I/O, is safe and cheap to test directly.
 
 from ghstars.github.schema import (
     CreateUserListResponse,
+    DeleteUserListResponse,
     FollowingResponse,
     OwnedReposResponse,
     RateLimitResponse,
@@ -16,6 +17,7 @@ from ghstars.github.schema import (
     RepositoryIdResponse,
     StarredResponse,
     UpdateListsForItemResponse,
+    UpdateUserListResponse,
     UserListItemsNodeResponse,
     UserListsResponse,
 )
@@ -253,3 +255,43 @@ def test_update_lists_for_item_response_handles_null_item() -> None:
 
     parsed = UpdateListsForItemResponse.model_validate(data)
     assert parsed.update_user_lists_for_item.item is None
+
+
+def test_update_user_list_response_parses_list() -> None:
+    data = {
+        "updateUserList": {
+            "list": {
+                "id": "UL_kwDOABkiBM4AhlIM",
+                "name": "Explore: New",
+                "slug": "explore-new",
+                "description": None,
+                "isPrivate": False,
+            }
+        }
+    }
+
+    parsed = UpdateUserListResponse.model_validate(data)
+    assert parsed.update_user_list.list is not None
+    assert parsed.update_user_list.list.id == "UL_kwDOABkiBM4AhlIM"
+    assert parsed.update_user_list.list.name == "Explore: New"
+
+
+def test_update_user_list_response_handles_null_list() -> None:
+    data = {"updateUserList": {"list": None}}
+
+    parsed = UpdateUserListResponse.model_validate(data)
+    assert parsed.update_user_list.list is None
+
+
+def test_delete_user_list_response_parses_client_mutation_id() -> None:
+    data = {"deleteUserList": {"clientMutationId": "abc123"}}
+
+    parsed = DeleteUserListResponse.model_validate(data)
+    assert parsed.delete_user_list.client_mutation_id == "abc123"
+
+
+def test_delete_user_list_response_handles_missing_client_mutation_id() -> None:
+    data: dict[str, dict[str, str]] = {"deleteUserList": {}}
+
+    parsed = DeleteUserListResponse.model_validate(data)
+    assert parsed.delete_user_list.client_mutation_id is None
