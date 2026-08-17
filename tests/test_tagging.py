@@ -19,10 +19,11 @@ def test_tag_star_stages_pending_list_ids_for_an_existing_list(
     store.save_lists([lst])
     client = FakeGitHubClient(stars=[star], lists=[lst])
 
-    updated = tag_star(client, store, "pradyumnac/ghstars", "Explore: Tool")
+    result = tag_star(client, store, "pradyumnac/ghstars", "Explore: Tool")
 
-    assert updated.pending_list_ids == ["L_1"]
-    assert updated.list_ids == []  # not pushed yet
+    assert result.star.pending_list_ids == ["L_1"]
+    assert result.star.list_ids == []  # not pushed yet
+    assert result.removed_list_ids == []
     saved = {s.full_name: s for s in store.load_stars()}
     assert saved["pradyumnac/ghstars"].pending_list_ids == ["L_1"]
 
@@ -35,13 +36,13 @@ def test_tag_star_creates_a_missing_list_for_real_and_defaults_public(
     store.save_stars([star])
     client = FakeGitHubClient(stars=[star])
 
-    updated = tag_star(client, store, "pradyumnac/ghstars", "Explore: New")
+    result = tag_star(client, store, "pradyumnac/ghstars", "Explore: New")
 
     created = client.fetch_lists()
     assert len(created) == 1
     assert created[0].name == "Explore: New"
     assert created[0].is_private is False
-    assert updated.pending_list_ids == [created[0].id]
+    assert result.star.pending_list_ids == [created[0].id]
     saved_lists = store.load_lists()
     assert saved_lists[0].intent == "Explore"
     assert saved_lists[0].category == "New"
@@ -73,9 +74,9 @@ def test_tag_star_appends_to_an_existing_pending_edit(
     store.save_lists(lists)
     client = FakeGitHubClient(stars=[star], lists=lists)
 
-    updated = tag_star(client, store, "pradyumnac/ghstars", "Explore: B")
+    result = tag_star(client, store, "pradyumnac/ghstars", "Explore: B")
 
-    assert sorted(updated.pending_list_ids or []) == ["L_1", "L_2"]
+    assert sorted(result.star.pending_list_ids or []) == ["L_1", "L_2"]
 
 
 def test_tag_star_is_idempotent_when_already_tagged(
@@ -88,9 +89,10 @@ def test_tag_star_is_idempotent_when_already_tagged(
     store.save_lists([lst])
     client = FakeGitHubClient(stars=[star], lists=[lst])
 
-    updated = tag_star(client, store, "pradyumnac/ghstars", "Explore: A")
+    result = tag_star(client, store, "pradyumnac/ghstars", "Explore: A")
 
-    assert updated.pending_list_ids == ["L_1"]
+    assert result.star.pending_list_ids == ["L_1"]
+    assert result.removed_list_ids == []
 
 
 def test_tag_star_raises_when_star_not_found_locally(tmp_path: Path) -> None:
@@ -127,7 +129,85 @@ def test_tag_star_reuses_a_list_created_elsewhere_since_the_last_sync(
     existing = List(id="L_1", name="Explore: Tool", slug="explore-tool")
     client = FakeGitHubClient(stars=[star], lists=[existing])
 
-    updated = tag_star(client, store, "pradyumnac/ghstars", "Explore: Tool")
+    result = tag_star(client, store, "pradyumnac/ghstars", "Explore: Tool")
 
-    assert updated.pending_list_ids == ["L_1"]
+    assert result.star.pending_list_ids == ["L_1"]
     assert len(client.fetch_lists()) == 1  # no duplicate created
+
+
+def test_tag_star_strips_a_sibling_intent_list_in_the_same_category(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Spec story 16/17: moving a Star from Current to Retired (same
+    Category) is a single `tag` call -- the old lifecycle List is
+    auto-removed, not left dangling alongside the new one."""
+    current = List(id="L_current", name="Current: Tool", slug="current-tool")
+    retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
+    star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([current, retired])
+    client = FakeGitHubClient(stars=[star], lists=[current, retired])
+
+    result = tag_star(client, store, "pradyumnac/ghstars", "Retired: Tool")
+
+    assert result.star.pending_list_ids == ["L_retired"]
+    assert result.removed_list_ids == ["L_current"]
+
+
+def test_tag_star_does_not_strip_across_different_categories(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Exclusivity is scoped to the same Category -- a lifecycle List
+    for a different Category is untouched."""
+    explore_a = List(id="L_a", name="Explore: A", slug="a")
+    current_b = List(id="L_b", name="Current: B", slug="b")
+    star = make_star("pradyumnac/ghstars", list_ids=["L_a"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([explore_a, current_b])
+    client = FakeGitHubClient(stars=[star], lists=[explore_a, current_b])
+
+    result = tag_star(client, store, "pradyumnac/ghstars", "Current: B")
+
+    assert sorted(result.star.pending_list_ids or []) == ["L_a", "L_b"]
+    assert result.removed_list_ids == []
+
+
+def test_tag_star_does_not_strip_for_reference_intent(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Reference stands alone, no lifecycle (CONTEXT.md) -- tagging into
+    a Reference List never strips an existing Explore/Current/Retired
+    List, even in the same Category."""
+    explore_tool = List(id="L_explore", name="Explore: Tool", slug="explore-tool")
+    reference_tool = List(id="L_ref", name="Reference: Tool", slug="ref-tool")
+    star = make_star("pradyumnac/ghstars", list_ids=["L_explore"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([explore_tool, reference_tool])
+    client = FakeGitHubClient(stars=[star], lists=[explore_tool, reference_tool])
+
+    result = tag_star(client, store, "pradyumnac/ghstars", "Reference: Tool")
+
+    assert sorted(result.star.pending_list_ids or []) == ["L_explore", "L_ref"]
+    assert result.removed_list_ids == []
+
+
+def test_tag_star_does_not_strip_for_general_intent(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """An unprefixed General List (intent=None) never strips an
+    existing lifecycle List, and is itself never a strip candidate."""
+    current_tool = List(id="L_current", name="Current: Tool", slug="current-tool")
+    general = List(id="L_general", name="Vendored skills", slug="vendored-skills")
+    star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([current_tool, general])
+    client = FakeGitHubClient(stars=[star], lists=[current_tool, general])
+
+    result = tag_star(client, store, "pradyumnac/ghstars", "Vendored skills")
+
+    assert sorted(result.star.pending_list_ids or []) == ["L_current", "L_general"]
+    assert result.removed_list_ids == []

@@ -10,12 +10,13 @@ import json
 from pathlib import Path
 
 import pytest
-from conftest import NOW
+from conftest import NOW, StarFactory
 from typer.testing import CliRunner
 
 import ghstars.cli as cli_module
 from ghstars.cli import app
-from ghstars.core.models import RetriageEntry
+from ghstars.core.fake_client import FakeGitHubClient
+from ghstars.core.models import List, RetriageEntry
 from ghstars.core.state_store import StateStore
 
 runner = CliRunner()
@@ -24,6 +25,10 @@ runner = CliRunner()
 def _use_store(monkeypatch: pytest.MonkeyPatch, store: StateStore) -> None:
     monkeypatch.setattr(cli_module, "get_store", lambda: store)
     monkeypatch.setattr(cli_module, "ensure_config_dir", lambda: store.base_dir)
+
+
+def _use_client(monkeypatch: pytest.MonkeyPatch, client: FakeGitHubClient) -> None:
+    monkeypatch.setattr(cli_module, "get_client", lambda: client)
 
 
 def test_retriage_json_lists_queue_contents(
@@ -73,3 +78,60 @@ def test_retriage_plain_text_reports_no_conflicts_when_the_queue_is_empty(
 
     assert result.exit_code == 0
     assert "No conflicts to retriage." in result.output
+
+
+def test_tag_cmd_reports_removed_list_ids_in_plain_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    current = List(id="L_current", name="Current: Tool", slug="current-tool")
+    retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
+    star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([current, retired])
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[current, retired]))
+
+    result = runner.invoke(app, ["tag", "pradyumnac/ghstars", "Retired: Tool"])
+
+    assert result.exit_code == 0
+    assert "removed from 1 other List(s)" in result.output
+
+
+def test_tag_cmd_reports_removed_list_ids_as_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    current = List(id="L_current", name="Current: Tool", slug="current-tool")
+    retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
+    star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([current, retired])
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[current, retired]))
+
+    result = runner.invoke(
+        app, ["tag", "pradyumnac/ghstars", "Retired: Tool", "--json"]
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["removed_list_ids"] == ["L_current"]
+    assert payload["pending_list_ids"] == ["L_retired"]
+
+
+def test_tag_cmd_reports_no_removed_list_ids_when_nothing_stripped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    tool = List(id="L_tool", name="Explore: Tool", slug="explore-tool")
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([tool])
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[tool]))
+
+    result = runner.invoke(app, ["tag", "pradyumnac/ghstars", "Explore: Tool"])
+
+    assert result.exit_code == 0
+    assert "removed from" not in result.output

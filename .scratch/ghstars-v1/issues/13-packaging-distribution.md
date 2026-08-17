@@ -2,7 +2,7 @@
 
 **What to build:** ghstars installable via `uv tool install`, published to PyPI, with a Linux tar.gz binary on GitHub Releases via a GitHub Actions workflow (repo is public, so Actions is free/unlimited-minute regardless of runner OS — but Windows/macOS builds are deliberately deferred to ticket 15, not because of cost). Structured to accommodate future `pipx`/`uvx`/`mise`/`eget` install paths and the later Windows/macOS builds, without building either now.
 
-**Blocked by:** 05, 06, 07, 08, 09, 10, 11, 12 — all v1-functional pieces must be in place before cutting a distributable release.
+**Blocked by:** 05, 06, 07, 08, 09, 10, 11, 12, 14 — all v1-functional pieces must be in place before cutting a distributable release.
 
 **Status:** ready-for-agent
 

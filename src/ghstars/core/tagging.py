@@ -1,7 +1,16 @@
+from pydantic import BaseModel
+
 from ghstars.core.github_client import GitHubClient
-from ghstars.core.models import Star
+from ghstars.core.models import Intent, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.taxonomy import classify_list
+
+# Explore, Current, and Retired are mutually exclusive per Category. A
+# Star sits in exactly one of these at a time (spec story 16,
+# CONTEXT.md). Reference and unprefixed General Lists (intent=None) are
+# not part of this lifecycle. They never take part in this exclusivity
+# check.
+_LIFECYCLE_INTENTS: frozenset[Intent] = frozenset({"Explore", "Current", "Retired"})
 
 
 class StarNotFoundError(Exception):
@@ -16,6 +25,22 @@ class StarArchivedError(Exception):
     """
 
 
+class TagResult(BaseModel):
+    """The result of `tag_star()`.
+
+    Holds the updated Star, plus the ids of any sibling Lists it was
+    auto-removed from. This keeps Explore, Current, and Retired
+    mutually exclusive per Category (spec story 16).
+
+    This reports removed Lists by id, not by name. A name lookup would
+    need an id-to-name table that `tag_star()` does not otherwise need.
+    Report by id and count only, until a caller actually needs names.
+    """
+
+    star: Star
+    removed_list_ids: list[str] = []
+
+
 def tag_star(
     client: GitHubClient,
     store: StateStore,
@@ -23,7 +48,7 @@ def tag_star(
     list_name: str,
     *,
     is_private: bool = False,
-) -> Star:
+) -> TagResult:
     """Stage `full_name` for addition to `list_name`, locally.
 
     Creates the List for real immediately if it does not exist yet.
@@ -34,6 +59,21 @@ def tag_star(
     Star<->List membership as `pending_list_ids` only; the actual push
     happens at the next sync, so ticket 05's three-way merge can
     arbitrate any conflict there.
+
+    Suppose the target List's intent is Explore, Current, or Retired.
+    Then this strips any sibling List first: same Category, a
+    *different* one of those three intents. This is spec story 16.
+    This is an auto-resolve, not a hard error. So moving a Star from
+    Current to Retired (story 17) is one `tag` call. The user does not
+    need to untag first.
+
+    This always reads the freshest local Star state and the freshest
+    fetched Lists. So a second `tag` call into a sibling intent, before
+    the next sync, still sees the first call's staged edit. It strips
+    that edit correctly too. By the time
+    `_merge_pending_list_membership` (ticket 05) sees a pending edit,
+    the edit is already exclusivity-clean. `sync.py` needs no change
+    for this.
     """
     with store.lock():
         stars = store.load_stars()
@@ -55,7 +95,21 @@ def tag_star(
             if star.pending_list_ids is not None
             else star.list_ids
         )
+
+        removed_list_ids: list[str] = []
+        if lst.intent in _LIFECYCLE_INTENTS:
+            sibling_ids = {
+                item.id
+                for item in lists
+                if item.category == lst.category
+                and item.intent in _LIFECYCLE_INTENTS
+                and item.intent != lst.intent
+            }
+            removed_list_ids = [i for i in current if i in sibling_ids]
+            if removed_list_ids:
+                current = [i for i in current if i not in sibling_ids]
+
         new_ids = current if lst.id in current else [*current, lst.id]
         updated = star.model_copy(update={"pending_list_ids": new_ids})
         store.save_stars([updated if s.full_name == full_name else s for s in stars])
-    return updated
+    return TagResult(star=updated, removed_list_ids=removed_list_ids)
