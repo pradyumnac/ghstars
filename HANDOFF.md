@@ -8,17 +8,24 @@ of scope to fix right now.
 Delete a section once it lands in `TODO.md`, an ADR, `AGENTS.md`, or
 `README.md` — this file is a staging area, not a second source of truth.
 
-## Audit findings — landed (2026-08-17)
+## Start next session with: confirm ticket 17's merge
 
-The spec/issues consistency audit and its solutioning follow-up (both run
-2026-08-17) are landed as **ticket 17**
-(`.scratch/ghstars-v1/issues/17-audit-findings-mid-term-fixes.md`), which
-bundles all four findings/proposals as one ticket's scope of work per user
-direction, rather than the solutioning pass's original suggestion of two
-new tickets (17/18) plus direct amends to 07/10/13. Ticket 17 is
-self-contained (states its own design rationale and open questions in its
-`## Comments`) — no need to keep the original findings/proposals text here.
-Being implemented next; see the Task rail below.
+Ticket 17 (`.scratch/ghstars-v1/issues/17-audit-findings-mid-term-fixes.md`)
+is fully implemented, ticket-scoped-reviewed, and independently
+re-verified — sitting uncommitted in worktree
+`/home/doe/repos/ghstars/.claude/worktrees/agent-a232ee952e488d4f7`
+(branch `worktree-agent-a232ee952e488d4f7`), waiting only on explicit user
+confirmation to merge (same gate used for ticket 05). Once confirmed:
+
+1. Commit the worktree's changes, fast-forward merge into local `main`,
+   re-run `mise run check` on `main` to confirm.
+2. Update ticket 17's `Status` (already `done` in the file) and the Task
+   rail below.
+3. Push local `main` to `origin` — see "Current state" below for exactly
+   what's pending push.
+4. Resume the held frontier: 07/09/10/11/16 (see "Sequencing strategy"
+   below). Ticket 18 stays deferred regardless — it's gated on the full
+   main flow (05-12, 14), not just on 17.
 
 ## Task rail
 
@@ -29,16 +36,12 @@ even empty: a missing section looks identical to "nothing active," which
 hides the difference between "no plan" and "forgot to mirror one."
 
 Mirrors `.scratch/ghstars-v1/issues/*.md`, ticket-for-ticket (task ID N ==
-ticket `NN`). The ticket files are the actual source of truth (acceptance
-criteria, `## Comments` with implementation notes); this table is a status
-snapshot only.
-
-**Note (2026-08-17 session): harness task IDs below do NOT equal ticket
-numbers this round** — task IDs 1-3 were the audit/solutioning agents and
-ticket 05, in that order; ticket 17's implementation is task #4. Listed
-here by ticket number regardless, per the mirroring convention; see
-harness `TaskList` for actual task IDs/owners if resuming these specific
-runs.
+ticket `NN`) where possible. The ticket files are the actual source of
+truth (acceptance criteria, `## Comments` with implementation notes); this
+table is a status snapshot only. **This session's harness task IDs do not
+equal ticket numbers** (tasks 1-3 were the audit/solutioning agents and
+ticket 05; ticket 17 is task #4; ticket 18 is task #5, filed not worked) —
+check harness `TaskList` for actual IDs if resuming a specific run.
 
 | # | Ticket | Status | Blocked by |
 |---|---|---|---|
@@ -46,72 +49,65 @@ runs.
 | 2 | Real GitHub client — fetch stars | done | 1 |
 | 3 | Fetch Lists & parse taxonomy | done | 2 |
 | 4 | Local tagging & two-way sync push | done | 3 |
-| 5 | Three-way merge & Retriage Queue | done — merged to `main` (`e48b704`) | 4 |
+| 5 | Three-way merge & Retriage Queue | done — merged to `main` (`e48b704`), confirmed pushed to `origin/main` | 4 |
 | 6 | Unstar detection & Archived state | done | 2 |
-| 7 | Category rename & drain | pending — 17 will edit this file's Blocked-by/AC, not implement it | 4 (17 will add 5) |
+| 7 | Category rename & drain | pending — 17 already edited this file's Blocked-by/AC, not its implementation | 4, 5 |
 | 8 | Agent-mode status command & verify | pending | 3, 5 |
-| 9 | TUI tagging/bulk-tag/retag | pending — held, see below | 4 |
-| 10 | Export engine | pending — 17 will add an AC to this file | 3 |
-| 11 | State diff | pending — held, see below | 4 |
+| 9 | TUI tagging/bulk-tag/retag | pending — held until 17 merges | 4 |
+| 10 | Export engine | pending — 17 already added an AC to this file | 3 |
+| 11 | State diff | pending — held until 17 merges | 4 |
 | 12 | Nudges | pending | 8 |
-| 13 | Packaging & distribution (Linux) | pending — 17 will add 14 to Blocked-by | 5, 6, 7, 8, 9, 10, 11, 12 |
+| 13 | Packaging & distribution (Linux) | pending — 17 already added 14 to Blocked-by | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
 | 14 | Accompanying agent skill (replaces github-stars) | pending | 4, 5, 6, 7, 8, 10, 11, 12 |
 | 15 | Windows & macOS release binaries | pending | 13 |
-| 16 | Push a tag edit immediately, like unstar already does | pending — held, see below | 4, 5 (lifted) |
-| 17 | Mid-term bug fixes from the audit (Explore:General default, Intent exclusivity, 07/10/13 doc edits) | done — implemented, code-reviewed, independently verified; **awaiting user confirmation to merge** | 5 |
-| 18 | Distinguish "cleared on GitHub" from "never classified" (edge case surfaced during 17's review) | needs design, not yet speced — **deliberately deferred, do not pick up until main flow is done** | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
+| 16 | Push a tag edit immediately, like unstar already does | pending — held until 17 merges | 4, 5 (lifted) |
+| 17 | Mid-term bug fixes from the audit (Explore:General default, Intent exclusivity, 07/10/13 doc edits) | done, implemented and verified — **awaiting user confirmation to merge**, see top of file | 5 |
+| 18 | Distinguish "cleared on GitHub" from "never classified" (edge case surfaced during 17's review) | filed, needs design — **deliberately deferred, do not pick up until the main flow (05-12, 14) is done** | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
 
-**Ticket 05: done**, merged to `main` at `e48b704` (2026-08-17), see prior
-session notes below for the full verification trail. Ticket 16's hard-block
-on 05 is lifted (noted in its file), but 16 itself is still held per the
-plan below.
-
-**Ticket 17: done, not yet merged.** Implemented in worktree agent
-`a232ee952e488d4f7` (branch `worktree-agent-a232ee952e488d4f7`) — resumed
-once after hitting a session limit mid-fix. All 4 scopes complete,
-ticket-scoped code-review applied 4 real fixes, independently re-verified
-by the supervisor (read `sync.py`/`tagging.py`/`cli` diffs in full,
-confirmed the exclusion logic and batching are correct), `mise run check`
-green (109/109 tests). One genuine edge case surfaced during review — see
-ticket 18 — was correctly flagged rather than silently fixed or ignored.
-Awaiting explicit user confirmation before merge, same gate as ticket 05.
-
-**Ticket 18: filed, deliberately deferred.** Not a bug in ticket 17 — the
-edge case (a Star cleared of List membership directly on github.com is
-indistinguishable from "never classified," so it also gets defaulted into
-`Explore: General`) is exactly what 17's own acceptance criteria
-specified. Filed as its own ticket per explicit user instruction: it
-should get a home, but must not block or be picked up until the main v1
-flow (05-12, 14) is actually implemented — mirrors ticket 13's own
-release gate for the same reason.
+**Ticket 17 detail:** implemented in worktree agent `a232ee952e488d4f7`
+(resumed once after hitting a session limit mid-fix). All 4 scopes
+complete; ticket-scoped `/code-review` found and fixed 4 real issues
+(excluding failed/conflicted stars from default-classification, guarding
+`create_list` against exceptions, batching the List update, and an STE
+writing-style fix); independently re-verified by the supervisor (read
+`sync.py`/`tagging.py`/`cli` diffs in full, confirmed the exclusion logic
+and batching are correct); `mise run check` green in the worktree
+(109/109 tests). One genuine edge case surfaced during review — filed as
+ticket 18 rather than silently fixed or ignored, per explicit user
+instruction to give it a home without letting it block the main flow.
 
 **07/09/10/11/16 remain held** until ticket 17 merges — per the
 audit-findings-workflow gate
 (`~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_audit_findings_workflow.md`).
-Ticket 17 already edited 07/10/13's *files* (dependency/AC edits only, not
-implementation) as part of its own scope.
 
 ## Current state
 
-Tickets 01/02/03/04/06 are done, committed, and pushed to `main` on
+Confirmed via `git reflog show origin/main`: `origin/main` is at `def85d1`
+— tickets 01-06 **and** ticket 05's merge (`e48b704`) plus this session's
+HANDOFF/ticket-17-filing commits through `def85d1` are all already live on
 `pradyumnac/ghstars` (public GitHub repo — renamed from an unrelated old
-private Go repo of the same name, which now lives at
-`pradyumnac/ghstars-go-archived`). **Ticket 05 is done and merged to local
-`main` (`e48b704`) but not yet pushed to `origin`** — local main is 1
-commit ahead of `origin/main` as of this session; push it before starting
-work in a new session/worktree off `origin/main` or it'll be missing this
-ticket. 96 tests pass, `mise run check` is clean.
-Local dev state (`~/.ghstars/state/stars.json`/`lists.json`) is live-synced
-against the real account (pradyumnac, 1530 stars, 7 Lists as of this
-session) — safe to run `ghstars sync`/`list`/`lists`/`tag` against it again.
+private Go repo of the same name, now at `pradyumnac/ghstars-go-archived`).
+That push happened during this session but was **not** run by the
+assistant — noting it here since it wasn't an explicitly confirmed action,
+unlike every other push/merge this session. Local `main` is 1 commit ahead
+of `origin/main` (`c07107b`, filing ticket 18) — push it, and whatever
+ticket 17's merge commit becomes, together next session.
 
-## Two things ticket 05 must know before starting
+96 tests pass on `main` as of this session's end (109 in ticket 17's
+still-unmerged worktree). `mise run check` is clean on both.
 
-Both are written into `.scratch/ghstars-v1/issues/05-three-way-merge-retriage-queue.md`'s
-`## Comments`, but they're easy to miss on a skim, so repeating here:
+Local dev state (`~/.ghstars/state/stars.json`/`lists.json`) is
+live-synced against the real account (pradyumnac, 1530 stars, 7 Lists as
+of the last live sync) — safe to run `ghstars sync`/`list`/`lists`/`tag`
+against it again.
 
-1. **`sync()`'s push step is unconditional today — 05 has to restructure it, not layer on top.** `core/sync.py`'s `_push_pending_list_membership()` pushes every `Star.pending_list_ids` edit *before* `fetch_stars()`/`fetch_lists()` run in that same sync call — nothing is compared against current GitHub state first. A concurrent conflicting GitHub-side edit is silently clobbered right now, not "GitHub wins" as ticket 05 requires. 05 needs to move the push to *after* the fresh fetch and make it conditional on the three-way merge outcome (push / no-op / Retriage).
-2. **Ticket 16 exists and is deliberately blocked on 05.** It asks whether `ghstars tag` should push immediately (like `ghstars unstar` already does) instead of staging `pending_list_ids` for the next sync. Analysis this session found `unstar` doesn't have the "wait for conflict arbitration" problem at all — it's the Star-existence axis (ticket 06), never subject to 05's List-membership merge. `tag` is the only write command that needs a second `ghstars sync` to take effect. 16 can't be safely designed until 05's merge logic exists to run synchronously inside `tag` itself.
+**Worktree hygiene, done this session:** three fully-merged worktrees
+(ticket 05's, plus two orphaned leftovers from the 03+06 round predating
+this session) were unlocked/removed and their branches deleted — they
+were pure disk clutter, already captured in `main`'s history via the
+merge commits. Ticket 17's worktree (`agent-a232ee952e488d4f7`) is
+deliberately left alone — it holds the only copy of unmerged, uncommitted
+work. Do this same cleanup pass again next session once ticket 17 merges.
 
 ## Review process (from project memory, not yet in any committed doc)
 
@@ -126,48 +122,54 @@ Both are written into `.scratch/ghstars-v1/issues/05-three-way-merge-retriage-qu
   not batched up for later.
 
 This convention lives in this session's memory files
-(`~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_two_stage_code_review.md`
-and `project_ghstars_ticket_workflow.md`), not in any file inside the repo —
-worth promoting into `AGENTS.md` or `docs/agents/` if it keeps proving out.
+(`~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_two_stage_code_review.md`,
+`project_ghstars_ticket_workflow.md`, and now also
+`feedback_audit_findings_workflow.md` for the confirmation-gate/solutioning
+variant used this session), not in any file inside the repo — worth
+promoting into `AGENTS.md` or `docs/agents/` if it keeps proving out.
 
-## Parallel-agent orchestration pattern (used once, for tickets 03+06)
+## Parallel-agent orchestration pattern (used for tickets 03+06, then solo for 05 and 17)
 
-Two fresh (non-`fork`) `general-purpose` agents, each in an isolated
-`isolation: "worktree"`, launched in one message. Both were told upfront they
-might collide on `core/sync.py` (03 adds List-fetching, 06 adds the
-archived-diff) and to keep that file's diff minimal/additive rather than
-avoid the collision. Merged sequentially afterward by hand — real conflicts
-in `sync.py`, `cli/__init__.py`, `core/__init__.py`, `github/client.py`,
-`github/schema.py`, all resolved by combining both sides' additions (nothing
-was actually incompatible, just concurrent). One process slip from that
-round worth remembering: a broad `git add -A` briefly committed the two
-agent worktree directories as embedded git repos — caught and fixed
-(`.claude/worktrees/` is now gitignored).
+Fresh (non-`fork`) `general-purpose` agents, each in an isolated
+`isolation: "worktree"`. For a true parallel batch (03+06): launch all in
+one message, told upfront what files they might collide on and to keep
+diffs additive rather than avoid the collision — merge conflicts get
+resolved by the supervisor afterward, by hand, combining both sides.
+For a solo ticket with a real risk of hitting a background session/API
+limit mid-task (05, 17 this session): the agent can be resumed via
+`SendMessage` to its `agentId` after a `failed` task-notification — its
+worktree and partial diff survive the failure, so resuming picks up
+exactly where it left off rather than restarting.
+
+One process slip from the original 03+06 round, still worth remembering:
+a broad `git add -A` briefly committed the two agent worktree directories
+as embedded git repos — caught and fixed (`.claude/worktrees/` is
+gitignored). Newer learning from this session: **worktrees for merged
+tickets are not auto-cleaned** — `git worktree remove` + `git branch -d`
+them once their merge commit is confirmed on `main`, ideally the same
+session, or they silently accumulate (three were found stale this
+session, one dating back to before this session started).
 
 ## Live-testing constraints on the `gh` account (pradyumnac)
 
 - Token scopes as of this session's end: `repo`, `user`, `admin:public_key`,
-  `gist`, `read:org` — the `user` scope (needed for `createUserList`/
-  `updateUserListsForItem`) was granted mid-session; earlier tickets'
-  "blocked by scope" notes in `.scratch/ghstars-v1/issues/04-*.md` predate
-  that and are now stale in that one respect (the file itself was updated
-  once the scope landed and the live test re-run — see its `## Comments`).
+  `gist`, `read:org`.
 - **`remove_star` (real unstar mutation) must never be invoked for real
   outside a human-confirmed, deliberate test** — it's a visible, not fully
   reversible action against the real account's star list. This constraint
-  was set explicitly for ticket 06 and should carry into any future ticket
+  was set explicitly for ticket 06 and carries into any future ticket
   touching it (e.g. ticket 07's list mutations don't touch stars directly,
   but be deliberate about any new real mutation).
-- `create_list`/`update_list_membership_for_item` (the `tag` push path) ARE
-  now verified live and safe to exercise again — a real test List
-  (`zzz-ghstars-verify-delete-me`, id `UL_kwDOABkiBM4AhnTU`) still exists on
-  the real account from this session's verification and has no `ghstars`
-  command to delete it yet (`delete_list` is ticket 07). Delete it manually
-  via github.com if it's cluttering the real Lists view.
+- `create_list`/`update_list_membership_for_item` (the `tag` push path) are
+  verified live and safe to exercise again — a real test List
+  (`zzz-ghstars-verify-delete-me`, id `UL_kwDOABkiBM4AhnTU`) still exists
+  on the real account and has no `ghstars` command to delete it yet
+  (`delete_list` is ticket 07). Delete it manually via github.com if it's
+  cluttering the real Lists view — still unresolved as of this session.
 
 ## `docs/explanation/known-limitations.md` — what's already documented
 
-Three limitations are written up there in detail already; don't rediscover
+Four limitations are written up there in detail already; don't rediscover
 them:
 
 1. **Sync isn't an atomic snapshot** — `fetch_stars()`/`fetch_lists()` are
@@ -182,21 +184,20 @@ them:
 3. **Pending tag pushes aren't batched** — N pending tags cost 2N sequential
    `gh api graphql` calls in one sync (resolve node ID + mutation, per
    star), no GraphQL alias batching used.
+4. **Default-classification pushes aren't batched either** (added by
+   ticket 17) — same sequential-cost shape as #3, mostly matters once, on
+   a first sync against an account with many pre-existing unclassified
+   stars.
 
-## Sequencing strategy for the 5/7/9/10/11 frontier (decided 2026-08-17)
+## Sequencing strategy for the 7/9/10/11 frontier (decided 2026-08-17)
 
-**05 solo first, then 07/09/10/11 in parallel.** Reasoning, from reading all
-five ticket files this session:
+**05 solo, then 17 solo (audit-derived fixes), then 07/09/10/11 in
+parallel once 17 merges.** File-overlap reasoning, from reading all the
+relevant ticket files this session:
 
-- **05** restructures `core/sync.py`'s control flow itself (push moves from
-  unconditional-at-start to conditional-after-fetch). Any other ticket
-  touching that file concurrently would be editing code mid-restructure —
-  worth avoiding even though nothing else in the frontier *should* need to
-  touch `sync.py`'s push logic.
-- **07** (category rename/drain) touches `core/lists.py`-equivalent + CLI +
-  the GitHub client's list-mutation calls — direct API mutations (rename,
-  bulk membership migration), not the `pending_list_ids` staging path 05
-  restructures. Low file overlap with 05.
+- **07** (category rename/drain) touches CLI + the GitHub client's
+  list-mutation calls directly — not the `pending_list_ids` staging path
+  05/17 touch. Low file overlap.
 - **09** (TUI) is a new, mostly self-contained module — a thin wrapper
   calling into `ghstars.core`, no core logic changes. Lowest risk.
 - **10** (export engine) is a new, config-driven module — reads
@@ -205,23 +206,16 @@ five ticket files this session:
   entirely new, no core changes, explicitly forbidden from touching git
   init/commit behavior.
 
-07/09/10/11 have negligible file overlap with each other (list-mutation
-CLI, TUI, export, diff are four separate concerns) — once 05 lands, run
-them as one parallel worktree-agent layer, same pattern as the 03+06 round
-(see "Parallel-agent orchestration pattern" below): launch all four in one
-message, each told upfront what the others are touching so a real
-collision (if one turns up) gets handled by keeping diffs additive rather
-than avoided by scope-shrinking.
+07/09/10/11 have negligible file overlap with each other — once ticket 17
+merges, run them as one parallel worktree-agent layer, same pattern as the
+03+06 round (see "Parallel-agent orchestration pattern" above): launch all
+four in one message, each told upfront what the others are touching.
 
 **Review discipline for this layer** (per "Review process" above): each of
-05/07/09/10/11 gets its own ticket-scoped `/code-review` with autonomous
-fixes as it lands. After 07/09/10/11 all land (05 already reviewed solo
-before they start), run one report-only whole-project review over the
-combined layer — same as was done after 03+06.
+07/09/10/11 gets its own ticket-scoped `/code-review` with autonomous
+fixes as it lands. After all four land, run one report-only whole-project
+review over the combined layer — same as was done after 03+06.
 
-**Why 05 first, not just "some ticket first":** it fixes a real
-conflict-clobbering bug live in shipped code today (low actual risk solo,
-since this GitHub account is the only writer right now, but worth closing
-before more write paths accumulate) and unblocks ticket 16's design
-question, which cannot be scoped until 05's merge logic exists to call
-synchronously from `tag`.
+**16 stays held too**, even though its ticket-level `Blocked by` (4, 5) is
+already satisfied — its design still depends on 17's fixes being settled
+first, per the audit-findings-workflow gate.
