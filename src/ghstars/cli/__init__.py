@@ -1,7 +1,4 @@
 import json
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import NoReturn
 
 import typer
 from pydantic import BaseModel
@@ -13,29 +10,26 @@ from ghstars.cli.deps import (
     get_store,
 )
 from ghstars.cli.errors import fail
-from ghstars.cli.git_diff import (
-    GitUnavailableError,
-    git_unavailable_reason,
-    run_git_diff,
-)
-from ghstars.core import (
-    CategoryNotFoundError,
-    ExportConfigError,
-    InvalidCategoryNameError,
-    RateLimitExceededError,
-    StarArchivedError,
-    StarNotFoundError,
-    archive_star,
-    drain_category,
-    load_export_config,
-    remove_star_from_lists,
-    rename_category,
-    run_export,
-    sync,
-    tag_star,
-)
-from ghstars.core.models import List, RetriageEntry, Star
-from ghstars.github import GitHubApiError
+from ghstars.cli.git_diff import git_unavailable_reason
+
+# Re-exported so `ghstars.cli.commands.*` can reach these through this
+# package's own namespace (`import ghstars.cli as cli; cli.get_store()`,
+# etc.), not by importing them directly into a command module's own
+# globals -- tests monkeypatch these by name *on this module*
+# (`monkeypatch.setattr(cli_module, "get_store", ...)`, `tests/test_cli.py`
+# et al.), and a direct `from ghstars.cli.deps import get_store` in a
+# command module would copy the original binding at import time, deaf to
+# that monkeypatch. `app`/`category_app` need no such indirection --
+# never reassigned, only ever built once, right here.
+__all__ = [
+    "app",
+    "category_app",
+    "ensure_config_dir",
+    "get_client",
+    "get_export_config_path",
+    "get_store",
+    "git_unavailable_reason",
+]
 
 app = typer.Typer(no_args_is_help=True)
 category_app = typer.Typer(
@@ -43,59 +37,11 @@ category_app = typer.Typer(
 )
 app.add_typer(category_app, name="category")
 
-STAR_FIELDS = set(Star.model_fields.keys())
-DEFAULT_STAR_FIELDS = ["full_name", "language", "stargazer_count"]
-
-LIST_FIELDS = set(List.model_fields.keys())
-DEFAULT_LISTS_FIELDS = ["name", "intent", "category", "is_private", "malformed"]
-
-RETRIAGE_FIELDS = set(RetriageEntry.model_fields.keys())
-DEFAULT_RETRIAGE_FIELDS = [
-    "star_full_name",
-    "attempted_list_ids",
-    "conflict_detected_at",
-    "resolved",
-]
-
 
 @app.callback()
 def main() -> None:
     """ghstars: classify GitHub starred repos into GitHub's native Lists."""
     ensure_config_dir()
-
-
-@app.command("sync")
-def sync_cmd(
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-) -> None:
-    """Fetch stars and Lists from GitHub into local state."""
-    client = get_client()
-    store = get_store()
-    try:
-        result = sync(client, store)
-    except (RateLimitExceededError, GitHubApiError) as exc:
-        fail(str(exc))
-
-    if json_output:
-        typer.echo(json.dumps(result.model_dump(mode="json")))
-        return
-    typer.echo(f"Synced {result.star_count} star(s), {result.list_count} list(s).")
-    if result.failed_tag_pushes:
-        names = ", ".join(result.failed_tag_pushes)
-        typer.echo(
-            f"warning: could not push pending tag(s) for: {names} "
-            "(the repo may have been unstarred since it was tagged). "
-            "Re-run `ghstars tag` if you still want it classified.",
-            err=True,
-        )
-    if result.failed_default_pushes:
-        names = ", ".join(result.failed_default_pushes)
-        typer.echo(
-            f"warning: could not push default classification for: {names} "
-            "(the repo or the 'Explore: General' List may have changed "
-            "concurrently). Re-run `ghstars sync` to retry.",
-            err=True,
-        )
 
 
 def _render_records[ModelT: BaseModel](
@@ -112,6 +58,11 @@ def _render_records[ModelT: BaseModel](
     Contract (spec stories 28-30): `--json` gives structured output.
     `--fields` selects a subset, validated against `field_names`; an
     unknown field hard-fails via `fail()`. Otherwise, print plain text.
+
+    Shared by `ghstars.cli.commands.list_lists` (`list`, `lists`) and
+    `ghstars.cli.commands.retriage` (`retriage`) -- kept here, not in any
+    one command module, per this package's own "shared helpers used by
+    multiple command modules" mandate (ticket 19).
     """
     selected: list[str] | None = None
     if fields is not None:
@@ -137,395 +88,9 @@ def _render_records[ModelT: BaseModel](
         typer.echo(" ".join(str(getattr(record, f)) for f in display_fields))
 
 
-@app.command("list")
-def list_cmd(
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-    fields: str | None = typer.Option(
-        None, "--fields", help="Comma-separated field names to include."
-    ),
-) -> None:
-    """List locally synced stars."""
-    stars = get_store().load_stars()
-    _render_records(
-        stars,
-        field_names=STAR_FIELDS,
-        default_fields=DEFAULT_STAR_FIELDS,
-        empty_message="No stars synced yet. Run `ghstars sync` first.",
-        json_output=json_output,
-        fields=fields,
-    )
-
-
-@app.command("unstar")
-def unstar_cmd(
-    repo: str = typer.Argument(
-        ..., help="Full name of the starred repo to unstar, e.g. owner/repo."
-    ),
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-) -> None:
-    """Unstar a repo on GitHub for real, then mark its local record Archived.
-
-    A real, visible mutation on the user's GitHub account (spec story 8).
-    The local record is never deleted; it is kept and marked Archived
-    (spec story 6), distinct from a List's Retired Intent (CONTEXT.md).
-    """
-    client = get_client()
-    store = get_store()
-    try:
-        client.remove_star(repo)
-    except GitHubApiError as exc:
-        fail(str(exc))
-
-    # The GitHub-side unstar already succeeded. Hold the lock across this
-    # read-modify-write so a concurrent `ghstars sync` cannot clobber it
-    # (spec story 33), same as sync()'s locked span.
-    now = datetime.now(UTC)
-    with store.lock():
-        stars = store.load_stars()
-        found_locally = any(star.full_name == repo for star in stars)
-        updated = [
-            archive_star(star, now=now)
-            if star.full_name == repo and not star.archived
-            else star
-            for star in stars
-        ]
-        store.save_stars(updated)
-        store.save_lists(remove_star_from_lists(store.load_lists(), repo))
-
-    if json_output:
-        typer.echo(
-            json.dumps(
-                {
-                    "full_name": repo,
-                    "unstarred": True,
-                    "archived_locally": found_locally,
-                }
-            )
-        )
-        return
-    if found_locally:
-        typer.echo(f"Unstarred {repo}.")
-    else:
-        typer.echo(
-            f"Unstarred {repo} on GitHub (no local record to archive — "
-            "run `ghstars sync` to pick it up)."
-        )
-
-
-@app.command("tag")
-def tag_cmd(
-    repo: str = typer.Argument(
-        ..., help="Full name of the starred repo to tag, e.g. owner/repo."
-    ),
-    list_name: str = typer.Argument(
-        ..., help="Name of the List to add it to, e.g. 'Explore: Tool'."
-    ),
-    private: bool = typer.Option(
-        False,
-        "--private",
-        help="Create the List private if it doesn't exist yet (default: public).",
-    ),
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-) -> None:
-    """Stage a repo for addition to a List. Run `ghstars sync` to push it.
-
-    A new List is created for real immediately (spec story 48); the
-    Star<->List membership itself is staged locally and pushed at the
-    next sync, so a concurrent GitHub-side change has something to be
-    checked against (ticket 05).
-    """
-    client = get_client()
-    store = get_store()
-    try:
-        result = tag_star(client, store, repo, list_name, is_private=private)
-    except StarNotFoundError:
-        fail(f"no local record for {repo!r}. Run `ghstars sync` first.")
-    except StarArchivedError:
-        fail(f"{repo!r} is Archived (unstarred) locally — nothing to tag.")
-    except GitHubApiError as exc:
-        fail(str(exc))
-
-    if json_output:
-        typer.echo(
-            json.dumps(
-                {
-                    "full_name": repo,
-                    "pending_list_ids": result.star.pending_list_ids,
-                    "removed_list_ids": result.removed_list_ids,
-                }
-            )
-        )
-        return
-    message = f"Staged {repo} for {list_name!r}. Run `ghstars sync` to push it."
-    if result.removed_list_ids:
-        message += f" (removed from {len(result.removed_list_ids)} other List(s))"
-    typer.echo(message)
-
-
-@app.command("lists")
-def lists_cmd(
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-    fields: str | None = typer.Option(
-        None, "--fields", help="Comma-separated field names to include."
-    ),
-) -> None:
-    """List locally synced GitHub Lists, with parsed Intent/Category."""
-    lists = get_store().load_lists()
-    _render_records(
-        lists,
-        field_names=LIST_FIELDS,
-        default_fields=DEFAULT_LISTS_FIELDS,
-        empty_message="No Lists synced yet. Run `ghstars sync` first.",
-        json_output=json_output,
-        fields=fields,
-    )
-
-
-@app.command("tui")
-def tui_cmd() -> None:
-    """Launch the interactive TUI for tagging, bulk-tagging, and retagging.
-
-    Imports `ghstars.tui` lazily so every other subcommand keeps starting
-    up without paying for Textual's import cost.
-    """
-    from ghstars.tui import TuiApp
-
-    TuiApp(client=get_client(), store=get_store()).run()
-
-
-@app.command("retriage")
-def retriage_cmd(
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-    fields: str | None = typer.Option(
-        None, "--fields", help="Comma-separated field names to include."
-    ),
-) -> None:
-    """List Stars whose staged List-membership edit conflicted with a
-    concurrent GitHub-side change at the last sync.
-
-    GitHub always won that conflict (ADR 0001); the losing local edit
-    was never applied and lives here for the user to revisit, e.g. by
-    re-running `ghstars tag`. Local-only: never synced to GitHub, never
-    a `UserList` (ticket 05).
-    """
-    entries = get_store().load_retriage()
-    _render_records(
-        entries,
-        field_names=RETRIAGE_FIELDS,
-        default_fields=DEFAULT_RETRIAGE_FIELDS,
-        empty_message="No conflicts to retriage.",
-        json_output=json_output,
-        fields=fields,
-    )
-
-
-_DIFF_ARGS_OPTION = typer.Argument(
-    None,
-    help="Extra arguments passed through to git, e.g. a revision or path.",
-)
-
-
-@app.command(
-    "diff",
-    context_settings={"ignore_unknown_options": True},
-    help="Show classification changes in state/, via the user's own git history.",
-)
-def diff_cmd(
-    args: list[str] | None = _DIFF_ARGS_OPTION,
-    log: bool = typer.Option(
-        False,
-        "--log",
-        help="Show commit history (`git log -p`) instead of the working-tree "
-        "diff (`git diff`).",
-    ),
-) -> None:
-    """Wrap `git diff`/`git log -p` against `state/`'s own git repo.
-
-    ghstars never runs `git init` on `state/` and never commits to it (ADR
-    0002) -- this only works if the user has git-tracked `state/`
-    themselves, e.g. as part of a dotfiles repo. No bespoke diff engine:
-    this shells out to the user's own `git` and shows its output verbatim.
-    """
-    state_dir = get_store().base_dir
-    reason = git_unavailable_reason(state_dir)
-    if reason is not None:
-        fail(
-            f"no git history available for {state_dir} ({reason}). ghstars "
-            "never runs `git init` or commits state/ on its own -- track it "
-            "yourself (`git init` and commit inside that directory) if you "
-            "want `ghstars diff`."
-        )
-
-    try:
-        result = run_git_diff(state_dir, log=log, extra_args=args or [])
-    except GitUnavailableError as exc:
-        fail(f"{exc} while running `git diff`/`git log -p`.")
-
-    if result.stdout:
-        typer.echo(result.stdout, nl=False)
-    if result.returncode != 0:
-        if result.stderr:
-            typer.echo(result.stderr, err=True, nl=False)
-        raise typer.Exit(code=result.returncode)
-
-
-@app.command("export")
-def export_cmd(
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-) -> None:
-    """Write local Stars out to file(s), per `~/.ghstars/config/export.toml`.
-
-    Generic and config-driven (ticket 10): each entry in `export.toml`
-    maps a List or Category to an output file + format. ghstars ships no
-    hardcoded exporter for any particular downstream use case (e.g. a
-    `tools.yaml` for a dotfiles pipeline) — those are example config, not
-    special-cased code paths. Output paths are resolved relative to the
-    current working directory unless absolute, so running this from
-    inside the target repo is the expected workflow.
-    """
-    store = get_store()
-    try:
-        config = load_export_config(get_export_config_path())
-    except ExportConfigError as exc:
-        fail(str(exc))
-
-    if not config.exports:
-        if json_output:
-            typer.echo(json.dumps([]))
-            return
-        typer.echo(
-            "No exports configured. Add entries to "
-            f"{get_export_config_path()} (see docs/how-to/export.md)."
-        )
-        return
-
-    results = run_export(
-        config,
-        lists=store.load_lists(),
-        stars=store.load_stars(),
-        base_dir=Path.cwd(),
-    )
-
-    if json_output:
-        typer.echo(json.dumps([result.model_dump(mode="json") for result in results]))
-        return
-
-    for result in results:
-        typer.echo(
-            f"Wrote {result.star_count} star(s) to {result.output} ({result.format})."
-        )
-        if result.skipped_malformed_lists:
-            names = ", ".join(result.skipped_malformed_lists)
-            typer.echo(
-                f"warning: export {result.name!r} skipped malformed "
-                f"List(s), never guessed at: {names}. Rename them on "
-                "GitHub, then re-run `ghstars sync`.",
-                err=True,
-            )
-
-
-def _category_not_found(category: str) -> NoReturn:
-    fail(
-        f"no Explore/Current/Retired List found for category {category!r}. "
-        "Run `ghstars sync` first, or check for a typo."
-    )
-
-
-@category_app.command("rename")
-def category_rename_cmd(
-    old: str = typer.Argument(..., help="Existing Category name, e.g. 'Old Tool'."),
-    new: str = typer.Argument(..., help="New Category name to rename it to."),
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-) -> None:
-    """Rename a Category across its Explore/Current/Retired Lists.
-
-    Renames every Explore/Current/Retired List for `old` to the same
-    Intent under `new`, consistently, in one operation (ticket 07).
-    Fetches fresh GitHub state right before writing and skips (reports,
-    never overwrites) any List whose live state has already diverged
-    from the last `ghstars sync` — e.g. renamed or reclassified
-    concurrently on github.com or the phone app.
-    """
-    # Stripped up front so every message below (success, skip warning,
-    # not-found) reports the same normalized name `rename_category()`
-    # actually matched against, not the raw (possibly whitespace-padded)
-    # CLI argument.
-    old = old.strip()
-    new = new.strip()
-    client = get_client()
-    store = get_store()
-    try:
-        result = rename_category(client, store, old, new)
-    except InvalidCategoryNameError as exc:
-        fail(str(exc))
-    except CategoryNotFoundError:
-        _category_not_found(old)
-    except GitHubApiError as exc:
-        fail(str(exc))
-
-    if json_output:
-        typer.echo(json.dumps(result.model_dump(mode="json")))
-        return
-    typer.echo(f"Renamed {len(result.renamed)} List(s) from {old!r} to {new!r}.")
-    if result.skipped:
-        ids = ", ".join(result.skipped)
-        typer.echo(
-            f"warning: skipped {len(result.skipped)} List(s) whose live state "
-            f"already diverged since the last sync: {ids}. Run `ghstars sync` "
-            "then retry if you still want them renamed.",
-            err=True,
-        )
-
-
-@category_app.command("drain")
-def category_drain_cmd(
-    from_category: str = typer.Argument(..., help="Category to migrate Stars out of."),
-    to_category: str = typer.Argument(..., help="Category to migrate Stars into."),
-    private: bool = typer.Option(
-        False,
-        "--private",
-        help="Create any destination List private if it doesn't exist yet "
-        "(default: public).",
-    ),
-    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
-) -> None:
-    """Bulk-migrate every Star from one Category into another.
-
-    Migrates each Star into the same lifecycle Intent under
-    `to_category` it already held under `from_category` — Explore stays
-    Explore, Current stays Current, Retired stays Retired (ticket 07).
-    Fetches fresh GitHub state right before writing and skips (reports,
-    never overwrites) any Star whose live List membership has already
-    diverged from the last `ghstars sync`.
-    """
-    # Stripped up front, same reasoning as category_rename_cmd above.
-    from_category = from_category.strip()
-    to_category = to_category.strip()
-    client = get_client()
-    store = get_store()
-    try:
-        result = drain_category(
-            client, store, from_category, to_category, is_private=private
-        )
-    except InvalidCategoryNameError as exc:
-        fail(str(exc))
-    except CategoryNotFoundError:
-        _category_not_found(from_category)
-    except GitHubApiError as exc:
-        fail(str(exc))
-
-    if json_output:
-        typer.echo(json.dumps(result.model_dump(mode="json")))
-        return
-    typer.echo(
-        f"Migrated {len(result.migrated)} Star(s) from "
-        f"{from_category!r} to {to_category!r}."
-    )
-    if result.skipped:
-        names = ", ".join(result.skipped)
-        typer.echo(
-            f"warning: skipped {len(result.skipped)} Star(s) whose live List "
-            f"membership already diverged since the last sync: {names}. Run "
-            "`ghstars sync` then retry if you still want them migrated.",
-            err=True,
-        )
+# Imported last, and only for its side effect: each `ghstars.cli.commands.*`
+# module registers its command(s) on `app`/`category_app` (both already
+# built above) via `@app.command(...)`/`@category_app.command(...)` at
+# import time. Mirrors how `ghstars.core.__init__` re-exports its
+# submodules' names -- this package re-exports registrations instead.
+from ghstars.cli import commands  # noqa: F401

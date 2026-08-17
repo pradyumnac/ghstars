@@ -372,21 +372,22 @@ class TuiApp(App[None]):
         a hang. One star's unexpected failure should not sacrifice the
         rest of the batch or the user-visible outcome either way.
 
-        Known cost, deliberately not fixed here: `tag_star()`
-        (ghstars/core/tagging.py) re-fetches every List from GitHub on
-        every call, by design, to check live state before creating a
-        List. Bulk-tagging N Stars into the same List therefore costs N
-        redundant `fetch_lists()` calls -- exactly the API-point cost
-        this ticket's RateLimitBar exists to make visible. A fix needs
-        `tag_star()` to accept an optional pre-fetched List snapshot so
-        one bulk operation can share a single fetch; that's a
-        `ghstars.core.tagging` signature change, out of scope for this
-        ticket's "thin wrapper, no core changes" mandate. Flagged for a
-        follow-up ticket rather than guessed at here.
+        Bulk-tagging N Stars into the same List used to cost N redundant
+        `fetch_lists()` calls -- `tag_star()` re-fetched every List from
+        GitHub on every call, by design, to check live state before
+        creating a List. Fixed in ticket 19 (scope 5): `tag_star()` now
+        accepts an optional pre-fetched `lists` snapshot, and returns the
+        (possibly List-creation-updated) snapshot it used on
+        `TagResult.lists`. This loop seeds `lists` as `None` for the
+        first star (identical behavior to before: a real fetch) and
+        threads each result's `lists` into the next call, so the whole
+        batch shares at most one live `fetch_lists()` round trip instead
+        of paying it per star.
         """
         tagged = 0
         removed_total = 0
         errors: list[str] = []
+        lists: list[List] | None = None
         for full_name in targets:
             try:
                 result = tag_star(
@@ -395,6 +396,7 @@ class TuiApp(App[None]):
                     full_name,
                     choice.list_name,
                     is_private=choice.is_private,
+                    lists=lists,
                 )
             except (StarNotFoundError, StarArchivedError, GitHubApiError) as exc:
                 errors.append(f"{full_name}: {exc}")
@@ -402,6 +404,7 @@ class TuiApp(App[None]):
             except Exception as exc:  # noqa: BLE001 -- see docstring above
                 errors.append(f"{full_name}: unexpected error: {exc}")
                 continue
+            lists = result.lists
             tagged += 1
             removed_total += len(result.removed_list_ids)
         self.call_from_thread(self._on_tag_done, choice, tagged, removed_total, errors)
