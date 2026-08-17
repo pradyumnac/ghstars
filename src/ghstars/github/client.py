@@ -431,8 +431,8 @@ class RealGitHubClient:
         """`item_id` is `owner/repo`; several mutations need GitHub's
         opaque node ID instead. One extra round trip per call. Used by
         `remove_star` (a single user-initiated action) and by
-        `update_list_membership_for_item` from `sync()`'s per-star push
-        loop (`ghstars.core.sync._push_pending_list_membership`) — N
+        `update_list_membership_for_item` from `sync()`'s per-star merge
+        loop (`ghstars.core.sync._merge_pending_list_membership`) — N
         pending tags cost 2N sequential round trips per sync, not
         batched (see docs/explanation/known-limitations.md).
         """

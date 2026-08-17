@@ -15,7 +15,7 @@ from ghstars.core import (
     sync,
     tag_star,
 )
-from ghstars.core.models import List, Star
+from ghstars.core.models import List, RetriageEntry, Star
 from ghstars.github import GitHubApiError
 
 app = typer.Typer(no_args_is_help=True)
@@ -25,6 +25,14 @@ DEFAULT_STAR_FIELDS = ["full_name", "language", "stargazer_count"]
 
 LIST_FIELDS = set(List.model_fields.keys())
 DEFAULT_LISTS_FIELDS = ["name", "intent", "category", "is_private", "malformed"]
+
+RETRIAGE_FIELDS = set(RetriageEntry.model_fields.keys())
+DEFAULT_RETRIAGE_FIELDS = [
+    "star_full_name",
+    "attempted_list_ids",
+    "conflict_detected_at",
+    "resolved",
+]
 
 
 @app.callback()
@@ -230,6 +238,32 @@ def lists_cmd(
         field_names=LIST_FIELDS,
         default_fields=DEFAULT_LISTS_FIELDS,
         empty_message="No Lists synced yet. Run `ghstars sync` first.",
+        json_output=json_output,
+        fields=fields,
+    )
+
+
+@app.command("retriage")
+def retriage_cmd(
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+    fields: str | None = typer.Option(
+        None, "--fields", help="Comma-separated field names to include."
+    ),
+) -> None:
+    """List Stars whose staged List-membership edit conflicted with a
+    concurrent GitHub-side change at the last sync.
+
+    GitHub always won that conflict (ADR 0001); the losing local edit
+    was never applied and lives here for the user to revisit, e.g. by
+    re-running `ghstars tag`. Local-only: never synced to GitHub, never
+    a `UserList` (ticket 05).
+    """
+    entries = get_store().load_retriage()
+    _render_records(
+        entries,
+        field_names=RETRIAGE_FIELDS,
+        default_fields=DEFAULT_RETRIAGE_FIELDS,
+        empty_message="No conflicts to retriage.",
         json_output=json_output,
         fields=fields,
     )

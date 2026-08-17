@@ -5,7 +5,7 @@ from pathlib import Path
 
 from filelock import FileLock
 
-from ghstars.core.models import List, Star
+from ghstars.core.models import List, RetriageEntry, Star
 
 _DEFAULT_TIMEOUT = 5.0
 
@@ -29,6 +29,10 @@ class StateStore:
     @property
     def _lists_path(self) -> Path:
         return self.base_dir / "lists.json"
+
+    @property
+    def _retriage_path(self) -> Path:
+        return self.base_dir / "retriage.json"
 
     @contextmanager
     def lock(self, timeout: float = _DEFAULT_TIMEOUT) -> Iterator[None]:
@@ -62,6 +66,26 @@ class StateStore:
         with self.lock(timeout=lock_timeout):
             payload = [lst.model_dump(mode="json") for lst in lists]
             _atomic_write(self._lists_path, json.dumps(payload, indent=2))
+
+    def load_retriage(
+        self, *, lock_timeout: float = _DEFAULT_TIMEOUT
+    ) -> list[RetriageEntry]:
+        """Local-only conflict queue (ticket 05). Never synced to GitHub,
+        never a `UserList` -- just another JSON file under `base_dir`,
+        same as `stars.json`/`lists.json`.
+        """
+        with self.lock(timeout=lock_timeout):
+            if not self._retriage_path.exists():
+                return []
+            data = json.loads(self._retriage_path.read_text())
+        return [RetriageEntry.model_validate(item) for item in data]
+
+    def save_retriage(
+        self, entries: list[RetriageEntry], *, lock_timeout: float = _DEFAULT_TIMEOUT
+    ) -> None:
+        with self.lock(timeout=lock_timeout):
+            payload = [entry.model_dump(mode="json") for entry in entries]
+            _atomic_write(self._retriage_path, json.dumps(payload, indent=2))
 
 
 def _atomic_write(path: Path, content: str) -> None:

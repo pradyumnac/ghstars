@@ -1,10 +1,11 @@
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ValidationError
 
 from ghstars.core.github_client import GitHubClient
-from ghstars.core.models import List, Star
+from ghstars.core.models import List, RetriageEntry, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.taxonomy import classify_list
 
@@ -36,7 +37,6 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
     # stale snapshot and clobbering this write, or vice versa (story 33).
     with store.lock():
         previous = _load_previous_stars(store)
-        failed_tag_pushes = _push_pending_list_membership(client, previous)
         stars = client.fetch_stars()
         archived = _carry_forward_archived(previous, stars, now=datetime.now(UTC))
         all_stars = stars + archived
@@ -48,6 +48,27 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
         lists = [classify_list(lst) for lst in client.fetch_lists()]
         all_stars = reconcile_list_membership(all_stars, lists)
 
+        # Only now that current GitHub state is actually known (fresh
+        # fetch + reconcile above) can a pending local edit be arbitrated
+        # against it -- this is ticket 05's three-way merge, replacing
+        # ticket 04's unconditional pre-fetch push (see module docstring
+        # on `_merge_pending_list_membership`).
+        now = datetime.now(UTC)
+        all_stars, lists, failed_tag_pushes, conflicts = _merge_pending_list_membership(
+            client, previous=previous, current=all_stars, lists=lists, now=now
+        )
+
+        # Durability: the Retriage Queue write lands *before* stars.json/
+        # lists.json. Those two already reflect pending_list_ids cleared
+        # (fetch_stars() never returns it), so a crash between the two
+        # writes must never leave a state where the losing edit's own
+        # record is the one that didn't make it -- ticket 05 requires the
+        # losing edit is "never discarded." Worst case on a crash here is
+        # a duplicate retriage entry next sync (the same conflict gets
+        # re-detected against the same unwritten `previous`), which is
+        # recoverable; a missing one would not be.
+        if conflicts:
+            store.save_retriage([*_load_previous_retriage(store), *conflicts])
         store.save_stars(all_stars)
         store.save_lists(lists)
     return SyncResult(
@@ -57,57 +78,163 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
     )
 
 
-def _load_previous_stars(store: StateStore) -> list[Star]:
-    """Load the prior snapshot for the archived-diff. Self-heals on read.
-
-    A previous snapshot that fails to parse counts as "no history to
-    diff against," not a fatal error. `sync()` must stay recoverable
-    even when `stars.json` is corrupt.
+def _load_self_healing[T](loader: Callable[[], list[T]]) -> list[T]:
+    """Run a `StateStore` loader, treating a corrupt/missing/unparseable
+    local file as "nothing saved yet," not a fatal error -- shared by
+    every local-only snapshot `sync()` reads before writing a fresh one
+    (`stars.json` for the archived-diff, `retriage.json` for the
+    Retriage Queue). `sync()` must stay recoverable even when one of its
+    own local files is corrupt.
     """
     try:
-        return store.load_stars()
+        return loader()
     except OSError, json.JSONDecodeError, ValidationError:
         return []
 
 
-def _push_pending_list_membership(
-    client: GitHubClient, previous: list[Star]
-) -> list[str]:
-    """Push any locally staged `ghstars tag` edit to GitHub for real.
+def _load_previous_stars(store: StateStore) -> list[Star]:
+    """Load the prior snapshot for the archived-diff. Self-heals on read."""
+    return _load_self_healing(store.load_stars)
 
-    Runs before the fresh pull in `sync()`, so that pull's own
-    `fetch_lists()` + `reconcile_list_membership()` naturally picks up
-    the pushed state — no separate merge step needed here.
-    `pending_list_ids` always holds the full desired set, never a delta,
-    so retrying a failed/partial push on the next sync is a harmless
-    no-op on GitHub's side (story 32).
 
-    Each push is isolated: one star's failure (e.g. it was unstarred on
-    GitHub since it was tagged, before this sync ever ran) must not
-    abort every other pending push, and must not leave that one star
-    stuck retrying forever — `stars = client.fetch_stars()` right after
-    this always returns fresh Star objects with `pending_list_ids=None`
-    (see FakeGitHubClient.fetch_stars/RealGitHubClient.fetch_stars), so
-    a failed push is simply not retried, not silently spun forever.
-    Returns the full_names that failed, so the caller can tell the user
-    instead of the failure vanishing unreported.
-
-    Catches `Exception` broadly, on purpose: `ghstars.core` depends only
-    on the `GitHubClient` Protocol, never on a concrete implementation's
-    error types (`ghstars.github.GitHubApiError` included) — that
-    boundary is why this can't catch anything narrower.
+def _load_previous_retriage(store: StateStore) -> list[RetriageEntry]:
+    """Load the existing Retriage Queue so a new conflict is appended,
+    never overwrites it. Self-heals on read, same reasoning as
+    `_load_previous_stars`: a corrupt `retriage.json` must not block a
+    sync, just lose whatever queue history it held.
     """
+    return _load_self_healing(store.load_retriage)
+
+
+def _merge_pending_list_membership(
+    client: GitHubClient,
+    *,
+    previous: list[Star],
+    current: list[Star],
+    lists: list[List],
+    now: datetime,
+) -> tuple[list[Star], list[List], list[str], list[RetriageEntry]]:
+    """Three-way merge each Star's staged List-membership edit against
+    what GitHub actually has, per sync (ticket 05). Runs *after*
+    `fetch_stars()`/`fetch_lists()`/`reconcile_list_membership()` in
+    `sync()`, so "remote" here is this sync's real fresh state, not a
+    stale guess — replacing ticket 04's `_push_pending_list_membership`,
+    which pushed blindly before any of that ran.
+
+    - base: the last-synced snapshot's `list_ids` for the star, i.e.
+      `previous`, from before this sync's fetch.
+    - remote: `star.list_ids` on `current`, just set by
+      `reconcile_list_membership` from this sync's fresh pull.
+    - local: `star.pending_list_ids` from `previous` — the full desired
+      set, never a delta, same convention `tag_star()` writes.
+
+    Four scenarios:
+    - No pending edit, or local == base: nothing to push, remote stands.
+    - Local changed, remote didn't: push local — GitHub adopts it.
+    - Both changed to the same result: no-op, already effectively applied.
+    - Both changed to different results: GitHub wins, unconditionally.
+      The local edit is never pushed and never silently applied — it's
+      recorded in the local-only Retriage Queue (ADR 0001) for the user
+      to revisit. No auto-merge/union of the two sets, ever.
+
+    An Archived star is skipped outright: `archive_star()` already
+    cleared its `pending_list_ids` when it was carried forward, so any
+    staged edit for a repo unstarred since it was tagged is moot — not a
+    conflict, and not a failure. Nothing to arbitrate.
+
+    A push that raises (e.g. a staged List was deleted on GitHub since
+    tagging) is isolated and reported the same way ticket 04's push was:
+    one star's failure never aborts the others, and is never retried
+    next sync, since `fetch_stars()` always returns fresh Stars with
+    `pending_list_ids=None` regardless of what happened here. Catches
+    `Exception` broadly, on purpose: `ghstars.core` depends only on the
+    `GitHubClient` Protocol, never on a concrete implementation's error
+    types (`ghstars.github.GitHubApiError` included).
+    """
+    base_by_name = {star.full_name: star.list_ids for star in previous}
+    pending_by_name = {
+        star.full_name: star.pending_list_ids
+        for star in previous
+        if star.pending_list_ids is not None
+    }
+
     failed: list[str] = []
-    for star in previous:
-        if star.pending_list_ids is None:
+    conflicts: list[RetriageEntry] = []
+    updated_stars: list[Star] = []
+    updated_lists = lists
+
+    for star in current:
+        local = pending_by_name.get(star.full_name)
+        if local is None or star.archived:
+            updated_stars.append(star)
             continue
-        try:
-            client.update_list_membership_for_item(
-                star.full_name, star.pending_list_ids
+
+        base_set = set(base_by_name.get(star.full_name, []))
+        remote_set = set(star.list_ids)
+        local_set = set(local)
+
+        if local_set == base_set:
+            # No real local edit to push; remote stands as-is.
+            updated_stars.append(star)
+            continue
+
+        if remote_set == base_set:
+            # Only local changed — push it.
+            try:
+                client.update_list_membership_for_item(star.full_name, local)
+            except Exception:  # noqa: BLE001 -- broad on purpose, see docstring
+                failed.append(star.full_name)
+                updated_stars.append(star)
+                continue
+            updated_lists = _apply_pushed_membership(
+                updated_lists, star.full_name, old_ids=star.list_ids, new_ids=local
             )
-        except Exception:  # noqa: BLE001 -- broad on purpose, see docstring
-            failed.append(star.full_name)
-    return failed
+            updated_stars.append(star.model_copy(update={"list_ids": local}))
+        elif local_set == remote_set:
+            # Both landed on the same result already — no-op.
+            updated_stars.append(star)
+        else:
+            # Conflict: GitHub wins unconditionally. The local edit goes
+            # to the Retriage Queue, never pushed, never applied.
+            conflicts.append(
+                RetriageEntry(
+                    star_full_name=star.full_name,
+                    attempted_list_ids=local,
+                    conflict_detected_at=now,
+                )
+            )
+            updated_stars.append(star)
+
+    return updated_stars, updated_lists, failed, conflicts
+
+
+def _apply_pushed_membership(
+    lists: list[List], full_name: str, *, old_ids: list[str], new_ids: list[str]
+) -> list[List]:
+    """Mirror a successful push's effect onto the already-fetched
+    `lists`' `items`, so `lists.json` and `stars.json` agree on the same
+    push without a second `fetch_lists()` round trip. Mirrors what
+    `client.update_list_membership_for_item` itself just did remotely
+    (see e.g. `FakeGitHubClient.update_list_membership_for_item`).
+    """
+    removed = set(old_ids) - set(new_ids)
+    added = set(new_ids) - set(old_ids)
+    if not removed and not added:
+        return lists
+
+    result: list[List] = []
+    for lst in lists:
+        if lst.id in removed and full_name in lst.items:
+            result.append(
+                lst.model_copy(
+                    update={"items": [i for i in lst.items if i != full_name]}
+                )
+            )
+        elif lst.id in added and full_name not in lst.items:
+            result.append(lst.model_copy(update={"items": [*lst.items, full_name]}))
+        else:
+            result.append(lst)
+    return result
 
 
 def archive_star(star: Star, *, now: datetime) -> Star:

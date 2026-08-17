@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import pytest
-from conftest import StarFactory
+from conftest import NOW, StarFactory
 from filelock import Timeout
 
-from ghstars.core.models import List
+from ghstars.core.models import List, RetriageEntry
 from ghstars.core.state_store import StateStore
 
 
@@ -25,6 +25,22 @@ def test_save_and_load_lists_roundtrip(tmp_path: Path) -> None:
     lst = List(id="L_1", name="Explore: General", slug="explore-general")
     store.save_lists([lst])
     assert store.load_lists() == [lst]
+
+
+def test_save_and_load_retriage_roundtrip(tmp_path: Path) -> None:
+    store = StateStore(tmp_path)
+    entry = RetriageEntry(
+        star_full_name="pradyumnac/x",
+        attempted_list_ids=["L_1"],
+        conflict_detected_at=NOW,
+    )
+    store.save_retriage([entry])
+    assert store.load_retriage() == [entry]
+
+
+def test_load_retriage_empty_when_never_saved(tmp_path: Path) -> None:
+    store = StateStore(tmp_path)
+    assert store.load_retriage() == []
 
 
 def test_creates_base_dir_if_missing(tmp_path: Path, make_star: StarFactory) -> None:

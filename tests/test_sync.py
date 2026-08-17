@@ -4,7 +4,7 @@ import pytest
 from conftest import NOW, StarFactory
 
 from ghstars.core.fake_client import FakeGitHubClient
-from ghstars.core.models import List, RateLimitStatus
+from ghstars.core.models import List, RateLimitStatus, RetriageEntry
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import (
     RateLimitExceededError,
@@ -142,9 +142,14 @@ def test_sync_fetches_and_classifies_lists(tmp_path: Path) -> None:
     assert saved["L_3"].malformed is True
 
 
-def test_sync_pushes_a_pending_edit_before_pulling(
+def test_sync_pushes_a_pending_edit_when_only_local_changed(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
+    """Three-way merge scenario 1 (ticket 05): remote == base, so the
+    pending local edit is the only real change since the last sync --
+    push it. The push now runs *after* the fresh fetch/reconcile, not
+    before (ticket 04's order), so this asserts the end result, not the
+    old before-pull timing."""
     lst = List(id="L_1", name="Explore: Tool", slug="explore-tool")
     star = make_star("pradyumnac/ghstars", pending_list_ids=["L_1"])
     store = StateStore(tmp_path)
@@ -152,23 +157,194 @@ def test_sync_pushes_a_pending_edit_before_pulling(
     store.save_lists([lst])
     client = FakeGitHubClient(stars=[star], lists=[lst])
 
-    sync(client, store)
+    result = sync(client, store)
 
-    # The push already landed on the fake's own state before fetch_stars()
-    # re-reads it, so the fresh pull + reconcile reflects it with no extra
-    # merge step.
+    assert result.failed_tag_pushes == []
     saved = store.load_stars()[0]
     assert saved.list_ids == ["L_1"]
     assert saved.pending_list_ids is None
+    # lists.json reflects the push too, without a second fetch round trip.
+    assert store.load_lists()[0].items == ["pradyumnac/ghstars"]
+    assert store.load_retriage() == []
 
 
-def test_sync_isolates_a_pending_push_failure_and_reports_it(
+def test_sync_leaves_remote_alone_when_local_pending_edit_matches_base(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Scenario 2: local == base (a no-op pending edit -- e.g. tagging a
+    repo into a List it's already in). Whatever remote did since the last
+    sync stands untouched; nothing is pushed."""
+    a = List(id="L_1", name="Explore: A", slug="a")
+    b = List(id="L_2", name="Explore: B", slug="b")
+    star = make_star("pradyumnac/x", list_ids=["L_1"], pending_list_ids=["L_1"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([a, b])
+
+    # Remote changed since: also added to L_2 on github.com.
+    remote_star = star.model_copy(update={"pending_list_ids": None})
+    a_remote = a.model_copy(update={"items": ["pradyumnac/x"]})
+    b_remote = b.model_copy(update={"items": ["pradyumnac/x"]})
+    client = FakeGitHubClient(stars=[remote_star], lists=[a_remote, b_remote])
+
+    result = sync(client, store)
+
+    assert result.failed_tag_pushes == []
+    saved = store.load_stars()[0]
+    assert sorted(saved.list_ids) == ["L_1", "L_2"]
+    assert store.load_retriage() == []
+
+
+def test_sync_noops_when_local_and_remote_converge_on_the_same_result(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Scenario 3: both local and remote moved away from base, but landed
+    on the same result -- already effectively applied, so nothing is
+    pushed again."""
+    lst = List(id="L_1", name="Explore: Tool", slug="explore-tool")
+    star = make_star("pradyumnac/x", pending_list_ids=["L_1"])  # base == []
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([lst])
+
+    # Remote already shows the same membership the local edit wants.
+    remote_lst = lst.model_copy(update={"items": ["pradyumnac/x"]})
+    client = FakeGitHubClient(stars=[star], lists=[remote_lst])
+    calls: list[tuple[str, list[str]]] = []
+    original_push = client.update_list_membership_for_item
+
+    def spy(item_id: str, list_ids: list[str]) -> None:
+        calls.append((item_id, list_ids))
+        original_push(item_id, list_ids)
+
+    client.update_list_membership_for_item = spy  # type: ignore[method-assign]
+
+    result = sync(client, store)
+
+    assert calls == []  # never pushed -- already converged
+    assert result.failed_tag_pushes == []
+    saved = store.load_stars()[0]
+    assert saved.list_ids == ["L_1"]
+    assert saved.pending_list_ids is None
+    assert store.load_retriage() == []
+
+
+def test_sync_routes_a_conflicting_edit_to_the_retriage_queue_and_github_wins(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Scenario 4: local and remote both changed since base, to different
+    results -- GitHub wins unconditionally (ADR 0001). The local edit is
+    never pushed and never silently applied; it lands in the local-only
+    Retriage Queue for the user to revisit."""
+    base_lst = List(
+        id="L_base", name="Explore: Base", slug="base", items=["pradyumnac/x"]
+    )
+    other_lst = List(id="L_other", name="Explore: Other", slug="other")
+    remote_lst = List(id="L_remote", name="Explore: Remote", slug="remote")
+    star = make_star("pradyumnac/x", list_ids=["L_base"], pending_list_ids=["L_other"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([base_lst, other_lst, remote_lst])
+
+    # Remote reclassified the star into a *different* List since the last
+    # sync, e.g. from the phone/web view.
+    remote_star = star.model_copy(update={"pending_list_ids": None})
+    base_remote = base_lst.model_copy(update={"items": []})
+    remote_remote = remote_lst.model_copy(update={"items": ["pradyumnac/x"]})
+    client = FakeGitHubClient(
+        stars=[remote_star], lists=[base_remote, other_lst, remote_remote]
+    )
+
+    result = sync(client, store)
+
+    assert result.failed_tag_pushes == []
+    saved = store.load_stars()[0]
+    assert saved.list_ids == ["L_remote"]  # GitHub's state wins
+    assert saved.pending_list_ids is None
+
+    queue = store.load_retriage()
+    assert len(queue) == 1
+    assert queue[0].star_full_name == "pradyumnac/x"
+    assert queue[0].attempted_list_ids == ["L_other"]
+    assert queue[0].resolved is False
+
+    # Never pushed, never applied: the losing edit's target List stays
+    # untouched.
+    by_id = {lst.id: lst for lst in store.load_lists()}
+    assert by_id["L_other"].items == []
+
+
+def test_sync_persists_the_retriage_queue_before_stars_and_lists(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Durability: the Retriage Queue write must land before stars.json/
+    lists.json. Those two already reflect the pending edit cleared (a
+    fresh `fetch_stars()` never carries `pending_list_ids`), so if the
+    process dies between the two writes, the losing edit's own record
+    must not be the one that's missing -- ticket 05 requires it is
+    "never discarded." """
+    base_lst = List(
+        id="L_base", name="Explore: Base", slug="base", items=["pradyumnac/x"]
+    )
+    other_lst = List(id="L_other", name="Explore: Other", slug="other")
+    remote_lst = List(id="L_remote", name="Explore: Remote", slug="remote")
+    star = make_star("pradyumnac/x", list_ids=["L_base"], pending_list_ids=["L_other"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([base_lst, other_lst, remote_lst])
+
+    remote_star = star.model_copy(update={"pending_list_ids": None})
+    base_remote = base_lst.model_copy(update={"items": []})
+    remote_remote = remote_lst.model_copy(update={"items": ["pradyumnac/x"]})
+    client = FakeGitHubClient(
+        stars=[remote_star], lists=[base_remote, other_lst, remote_remote]
+    )
+
+    class _Boom(Exception):
+        pass
+
+    def _explode(*_args: object, **_kwargs: object) -> None:
+        raise _Boom
+
+    store.save_stars = _explode  # type: ignore[method-assign]
+
+    with pytest.raises(_Boom):
+        sync(client, store)
+
+    # A fresh StateStore over the same directory, since the one above had
+    # save_stars swapped out.
+    queue = StateStore(tmp_path).load_retriage()
+    assert len(queue) == 1
+    assert queue[0].star_full_name == "pradyumnac/x"
+
+
+def test_sync_appends_new_conflicts_to_an_existing_retriage_queue(
+    tmp_path: Path,
+) -> None:
+    """The Retriage Queue accumulates across syncs -- an unresolved entry
+    from a prior sync must not be silently dropped by a later one that
+    finds nothing new to add."""
+    store = StateStore(tmp_path)
+    existing = RetriageEntry(
+        star_full_name="pradyumnac/old-conflict",
+        attempted_list_ids=["L_x"],
+        conflict_detected_at=NOW,
+    )
+    store.save_retriage([existing])
+
+    sync(FakeGitHubClient(), store)  # nothing to sync, no new conflicts
+
+    assert store.load_retriage() == [existing]
+
+
+def test_sync_drops_a_moot_pending_edit_when_the_star_was_unstarred_first(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     """A star can be tagged, then unstarred on GitHub before the next
-    sync -- the fake models that by no longer having it, so the push
-    raises KeyError. sync() must not abort or get stuck retrying: it
-    reports the failure and keeps going with everything else."""
+    sync runs. `_carry_forward_archived` already clears `pending_list_ids`
+    via `archive_star()` for it, before the merge ever looks at it -- the
+    stale edit is silently moot, not a failure and not a conflict: there
+    is nothing left to arbitrate for a repo that's no longer starred."""
     keep_lst = List(id="L_1", name="Explore: Keep", slug="keep")
     kept = make_star("pradyumnac/kept", pending_list_ids=["L_1"])
     gone = make_star("pradyumnac/gone", pending_list_ids=["L_1"])
@@ -180,14 +356,42 @@ def test_sync_isolates_a_pending_push_failure_and_reports_it(
 
     result = sync(client, store)  # must not raise
 
-    assert result.failed_tag_pushes == ["pradyumnac/gone"]
+    assert result.failed_tag_pushes == []
     by_name = {s.full_name: s for s in store.load_stars()}
     assert by_name["pradyumnac/kept"].list_ids == ["L_1"]
     assert by_name["pradyumnac/kept"].pending_list_ids is None
-    # Not stuck retrying: fetch_stars() never returns pending_list_ids
-    # (see FakeGitHubClient.fetch_stars), so a failed push isn't reapplied.
     assert by_name["pradyumnac/gone"].pending_list_ids is None
     assert by_name["pradyumnac/gone"].archived is True
+    assert by_name["pradyumnac/gone"].list_ids == []
+    assert store.load_retriage() == []
+
+
+def test_sync_reports_a_genuine_push_failure_and_keeps_going(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """A pending edit can reference a List that was deleted on GitHub
+    since it was staged. Unlike the moot-edit case above, the star is
+    still starred (remote == base on the List axis, so the merge decides
+    to push) -- the client raises, and that one star's failure must not
+    abort the sync or the merge for anything else."""
+    keep_lst = List(id="L_1", name="Explore: Keep", slug="keep")
+    kept = make_star("pradyumnac/kept", pending_list_ids=["L_1"])
+    broken = make_star("pradyumnac/broken", pending_list_ids=["L_deleted"])
+    store = StateStore(tmp_path)
+    store.save_stars([kept, broken])
+    store.save_lists([keep_lst])
+    # "L_deleted" was removed on GitHub since pradyumnac/broken was tagged
+    # into it -- the fake models that by simply never knowing about it.
+    client = FakeGitHubClient(stars=[kept, broken], lists=[keep_lst])
+
+    result = sync(client, store)  # must not raise
+
+    assert result.failed_tag_pushes == ["pradyumnac/broken"]
+    by_name = {s.full_name: s for s in store.load_stars()}
+    assert by_name["pradyumnac/kept"].list_ids == ["L_1"]
+    assert by_name["pradyumnac/broken"].list_ids == []
+    assert by_name["pradyumnac/broken"].pending_list_ids is None
+    assert store.load_retriage() == []
 
 
 def test_sync_populates_list_ids_from_list_membership(
