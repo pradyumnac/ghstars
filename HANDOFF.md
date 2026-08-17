@@ -58,24 +58,38 @@ runs.
 | 14 | Accompanying agent skill (replaces github-stars) | pending | 4, 5, 6, 7, 8, 10, 11, 12 |
 | 15 | Windows & macOS release binaries | pending | 13 |
 | 16 | Push a tag edit immediately, like unstar already does | pending — held, see below | 4, 5 (lifted) |
-| 17 | Mid-term bug fixes from the audit (Explore:General default, Intent exclusivity, 07/10/13 doc edits) | **in progress** (harness task #4, worktree agent) | 5 |
+| 17 | Mid-term bug fixes from the audit (Explore:General default, Intent exclusivity, 07/10/13 doc edits) | done — implemented, code-reviewed, independently verified; **awaiting user confirmation to merge** | 5 |
+| 18 | Distinguish "cleared on GitHub" from "never classified" (edge case surfaced during 17's review) | needs design, not yet speced — **deliberately deferred, do not pick up until main flow is done** | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
 
 **Ticket 05: done**, merged to `main` at `e48b704` (2026-08-17), see prior
 session notes below for the full verification trail. Ticket 16's hard-block
 on 05 is lifted (noted in its file), but 16 itself is still held per the
 plan below.
 
-**Ticket 17: in progress**, launched 2026-08-17 as a worktree agent,
-bundling all four audit findings/proposals as one ticket's scope per user
-direction — see `.scratch/ghstars-v1/issues/17-audit-findings-mid-term-fixes.md`
-for the full scope and design rationale.
+**Ticket 17: done, not yet merged.** Implemented in worktree agent
+`a232ee952e488d4f7` (branch `worktree-agent-a232ee952e488d4f7`) — resumed
+once after hitting a session limit mid-fix. All 4 scopes complete,
+ticket-scoped code-review applied 4 real fixes, independently re-verified
+by the supervisor (read `sync.py`/`tagging.py`/`cli` diffs in full,
+confirmed the exclusion logic and batching are correct), `mise run check`
+green (109/109 tests). One genuine edge case surfaced during review — see
+ticket 18 — was correctly flagged rather than silently fixed or ignored.
+Awaiting explicit user confirmation before merge, same gate as ticket 05.
 
-**07/09/10/11/16 remain held** until ticket 17 lands — per the
+**Ticket 18: filed, deliberately deferred.** Not a bug in ticket 17 — the
+edge case (a Star cleared of List membership directly on github.com is
+indistinguishable from "never classified," so it also gets defaulted into
+`Explore: General`) is exactly what 17's own acceptance criteria
+specified. Filed as its own ticket per explicit user instruction: it
+should get a home, but must not block or be picked up until the main v1
+flow (05-12, 14) is actually implemented — mirrors ticket 13's own
+release gate for the same reason.
+
+**07/09/10/11/16 remain held** until ticket 17 merges — per the
 audit-findings-workflow gate
 (`~/.claude/projects/-home-doe-repos-ghstars/memory/feedback_audit_findings_workflow.md`).
-Ticket 17 itself touches 07/10/13's *files* (dependency/AC edits only,
-not implementation), which is why those three show a "17 will edit"
-note above rather than being fully held.
+Ticket 17 already edited 07/10/13's *files* (dependency/AC edits only, not
+implementation) as part of its own scope.
 
 ## Current state
 
