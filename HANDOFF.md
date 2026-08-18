@@ -22,22 +22,39 @@ truth (acceptance criteria, `## Comments` with implementation notes); this
 table is a status snapshot only. Check harness `TaskList` for live status
 if resuming with new tasks in flight.
 
-Tickets 1-7, 9-11, 16, 17, and 19 are done and merged to `main` — see
-each ticket's own `Status:`/`## Comments` for details.
+### Done
 
-Status column below is taken verbatim (or near-verbatim) from each ticket
-file's own `Status:` line, reconciled 2026-08-17 — the previous version of
-this table used "pending" loosely for several tickets whose files actually
-already say `ready-for-agent`; that mismatch is fixed here. "Ready" only
-means the ticket is speced and workable once its blockers clear, not that
-it's unblocked — check the Blocked-by column too.
+- Issue 01 — core scaffolding, fake client, state store: complete.
+- Issue 02 — real GitHub client, fetch stars: complete.
+- Issue 03 — fetch Lists, parse taxonomy: complete.
+- Issue 04 — local tagging, two-way sync push: complete.
+- Issue 05 — three-way merge, Retriage Queue: complete.
+- Issue 06 — unstar detection, archived state: complete.
+- Issue 07 — category rename/drain: complete.
+- Issue 09 — TUI tagging, bulk tagging, retagging: complete. The ticket
+  file's own `Status:` line still says `ready-for-agent` — update it to
+  `done`.
+- Issue 10 — export engine: complete.
+- Issue 11 — state diff: complete. The ticket file's own `Status:` line
+  still says `ready-for-agent` — update it to `done`.
+- Issue 16 — lightweight push (immediate tag push): complete.
+- Issue 17 — audit findings, mid-term fixes: complete.
+- Issue 19 — architecture cleanup, post-layer: complete.
+
+See each ticket file's own `Status:`/`## Comments` for implementation
+detail. Reconciled against the ticket files directly on 2026-08-18.
+
+### Open
+
+"Ready" means the ticket is speced and workable once its blockers clear,
+not that it's unblocked — check the Blocked-by column.
 
 | #  | Ticket                                                    | Status                                                          | Blocked by                    |
 | -- | ------------------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------ |
 | 8  | Agent-mode status command & verify                        | **ready-for-agent — unblocked, pick up next**                  | 3, 5, 19 (all done)            |
 | 12 | Nudges                                                    | ready-for-agent — blocked                                      | 8                              |
 | 13 | Packaging & distribution (Linux)                          | ready-for-agent — blocked                                      | 5, 6, 7, 8, 9, 10, 11, 12, 14  |
-| 14 | Accompanying agent skill (replaces github-stars)          | **ticket file has no `Status:` line** — add one before picking up | 4, 5, 6, 7, 8, 10, 11, 12      |
+| 14 | Accompanying agent skill (replaces github-stars)          | ready-for-agent — blocked                                      | 4, 5, 6, 7, 8, 10, 11, 12      |
 | 15 | Windows & macOS release binaries                          | ready-for-agent — blocked                                      | 13                             |
 | 18 | Distinguish "cleared on GitHub" from "never classified"   | needs design, not yet speced — no acceptance criteria yet — deliberately deferred until 05-12, 14 done | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
 | 20 | Fix TUI rate-limit-bar defects                            | ready-for-agent — unblocked                                    | none                           |
@@ -51,72 +68,30 @@ it's unblocked — check the Blocked-by column too.
 | 28 | Colour system for Lists and Categories                    | ready-for-agent — blocked                                      | 21                             |
 | 29 | Open in browser, and unstar with confirmation             | ready-for-agent — blocked                                      | 21                             |
 
-## TUI UI overhaul — speced 2026-08-18, ticketed 2026-08-18 (20-29)
+## TUI UI overhaul (tickets 20-29)
 
-A grilling session settled the TUI's navigation, presentation, and config
-design. Written up already:
+Speced and ticketed 2026-08-18. Summary — see the references below for
+detail:
 
-- `spec.md` stories 50-72, replacing the old "TUI visual/interaction design
-  left to implementation" non-goal.
-- `CONTEXT.md` — `Category` no longer has the "Topic except in Reference
-  Lists" carve-out (it gave one slot two names). Added `View Mode`, `Folder`,
-  `Filter`.
-- ADR 0004 (accepted) supersedes ADR 0003: the TUI can sync on an explicit
-  keypress, never on its own initiative.
-- ADR 0005 (proposed, do not build against it): compound Category splitting a
-  kind from a subject, e.g. `Explore: Dev Tools / AI`. Direction chosen,
-  mechanism open.
+- Design source: `spec.md` stories 50-72 and `CONTEXT.md` (`View Mode`,
+  `Folder`, `Filter` added; `Category`'s old "Topic except in Reference
+  Lists" carve-out removed).
+- ADR 0004 (accepted) supersedes ADR 0003: the TUI syncs only on an
+  explicit keypress. ADR 0005 (proposed, do not build against it yet):
+  compound Category, e.g. `Explore: Dev Tools / AI`.
+- Two known defects on `main`, both covered by spec stories: the
+  rate-limit worker's narrow exception catch (`tui/app.py:432`, story 63)
+  and `RateLimitBar`'s blank paint on launch (story 72).
+- TUI performance measurements that justified postponing pagination are
+  recorded in `spec.md`'s Out of Scope section (near line 248) — do not
+  re-measure.
+- ADRs 0001 and 0002's `Implemented` values are recorded in
+  `docs/adr/INDEX.md` (`done` and `in-progress`).
 
-Stories 50-72 are now tickets 20-29 in the task rail above, in dependency
-order. 20, 21, and 22 have no blockers and can start immediately, in
-parallel. Chrome (24) originally quizzed as two tickets — chrome/bars and the
-explicit sync key — merged into one at the user's request, since the sync key
-updates the same top bar chrome builds; see 24's own file for the resplit
-seam if it proves too large for one session.
-
-`unstar_cmd` (`cli/commands/unstar.py`) inlines its lock-load-archive-save
-orchestration in the CLI, unlike `tag_star()`, which already lives in
-`ghstars.core` and is shared by the CLI and TUI. Ticket 29 extracts it into
-core as a prefactor step before adding the TUI's unstar action, so the two
-surfaces don't duplicate that sequence.
-
-### Two defects found while speccing, both live on `main`
-
-- `tui/app.py:432` — `_fetch_rate_limit` catches only `GitHubApiError`. A
-  `ValidationError` from `RateLimitResponse.model_validate` is not wrapped by
-  `_graphql`, so it escapes the worker and leaves the rate-limit bar blank
-  forever with no notification. `_apply_tag` catches broadly for exactly this
-  reason and documents why; the two workers disagree. Spec story 63 covers
-  the fix.
-- `RateLimitBar` is constructed with no initial content, so it paints as a
-  blank strip for the ~0.7s `check_rate_limit()` takes. This is why the bar
-  looks absent on launch. Spec story 72 covers it.
-
-### Measurements — do not redo these
-
-TUI performance was measured on the real 1530-Star account before deciding on
-pagination: `load_stars()` 32ms, building 1530 `DataTable` rows 52ms, full
-`clear()`+rebuild 56ms, one `update_cell` 0.1ms, `check_rate_limit()` 0.69s.
-The TUI is not slow at this scale; the only slow thing is the network call.
-Pagination is postponed, not rejected — see the spec's Out of Scope.
-
-### Deferred, with an owner
-
-- Immediate push of a tag edit — stays ticket 16. `tag_star()` still only
-  stages `pending_list_ids` (`core/tagging.py:101`); the user's recollection
-  that this had already changed is wrong, and `git log` on that file confirms
-  nothing has changed since ticket 19.
-- Compound Category — ADR 0005, plus its own issue and spec entry.
-
-### Needs your confirmation
-
-ADRs 0001 and 0002 predated the `adr-lifecycle` format (no `# NNNN — Title`,
-no `## Status`), so `build_index.py` skipped both and `INDEX.md` silently
-omitted two binding decisions. Structure added, reasoning untouched. The
-`Implemented` values are inferred from code, not stated by the user: 0001
-`done` (three-way merge and Retriage Queue exist), 0002 `in-progress`
-(`config/` and `state/` exist, `runtime/` does not until ticket 12). Confirm
-or correct both.
+Tickets 20, 21, and 22 have no blockers and can start in parallel. Ticket
+29 first extracts `unstar_cmd`'s lock-load-archive-save sequence into
+`ghstars.core` (a prefactor step), so the CLI and TUI share it the way
+`tag_star()` already is shared.
 
 ## Current state
 
