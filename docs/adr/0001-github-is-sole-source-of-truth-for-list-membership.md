@@ -1,4 +1,14 @@
-# GitHub is the sole source of truth for List existence and membership
+# 0001 — GitHub is the sole source of truth for List existence and membership
+
+## Status
+
+accepted
+
+## Implemented
+
+done
+
+## Context
 
 ghstars needed a rule for what happens when a Star's List membership changes both on GitHub (e.g. from phone/web) and locally since the last sync. We considered auto-merging the two (union), but decided GitHub always wins unconditionally — a conflicting local edit is never applied; it moves to a local-only Retriage Queue for the user to re-decide, and is never written to GitHub.
 

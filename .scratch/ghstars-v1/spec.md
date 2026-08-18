@@ -97,6 +97,53 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
 
 49. As a developer, I want the TUI to show my remaining GitHub API rate limit, so that I can tell when I'm approaching a sync-blocking limit before it happens. Numbered out of sequence with the rest of the TUI section (24-27) to avoid renumbering every other story's cross-references elsewhere in this doc and the codebase.
 
+### TUI: navigation, presentation, and configuration
+
+Stories 50-72 replace the earlier "TUI visual/interaction design left to
+implementation" deferral. Story numbers continue from 49 for the same
+cross-reference reason.
+
+**Navigation**
+
+50. As a developer, I want to switch View Mode between a flat Star list, a grid, and a Folder, so that I can pick the arrangement that suits the job in front of me.
+51. As a developer, I want Folder mode to show my Lists as containers and open one List into its Stars, so that I can work through one List at a time.
+52. As a developer, I want a Star that belongs to no List to appear in one default Folder, so that unclassified Stars stay reachable and never disappear from the TUI.
+53. As a developer, I want grid mode to show each Star as a card with the description cut to a fixed character count, so that cards stay the same size and the grid stays readable.
+
+**Finding Stars**
+
+54. As a developer, I want to filter the Stars on screen by Category, by Intent, and by List, so that I can narrow a large account to the set I care about.
+55. As a developer, I want a Filter to work inside Folder mode as well as the flat modes, so that the container I am in and the Filter I applied stay independent.
+56. As a developer, I want to search Stars by name and description as I type, so that I can reach one repo out of 1530 without scrolling.
+57. As a developer, I want a Filter for unclassified Stars only, so that I have a direct triage queue.
+58. As a developer, I want to sort by name, star date, stargazer count, language, and List count, and to reverse any of them, so that I can order the view for the task at hand. Star date descending is the default, because the newest Stars are the ones that need classification.
+59. As a developer, I want a detail pane for the Star under the cursor, showing every field the last sync stored, so that I can judge a repo without opening a browser.
+
+**Presentation**
+
+60. As a developer, I want List and Category names shown in colour, so that I can tell groups apart at a glance. ghstars derives the colour from the Category name, and ships soft pastel defaults.
+61. As a developer, I want to set the colour palette in config, so that the colours suit my terminal theme. The palette must stay readable on a light and a dark background.
+62. As a developer, I want to set header height, row height, and whether the clock shows, so that I can trade screen density against readability.
+63. As a developer, I want a top bar showing remaining API rate limit, last sync time, and List count, so that I can see account state without leaving the TUI.
+64. As a developer, I want a bottom status bar showing the visible and total Star count, the pending-edit count, the active sort, and the active Filter, so that I always know what the view is showing me. The sort and the Filter appear last, each with its key, for example `sort: newest [s]`.
+
+**Actions**
+
+65. As a developer, I want a key that starts a full sync from inside the TUI, so that I can refresh stale data where I noticed it was stale. ghstars only syncs when I press the key (see ADR 0004).
+66. As a developer, I want a separate, short-named key that refreshes the API rate limit alone, so that a cheap check stays distinct from a full sync.
+67. As a developer, I want to open the Star under the cursor in my browser, so that I can read the repo itself. ghstars uses the XDG default handler.
+68. As a developer, I want to unstar the Star under the cursor after I confirm in a dialog, so that a real, irreversible GitHub change can never happen from one keypress.
+
+**Configuration**
+
+69. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use.
+70. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting.
+71. As a developer, I want ghstars to remember my last View Mode, sort, and Filter between sessions, so that the TUI opens where I left it.
+
+**Responsiveness**
+
+72. As a developer, I want the TUI to draw immediately on launch and never block on a network call, so that a slow GitHub response never looks like a hang. Every panel that waits on data shows a labelled placeholder first.
+
 ## Implementation Decisions
 
 **Modules**
@@ -134,8 +181,23 @@ Three-way merge per Star, per sync: base (last-synced snapshot) vs. current GitH
 
 **State/config layout** (see ADR 0002)
 
-- `~/.ghstars/config/` — taxonomy definitions, export mappings. Plain TOML/YAML files, user- or dotfiles-managed. Never auto-committed by ghstars.
-- `~/.ghstars/state/` — local snapshot, Retriage Queue. ghstars never runs `git init` and never auto-commits; if the user already git-tracks this directory, `ghstars diff` can use its history, but committing is left entirely to the user.
+- `~/.ghstars/config/` — taxonomy definitions, export mappings, TUI settings (`tui.toml`: keybindings, colour palette, header height, row height). Plain TOML/YAML files, user- or dotfiles-managed. Never auto-committed by ghstars.
+- `~/.ghstars/state/` — local snapshot, Retriage Queue, TUI session state (`tui-state.toml`: last View Mode, sort, Filter). ghstars never runs `git init` and never auto-commits; if the user already git-tracks this directory, `ghstars diff` can use its history, but committing is left entirely to the user.
+
+**TUI config: two files, split by who writes them** (story 69-71, ADR 0002)
+
+`config/tui.toml` holds settings the user authors. ghstars reads it on
+launch. ghstars writes it only when the user saves an edit from the TUI
+(story 70), and uses a style-preserving TOML writer so user comments and
+key order survive the write. `config/` is stow-managed dotfiles, so an
+unasked-for rewrite would show up as churn in the user's dotfiles repo.
+
+`state/tui-state.toml` holds session state ghstars writes on its own
+(story 71). It lives under `state/`, which is already untracked, so
+remembering a sort order never dirties a dotfiles repo.
+
+A missing file means defaults, never an error — the same rule
+`load_export_config` already follows for `export.toml`.
 - `~/.ghstars/runtime/` — ephemeral: caches, nudge files under `runtime/nudges/<theme>.md`, one file per theme, entries deduplicated by stable slug.
 
 **Diff support**
@@ -182,12 +244,18 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 - Nudge auto-application — nudges are observational only and never self-modify config.
 - Import/migration from the old `905.github/stars/stars.json` — out of scope entirely for v1; ghstars starts from a fresh GitHub fetch, no local-file import path.
 - Auto-committing `state/` — explicitly rejected; committing state/'s git history (when the user tracks it) is the user's responsibility, not ghstars'.
-- TUI visual/interaction design details beyond "supports tagging, bulk tagging, retagging" — left to implementation/prototyping.
 - Retriage Queue auto-resolution — always requires manual review; no auto-merge/union logic.
+- TUI pagination and page-size config — **postponed, not rejected**. Measured on the real 1530-Star account: `load_stars()` 32ms, building all 1530 `DataTable` rows 52ms, full rebuild 56ms, one `update_cell` 0.1ms. Textual's `DataTable` already virtualizes painting. Pagination would add config, state, and keys to solve 85ms. Revisit if a real account reaches a size where the measurement changes. Story 72 (non-blocking launch) is the part that must be built now.
+- Compound Category, splitting a Category into a kind and a subject (for example `Explore: Dev Tools / AI`) — **deferred to a follow-up issue, ADR, and spec entry**. The direction is chosen, the mechanism is not. It changes `parse_list_name`, and it needs a migration path for existing List names. Stories 50-72 assume today's single freeform Category, and the Filter design (story 54) must leave room for a second axis later.
+- Immediate push of a tag edit from the TUI — owned by ticket 16, not by these stories. `tag_star()` stages `pending_list_ids` today; the TUI renders that staged state honestly. Ticket 16 still has three unresolved design questions about narrowing the three-way merge to one Star.
+- Filtering by GitHub's own repository topics — ghstars never fetches `repositoryTopics`, and the taxonomy lives in List names by design.
 
 ## Further Notes
 
 - ADR 0001 (GitHub is the sole source of truth for List membership) and ADR 0002 (single `~/.ghstars/` directory instead of XDG base dirs) are binding architectural context — read both before implementing the sync engine or state layout.
+- ADR 0004 (the TUI can sync on an explicit keypress) supersedes ADR 0003 and governs stories 65 and 66. Read it before adding any live GitHub call to the TUI.
+- ADR 0005 (compound Category) is `proposed`, not accepted. Do not build against it.
+- The TUI's rate-limit worker catches only `GitHubApiError` (`tui/app.py:432`). A `ValidationError` from `RateLimitResponse.model_validate` escapes the worker and leaves the bar blank with no message. Story 63 must fix this, and match the broad-catch reasoning `_apply_tag` already documents.
 - `updateUserListsForItem`'s full-replace semantics (confirmed via live GraphQL schema introspection and a live query against the user's own account, which returned 6 real Lists) is a load-bearing API detail, not an assumption.
 - The old `gh-stars.py` script and `github-stars` skill stay in place until ghstars is verified stable; retirement is a follow-up action, not part of this build.
 - The accompanying agent skill is a real deliverable of this effort, not a stretch goal. Its exact content is expected to firm up alongside `ghstars.cli`'s surface during implementation, following the same deterministic/agentic division of labor documented in the existing `github-stars` skill.

@@ -41,6 +41,64 @@ it's unblocked — check the Blocked-by column too.
 | 15 | Windows & macOS release binaries                          | ready-for-agent — blocked                                      | 13                             |
 | 18 | Distinguish "cleared on GitHub" from "never classified"   | needs design, not yet speced — no acceptance criteria yet — deliberately deferred until 05-12, 14 done | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
 
+## TUI UI overhaul — speced 2026-08-18, not yet ticketed
+
+A grilling session settled the TUI's navigation, presentation, and config
+design. Written up already:
+
+- `spec.md` stories 50-72, replacing the old "TUI visual/interaction design
+  left to implementation" non-goal.
+- `CONTEXT.md` — `Category` no longer has the "Topic except in Reference
+  Lists" carve-out (it gave one slot two names). Added `View Mode`, `Folder`,
+  `Filter`.
+- ADR 0004 (accepted) supersedes ADR 0003: the TUI can sync on an explicit
+  keypress, never on its own initiative.
+- ADR 0005 (proposed, do not build against it): compound Category splitting a
+  kind from a subject, e.g. `Explore: Dev Tools / AI`. Direction chosen,
+  mechanism open.
+
+**Next step: convert stories 50-72 into ticket files.** The user asked for
+this as a separate step, after the spec landed. Scope it as two tickets, not
+one — config and keybindings first, because the rest reads config.
+
+### Two defects found while speccing, both live on `main`
+
+- `tui/app.py:432` — `_fetch_rate_limit` catches only `GitHubApiError`. A
+  `ValidationError` from `RateLimitResponse.model_validate` is not wrapped by
+  `_graphql`, so it escapes the worker and leaves the rate-limit bar blank
+  forever with no notification. `_apply_tag` catches broadly for exactly this
+  reason and documents why; the two workers disagree. Spec story 63 covers
+  the fix.
+- `RateLimitBar` is constructed with no initial content, so it paints as a
+  blank strip for the ~0.7s `check_rate_limit()` takes. This is why the bar
+  looks absent on launch. Spec story 72 covers it.
+
+### Measurements — do not redo these
+
+TUI performance was measured on the real 1530-Star account before deciding on
+pagination: `load_stars()` 32ms, building 1530 `DataTable` rows 52ms, full
+`clear()`+rebuild 56ms, one `update_cell` 0.1ms, `check_rate_limit()` 0.69s.
+The TUI is not slow at this scale; the only slow thing is the network call.
+Pagination is postponed, not rejected — see the spec's Out of Scope.
+
+### Deferred, with an owner
+
+- Immediate push of a tag edit — stays ticket 16. `tag_star()` still only
+  stages `pending_list_ids` (`core/tagging.py:101`); the user's recollection
+  that this had already changed is wrong, and `git log` on that file confirms
+  nothing has changed since ticket 19.
+- Compound Category — ADR 0005, plus its own issue and spec entry.
+
+### Needs your confirmation
+
+ADRs 0001 and 0002 predated the `adr-lifecycle` format (no `# NNNN — Title`,
+no `## Status`), so `build_index.py` skipped both and `INDEX.md` silently
+omitted two binding decisions. Structure added, reasoning untouched. The
+`Implemented` values are inferred from code, not stated by the user: 0001
+`done` (three-way merge and Retriage Queue exist), 0002 `in-progress`
+(`config/` and `state/` exist, `runtime/` does not until ticket 12). Confirm
+or correct both.
+
 ## Current state
 
 Local dev state (`~/.ghstars/state/stars.json`/`lists.json`) is

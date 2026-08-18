@@ -25,12 +25,24 @@ A Star that has been unstarred on GitHub. ghstars keeps its historical record lo
 _Avoid_: Retired (do not conflate the two — Archived means the star itself is gone; Retired means the star stays but its use has ended).
 
 **Category**:
-The subject-matter label in a List's name, following the Intent prefix — e.g. `Vendored Skills` in `Explore: Vendored Skills`. General Lists have no Intent prefix, so their whole name is freeform, not a Category in this sense.
-_Avoid_: Tag, Topic (except within Reference Lists, where "Topic" names the informational subject — e.g. `Reference: AI Agents`).
+The subject-matter label in a List's name, after the Intent prefix — for example `Vendored Skills` in `Explore: Vendored Skills`. A Category label names a kind of thing (`Dev Tools`, `CLI Tools`) or a subject (`AI`, `DevOps`). The user chooses which. Category is the only name for this slot, under every Intent. General Lists have no Intent prefix, so the whole name is freeform and holds no Category.
+_Avoid_: Tag, Topic, Label.
 
 **General List**:
 A List with no Intent prefix — freeform, outside the Current/Explore/Reference taxonomy entirely.
 _Avoid_: Freeform List, Uncategorized List.
+
+**View Mode**:
+The arrangement ghstars uses to put Stars on screen. A View Mode changes the arrangement only. It never changes which Stars the user sees — a Filter does that.
+_Avoid_: Layout, Display, Screen.
+
+**Folder**:
+A View Mode that shows each List as a container, and the Stars of one List as the contents of that container. The hierarchy is one level deep: a Folder holds Stars, and never another Folder. A Star that belongs to no List falls back to one default Folder.
+_Avoid_: Directory, Tree, Group, Bucket.
+
+**Filter**:
+A rule that limits which Stars the user sees, by Category, by Intent, or by List. A Filter works on a different axis from a Folder: a Folder sets the container the user is inside, and a Filter narrows the Stars shown within it.
+_Avoid_: Query, Search (Search matches free text, and is a separate action).
 
 **Retriage Queue**:
 A local-only holding area for a Star whose pending List-membership change conflicted with a concurrent change on GitHub since the last sync. Never synced to GitHub — conflict handling is ghstars' responsibility, not GitHub's.

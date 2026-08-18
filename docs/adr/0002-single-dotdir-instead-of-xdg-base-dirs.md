@@ -1,4 +1,14 @@
-# Single ~/.ghstars/ directory instead of XDG base dirs
+# 0002 — Single ~/.ghstars/ directory instead of XDG base dirs
+
+## Status
+
+accepted
+
+## Implemented
+
+in-progress
+
+## Context
 
 Most modern CLI tools split config/data/state across `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, and `$XDG_STATE_HOME`. ghstars deliberately doesn't: everything lives under one `~/.ghstars/` tree (`config/`, `state/`, `runtime/`).
 
