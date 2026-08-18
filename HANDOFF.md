@@ -40,8 +40,18 @@ it's unblocked — check the Blocked-by column too.
 | 14 | Accompanying agent skill (replaces github-stars)          | **ticket file has no `Status:` line** — add one before picking up | 4, 5, 6, 7, 8, 10, 11, 12      |
 | 15 | Windows & macOS release binaries                          | ready-for-agent — blocked                                      | 13                             |
 | 18 | Distinguish "cleared on GitHub" from "never classified"   | needs design, not yet speced — no acceptance criteria yet — deliberately deferred until 05-12, 14 done | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
+| 20 | Fix TUI rate-limit-bar defects                            | ready-for-agent — unblocked                                    | none                           |
+| 21 | TUI config foundation: tui.toml and tui-state.toml        | ready-for-agent — unblocked                                    | none                           |
+| 22 | TUI detail pane                                           | ready-for-agent — unblocked                                    | none                           |
+| 23 | In-TUI config editor                                      | ready-for-agent — blocked                                      | 21                             |
+| 24 | Chrome, live state, and an explicit sync key              | ready-for-agent — blocked                                      | 20, 21                         |
+| 25 | View mode switcher and Folder view                        | ready-for-agent — blocked                                      | 21                             |
+| 26 | Grid view mode                                            | ready-for-agent — blocked                                      | 25                             |
+| 27 | Finding and ordering Stars: filters, search, sort         | ready-for-agent — blocked                                      | 21, 25                         |
+| 28 | Colour system for Lists and Categories                    | ready-for-agent — blocked                                      | 21                             |
+| 29 | Open in browser, and unstar with confirmation             | ready-for-agent — blocked                                      | 21                             |
 
-## TUI UI overhaul — speced 2026-08-18, not yet ticketed
+## TUI UI overhaul — speced 2026-08-18, ticketed 2026-08-18 (20-29)
 
 A grilling session settled the TUI's navigation, presentation, and config
 design. Written up already:
@@ -57,9 +67,18 @@ design. Written up already:
   kind from a subject, e.g. `Explore: Dev Tools / AI`. Direction chosen,
   mechanism open.
 
-**Next step: convert stories 50-72 into ticket files.** The user asked for
-this as a separate step, after the spec landed. Scope it as two tickets, not
-one — config and keybindings first, because the rest reads config.
+Stories 50-72 are now tickets 20-29 in the task rail above, in dependency
+order. 20, 21, and 22 have no blockers and can start immediately, in
+parallel. Chrome (24) originally quizzed as two tickets — chrome/bars and the
+explicit sync key — merged into one at the user's request, since the sync key
+updates the same top bar chrome builds; see 24's own file for the resplit
+seam if it proves too large for one session.
+
+`unstar_cmd` (`cli/commands/unstar.py`) inlines its lock-load-archive-save
+orchestration in the CLI, unlike `tag_star()`, which already lives in
+`ghstars.core` and is shared by the CLI and TUI. Ticket 29 extracts it into
+core as a prefactor step before adding the TUI's unstar action, so the two
+surfaces don't duplicate that sequence.
 
 ### Two defects found while speccing, both live on `main`
 
