@@ -1,6 +1,7 @@
 import json
 
 import typer
+from rich.console import Console
 
 # `app` is imported by name -- not just reached via `cli.app` -- so mypy
 # can resolve its type for the `@app.command(...)` decorator below across
@@ -23,8 +24,16 @@ def sync_cmd(
     """Fetch stars and Lists from GitHub into local state."""
     client = cli.get_client()
     store = cli.get_store()
+    # A sync can take minutes (one `gh` subprocess round trip per page,
+    # per pending tag push -- see docs/explanation/known-limitations.md)
+    # with nothing else written to the console in the meantime. stderr,
+    # so a `--json` caller's stdout stays clean; Console degrades to
+    # plain status lines instead of an animated spinner when stderr
+    # isn't a terminal (e.g. piped/CI), rather than garbling output.
+    console = Console(stderr=True)
     try:
-        result = sync(client, store)
+        with console.status("Starting sync...", spinner="dots") as spinner:
+            result = sync(client, store, on_stage=lambda stage: spinner.update(f"{stage}..."))
     except (RateLimitExceededError, GitHubApiError) as exc:
         fail(str(exc))
 

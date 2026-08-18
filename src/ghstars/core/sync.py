@@ -25,7 +25,21 @@ class SyncResult(BaseModel):
     failed_default_pushes: list[str] = []
 
 
-def sync(client: GitHubClient, store: StateStore) -> SyncResult:
+def sync(
+    client: GitHubClient,
+    store: StateStore,
+    *,
+    on_stage: Callable[[str], None] | None = None,
+) -> SyncResult:
+    """`on_stage`, if given, is called with a short human-readable label
+    before each major phase below -- the caller's seam for surfacing
+    progress on a run that is normally silent until it finishes (e.g.
+    `sync_cmd`'s spinner). Purely a progress hook: `sync()`'s own
+    behavior and return value never depend on whether it is set.
+    """
+    report = on_stage or (lambda _stage: None)
+
+    report("Checking rate limit")
     status = client.check_rate_limit()
     if not status.ok:
         raise RateLimitExceededError(
@@ -38,6 +52,7 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
     # stale snapshot and clobbering this write, or vice versa (story 33).
     with store.lock():
         previous = _load_previous_stars(store)
+        report("Fetching starred repos")
         stars = client.fetch_stars()
         archived = _carry_forward_archived(previous, stars, now=datetime.now(UTC))
         all_stars = stars + archived
@@ -46,6 +61,7 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
         # classify_list() derives intent/category/malformed before persisting.
         # Fetched before either save below, so a failure here never leaves
         # stars.json updated while lists.json is stale, or vice versa.
+        report("Fetching Lists")
         lists = [classify_list(lst) for lst in client.fetch_lists()]
         all_stars = reconcile_list_membership(all_stars, lists)
 
@@ -54,6 +70,7 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
         # against it -- this is ticket 05's three-way merge, replacing
         # ticket 04's unconditional pre-fetch push (see module docstring
         # on `_merge_pending_list_membership`).
+        report("Pushing pending tag changes")
         now = datetime.now(UTC)
         all_stars, lists, failed_tag_pushes, conflicts = _merge_pending_list_membership(
             client, previous=previous, current=all_stars, lists=lists, now=now
@@ -75,6 +92,7 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
         # local edit is never applied" -- and defaulting it here would
         # be a different kind of silent application of an edit GitHub
         # never actually accepted.
+        report("Applying default classification")
         already_handled = {
             *failed_tag_pushes,
             *(entry.star_full_name for entry in conflicts),
@@ -92,6 +110,7 @@ def sync(client: GitHubClient, store: StateStore) -> SyncResult:
         # a duplicate retriage entry next sync (the same conflict gets
         # re-detected against the same unwritten `previous`), which is
         # recoverable; a missing one would not be.
+        report("Saving local state")
         if conflicts:
             store.save_retriage([*_load_previous_retriage(store), *conflicts])
         store.save_stars(all_stars)
