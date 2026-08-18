@@ -33,7 +33,9 @@ def sync_cmd(
     console = Console(stderr=True)
     try:
         with console.status("Starting sync...", spinner="dots") as spinner:
-            result = sync(client, store, on_stage=lambda stage: spinner.update(f"{stage}..."))
+            result = sync(
+                client, store, on_stage=lambda stage: spinner.update(f"{stage}...")
+            )
     except (RateLimitExceededError, GitHubApiError) as exc:
         fail(str(exc))
 
