@@ -31,18 +31,34 @@ if resuming with new tasks in flight.
 - Issue 05 — three-way merge, Retriage Queue: complete.
 - Issue 06 — unstar detection, archived state: complete.
 - Issue 07 — category rename/drain: complete.
-- Issue 09 — TUI tagging, bulk tagging, retagging: complete. The ticket
-  file's own `Status:` line still says `ready-for-agent` — update it to
-  `done`.
+- Issue 09 — TUI tagging, bulk tagging, retagging: complete.
 - Issue 10 — export engine: complete.
-- Issue 11 — state diff: complete. The ticket file's own `Status:` line
-  still says `ready-for-agent` — update it to `done`.
+- Issue 11 — state diff: complete.
 - Issue 16 — lightweight push (immediate tag push): complete.
 - Issue 17 — audit findings, mid-term fixes: complete.
 - Issue 19 — architecture cleanup, post-layer: complete.
 
 See each ticket file's own `Status:`/`## Comments` for implementation
 detail. Reconciled against the ticket files directly on 2026-08-18.
+
+### Gaps to fix (last updated 2026-08-18)
+
+- Ticket 09's own file still says `Status: ready-for-agent`, though the
+  work is done and merged (commit `8c55b2d`). Update the file to `done`.
+- Ticket 11's own file still says `Status: ready-for-agent`, though the
+  work is done and merged (`ghstars diff` ships in `cli/commands/diff.py`).
+  Update the file to `done`.
+- Spec story 47 (retire `gh-stars.py` and the `github-stars` skill once
+  ghstars is stable) has no ticket. Ticket 14 explicitly punts on the
+  retirement mechanism. Spec.md's Further Notes calls retirement "a
+  follow-up action," but that line sits outside the formal Out of Scope
+  section, so nothing tracks the actual retirement work. Open a ticket for
+  it once ticket 14 lands.
+- `docs/adr/` has two different files both numbered `0004`
+  (`0004-pending-tag-staging-and-retriage-stay-dormant.md` and
+  `0004-tui-may-sync-on-an-explicit-keypress.md`). Renumber one — the TUI
+  sync-keypress ADR is the newer decision and is the likely candidate for
+  `0006` — and update `docs/adr/INDEX.md` and every cross-reference to it.
 
 ### Open
 
