@@ -75,6 +75,7 @@ from ghstars.tui.config import (
     CATEGORY_COLOURS_DARK,
     CATEGORY_COLOURS_LIGHT,
     DEFAULT_DATE_FORMAT,
+    DEFAULT_KEYBINDINGS,
     CategoryColourName,
     ColumnName,
     LayoutPreset,
@@ -84,6 +85,12 @@ from ghstars.tui.config import (
     load_tui_state,
     save_tui_state,
 )
+
+
+def _default_binding(action: str, description: str, *, show: bool = True) -> Binding:
+    """Bind an action to its `DEFAULT_KEYBINDINGS` key."""
+    return Binding(DEFAULT_KEYBINDINGS[action], action, description, show=show)
+
 
 _LOCK = "\U0001f512"
 _GLOBE = "\U0001f310"
@@ -839,26 +846,28 @@ class TuiApp(App[None]):
 
     _FOOTER_SEP = " •"
 
+    # Keys come from `DEFAULT_KEYBINDINGS`, the canonical map `tui.toml`
+    # validation checks a user override against.
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("q", "quit", f"Quit{_FOOTER_SEP}"),
-        Binding("t", "tag_selected", f"Tag / Retag{_FOOTER_SEP}"),
-        Binding("d", "toggle_detail_pane", f"Detail{_FOOTER_SEP}"),
-        Binding("space", "toggle_select", f"Select{_FOOTER_SEP}"),
-        Binding("a", "select_all", f"Select all{_FOOTER_SEP}"),
-        Binding("c", "clear_selection", f"Clear selection{_FOOTER_SEP}"),
-        Binding("l", "show_lists", f"Lists{_FOOTER_SEP}"),
-        Binding("f", "open_filter", "Filter", show=False),
-        Binding("x", "clear_discovery", "Clear", show=False),
-        Binding("z", "cycle_layout", f"Layout{_FOOTER_SEP}"),
-        Binding("o", "open_in_browser", f"Open{_FOOTER_SEP}"),
-        Binding("u", "unstar_selected", f"Unstar{_FOOTER_SEP}"),
+        _default_binding("quit", f"Quit{_FOOTER_SEP}"),
+        _default_binding("tag_selected", f"Tag / Retag{_FOOTER_SEP}"),
+        _default_binding("toggle_detail_pane", f"Detail{_FOOTER_SEP}"),
+        _default_binding("toggle_select", f"Select{_FOOTER_SEP}"),
+        _default_binding("select_all", f"Select all{_FOOTER_SEP}"),
+        _default_binding("clear_selection", f"Clear selection{_FOOTER_SEP}"),
+        _default_binding("show_lists", f"Lists{_FOOTER_SEP}"),
+        _default_binding("open_filter", "Filter", show=False),
+        _default_binding("clear_discovery", "Clear", show=False),
+        _default_binding("cycle_layout", f"Layout{_FOOTER_SEP}"),
+        _default_binding("open_in_browser", f"Open{_FOOTER_SEP}"),
+        _default_binding("unstar_selected", f"Unstar{_FOOTER_SEP}"),
         # Keep the sort label synchronized with the active mode.
-        Binding("s", "cycle_sort", "Sort (Date)", show=False),
-        Binding("slash", "open_search", "Search", show=False),
+        _default_binding("cycle_sort", "Sort (Date)", show=False),
+        _default_binding("open_search", "Search", show=False),
         # Hide this contextual binding from persistent key hints.
-        Binding("escape", "close_search", "Close search", show=False),
-        Binding("r", "refresh_rate_limit", "Refresh rate limit"),
-        Binding("y", "sync", f"Sync{_FOOTER_SEP}"),
+        _default_binding("close_search", "Close search", show=False),
+        _default_binding("refresh_rate_limit", "Refresh rate limit"),
+        _default_binding("sync", f"Sync{_FOOTER_SEP}"),
     ]
 
     def __init__(
@@ -989,9 +998,11 @@ class TuiApp(App[None]):
         force-quit, `ctrl+c`, and the command palette's `ctrl+p` among
         them -- the moment a user configured even one override.
 
-        An override naming an action with no matching `action_<name>`
-        method, or with no existing key bound to it, is a silent no-op
-        -- config plumbing only, no new UI, never a hard error.
+        Every override reaching this method already passed
+        `TuiConfig`'s keybinding validation at load time -- a known
+        action, a parseable key, no reserved key, and no collision in
+        the merged map -- so it never has to reject one here (ticket 21
+        made an unknown action a silent no-op instead).
         """
         if not overrides:
             return

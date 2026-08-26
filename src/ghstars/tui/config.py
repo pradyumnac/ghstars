@@ -21,6 +21,8 @@ from typing import Literal
 
 import tomlkit
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from textual.binding import Binding, InvalidBinding
+from textual.keys import Keys
 from tomlkit.exceptions import TOMLKitError
 
 from ghstars.core.state_store import atomic_write
@@ -31,6 +33,81 @@ DEFAULT_DATE_FORMAT = "%d-%b-%Y"
 DEFAULT_TOAST_TIMEOUT = 8
 DEFAULT_DETAIL_PANE_HEIGHT = 14
 DEFAULT_GRID_CARD_TRUNCATION = 120
+
+# ADR 0008: three App-level keys stay fixed. `ctrl+c` is a terminal
+# convention, `ctrl+q` is the force-quit path, and `ctrl+p` is the only
+# route to the config editor -- a bad rebind of it would lock the user
+# out of the tool that repairs the config.
+RESERVED_KEYS: dict[str, str] = {
+    "ctrl+c": "the terminal's own interrupt convention",
+    "ctrl+q": "the force-quit path",
+    "ctrl+p": "the only route to the config editor",
+}
+
+# Every key name Textual normalizes a single printable character to
+# (`t`, `slash`, `plus`, ...), plus its own named keys (`escape`, `f5`,
+# `pageup`, ...). A base key outside this set is a typo, not a key.
+_MODIFIERS = frozenset({"ctrl", "shift", "alt", "meta", "super", "hyper"})
+_KEY_NAMES = frozenset(
+    [key.value for key in Keys]
+    + [
+        next(iter(Binding.make_bindings([Binding(chr(code), "", "")]))).key
+        for code in range(33, 127)
+        # A comma separates two keys, so it is never a key itself.
+        if chr(code) != ","
+    ]
+)
+
+
+def normalize_key(raw_key: str) -> str:
+    """Normalize a `tui.toml` key string the way `TuiApp` binds it.
+
+    Runs the same `Binding.make_bindings` pass
+    `TuiApp._apply_keybinding_overrides` applies, and keeps its
+    first-key-wins behaviour for a comma list, so validation can never
+    pass a key the runtime then binds differently. Raises `ValueError`
+    on a key string Textual cannot parse.
+    """
+    try:
+        key = next(iter(Binding.make_bindings([Binding(raw_key, "", "")]))).key
+    except InvalidBinding as exc:
+        raise ValueError(f"{raw_key!r} is not a key: {exc}") from exc
+    if key in _KEY_NAMES:
+        return key
+    *modifiers, base = key.split("+")
+    unknown = [modifier for modifier in modifiers if modifier not in _MODIFIERS]
+    if unknown:
+        raise ValueError(f"{raw_key!r} is not a key: unknown modifier {unknown[0]!r}")
+    if base not in _KEY_NAMES:
+        raise ValueError(f"{raw_key!r} is not a key: unknown key {base!r}")
+    return key
+
+
+# The canonical action-to-key map (ADR 0008: 17 rebindable actions).
+# It lives here, not on `TuiApp`, because `app.py` already imports this
+# module -- validation needs the defaults to spot a collision with a key
+# the user never touched, and reading them off `TuiApp` would make the
+# two modules import each other. `TuiApp.BINDINGS` builds itself from
+# this map, so there is still one source of truth for a default key.
+DEFAULT_KEYBINDINGS: dict[str, str] = {
+    "quit": "q",
+    "tag_selected": "t",
+    "toggle_detail_pane": "d",
+    "toggle_select": "space",
+    "select_all": "a",
+    "clear_selection": "c",
+    "show_lists": "l",
+    "open_filter": "f",
+    "clear_discovery": "x",
+    "cycle_layout": "z",
+    "open_in_browser": "o",
+    "unstar_selected": "u",
+    "cycle_sort": "s",
+    "open_search": "slash",
+    "close_search": "escape",
+    "refresh_rate_limit": "r",
+    "sync": "y",
+}
 
 LayoutDensity = Literal["compact", "balanced"]
 # The fixed Category colour set (ADR 0008, ticket 23 Scope 2). A named
@@ -168,7 +245,10 @@ class TuiConfig(BaseModel):
     `action_*` methods, e.g. `"tag_selected"`) to a replacement key, so
     an override composes with the static `BINDINGS` list already on
     `TuiApp` rather than replacing the mechanism -- see
-    `TuiApp._apply_keybinding_overrides()`.
+    `TuiApp._apply_keybinding_overrides()`. An override is validated at
+    load time against `DEFAULT_KEYBINDINGS` -- see `_check_keybindings`.
+    A modal screen's own keys are not in that map, so `escape` and the
+    modal navigation keys stay fixed (ADR 0008).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -196,6 +276,43 @@ class TuiConfig(BaseModel):
         other. A partial config must never blank a layout."""
         for name, preset in DEFAULT_LAYOUTS.items():
             self.layouts.setdefault(name, preset.model_copy(deep=True))
+        return self
+
+    @model_validator(mode="after")
+    def _check_keybindings(self) -> TuiConfig:
+        """Reject a keybinding the TUI cannot honour (ADR 0008).
+
+        The duplicate check runs against the merged map -- the defaults
+        with the user's overrides on top -- so an override that lands on
+        a default key the user never moved fails too.
+        """
+        merged = {
+            action: normalize_key(key) for action, key in DEFAULT_KEYBINDINGS.items()
+        }
+        for action, raw_key in self.keybindings.items():
+            if action not in DEFAULT_KEYBINDINGS:
+                known = ", ".join(sorted(DEFAULT_KEYBINDINGS))
+                raise ValueError(
+                    f"keybindings.{action}: unknown action; "
+                    f"the rebindable actions are {known}"
+                )
+            key = normalize_key(raw_key)
+            reason = RESERVED_KEYS.get(key)
+            if reason is not None:
+                raise ValueError(
+                    f"keybindings.{action}: {key!r} is a reserved key "
+                    f"({reason}); it cannot be rebound"
+                )
+            merged[action] = key
+        owners: dict[str, str] = {}
+        for action, key in merged.items():
+            owner = owners.get(key)
+            if owner is not None:
+                raise ValueError(
+                    f"keybindings: {key!r} is bound to two actions, "
+                    f"{owner} and {action}"
+                )
+            owners[key] = action
         return self
 
     @property

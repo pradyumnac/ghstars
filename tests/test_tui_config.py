@@ -10,6 +10,7 @@ the same fact.
 from pathlib import Path
 
 from conftest import StarFactory
+from textual.binding import Binding
 from textual.widgets import DataTable, Static
 from textual.widgets._data_table import RowKey
 
@@ -19,6 +20,7 @@ from ghstars.tui.app import TuiApp
 from ghstars.tui.config import (
     CATEGORY_COLOURS_DARK,
     CATEGORY_COLOURS_LIGHT,
+    DEFAULT_KEYBINDINGS,
     DEFAULT_LAYOUTS,
     LayoutPreset,
     TuiConfig,
@@ -26,6 +28,7 @@ from ghstars.tui.config import (
     TuiState,
     load_tui_config,
     load_tui_state,
+    normalize_key,
     save_tui_state,
 )
 
@@ -196,6 +199,108 @@ def test_load_tui_config_invalid_schema_raises(tmp_path: Path) -> None:
         pass
     else:
         raise AssertionError("expected TuiConfigError")
+
+
+def test_load_tui_config_rejects_a_reserved_key(tmp_path: Path) -> None:
+    """ADR 0008: `ctrl+q`, `ctrl+c`, and `ctrl+p` are never rebindable."""
+    for key in ("ctrl+q", "ctrl+c", "ctrl+p"):
+        path = tmp_path / "tui.toml"
+        path.write_text(f'[keybindings]\ntag_selected = "{key}"\n')
+
+        try:
+            load_tui_config(path)
+        except TuiConfigError as exc:
+            assert key in str(exc)
+            assert "reserved" in str(exc)
+        else:
+            raise AssertionError("expected TuiConfigError")
+
+
+def test_load_tui_config_rejects_an_unknown_action_name(tmp_path: Path) -> None:
+    """Ticket 21 made an unknown action a silent no-op. It now fails."""
+    path = tmp_path / "tui.toml"
+    path.write_text('[keybindings]\ntag_everything = "shift+t"\n')
+
+    try:
+        load_tui_config(path)
+    except TuiConfigError as exc:
+        assert "tag_everything" in str(exc)
+    else:
+        raise AssertionError("expected TuiConfigError")
+
+
+def test_default_keybindings_match_tui_app_bindings() -> None:
+    """`DEFAULT_KEYBINDINGS` is the canonical action-to-key map that
+    `TuiApp.BINDINGS` is built from, so the two can never drift."""
+    declared = {
+        binding.action: binding.key
+        for binding in Binding.make_bindings(TuiApp.BINDINGS)
+    }
+
+    assert declared == {
+        action: normalize_key(key) for action, key in DEFAULT_KEYBINDINGS.items()
+    }
+    assert len(DEFAULT_KEYBINDINGS) == 17
+
+
+def test_load_tui_config_rejects_an_unparseable_key(tmp_path: Path) -> None:
+    for raw_key in ("", "superduper+t", "ctrl+notakey"):
+        path = tmp_path / "tui.toml"
+        path.write_text(f'[keybindings]\ntag_selected = "{raw_key}"\n')
+
+        try:
+            load_tui_config(path)
+        except TuiConfigError as exc:
+            assert "tag_selected" in str(exc)
+        else:
+            raise AssertionError(f"expected TuiConfigError for {raw_key!r}")
+
+
+def test_load_tui_config_rejects_two_overrides_on_the_same_key(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "tui.toml"
+    path.write_text('[keybindings]\ntag_selected = "g"\nsync = "g"\n')
+
+    try:
+        load_tui_config(path)
+    except TuiConfigError as exc:
+        assert "tag_selected" in str(exc)
+        assert "sync" in str(exc)
+    else:
+        raise AssertionError("expected TuiConfigError")
+
+
+def test_load_tui_config_rejects_a_collision_with_an_untouched_default(
+    tmp_path: Path,
+) -> None:
+    """ADR 0008: the check runs against the merged map, so an override
+    that lands on a default key the user never touched also fails."""
+    path = tmp_path / "tui.toml"
+    path.write_text('[keybindings]\nsync = "t"\n')
+
+    try:
+        load_tui_config(path)
+    except TuiConfigError as exc:
+        assert "tag_selected" in str(exc)
+    else:
+        raise AssertionError("expected TuiConfigError")
+
+
+def test_load_tui_config_accepts_a_non_conflicting_rebind(tmp_path: Path) -> None:
+    """A swap frees the old key, so both halves of it stay valid."""
+    path = tmp_path / "tui.toml"
+    path.write_text(
+        '[keybindings]\ntag_selected = "y"\nsync = "t"\nopen_search = "g"\n'
+    )
+
+    config = load_tui_config(path)
+
+    assert config.keybindings == {
+        "tag_selected": "y",
+        "sync": "t",
+        "open_search": "g",
+    }
 
 
 # -- load_tui_state / save_tui_state ------------------------------------
