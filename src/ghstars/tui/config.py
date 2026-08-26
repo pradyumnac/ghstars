@@ -33,12 +33,64 @@ DEFAULT_DETAIL_PANE_HEIGHT = 14
 DEFAULT_GRID_CARD_TRUNCATION = 120
 
 LayoutDensity = Literal["compact", "balanced"]
-SemanticTextRole = Literal[
-    "text-primary",
-    "text-secondary",
-    "text-accent",
-    "text-success",
+# The fixed Category colour set (ADR 0008, ticket 23 Scope 2). A named
+# colour, not a Textual semantic text role and not a raw hex: a role
+# offers four values that read as one theme accent, and a raw hex lets
+# the user author an illegible one.
+CategoryColourName = Literal[
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "cyan",
+    "blue",
+    "magenta",
+    "violet",
 ]
+
+# One hex per colour per theme polarity. No single hex clears 3:1 on both
+# of Textual's own backgrounds: a light theme bottoms out at #D0D0D0
+# (relative luminance 0.60) and a dark theme tops out at #242F38 (0.028),
+# and those two limits leave no overlapping band. `app.py` selects the
+# table that matches the active theme.
+#
+# WCAG 2.1 contrast against the worst-case background of each polarity --
+# light `$panel` #D0D0D0 and dark `$panel` #242F38:
+#
+# | Colour  | Light hex | vs #D0D0D0 | Dark hex | vs #242F38 |
+# | ------- | --------- | ---------- | -------- | ---------- |
+# | red     | #B3261E   | 4.24       | #FF8A80  | 5.98       |
+# | orange  | #8F4700   | 4.44       | #FFB870  | 8.02       |
+# | yellow  | #6E5600   | 4.55       | #EBD26A  | 9.07       |
+# | green   | #1F6B36   | 4.24       | #7FD69A  | 7.79       |
+# | cyan    | #00595F   | 5.25       | #5FD6DC  | 7.89       |
+# | blue    | #1A56C4   | 4.29       | #8AB4FF  | 6.53       |
+# | magenta | #A81E80   | 4.31       | #F79AD9  | 6.88       |
+# | violet  | #5B3FCB   | 4.51       | #B9A6FF  | 6.47       |
+#
+# Every value clears 3:1 on the other backgrounds of its polarity too
+# (#FFFFFF and #E0E0E0; #121212 and #1E1E1E). `test_tui_config.py`
+# recomputes the whole table, so an edit that breaks the guarantee fails.
+CATEGORY_COLOURS_LIGHT: dict[CategoryColourName, str] = {
+    "red": "#B3261E",
+    "orange": "#8F4700",
+    "yellow": "#6E5600",
+    "green": "#1F6B36",
+    "cyan": "#00595F",
+    "blue": "#1A56C4",
+    "magenta": "#A81E80",
+    "violet": "#5B3FCB",
+}
+CATEGORY_COLOURS_DARK: dict[CategoryColourName, str] = {
+    "red": "#FF8A80",
+    "orange": "#FFB870",
+    "yellow": "#EBD26A",
+    "green": "#7FD69A",
+    "cyan": "#5FD6DC",
+    "blue": "#8AB4FF",
+    "magenta": "#F79AD9",
+    "violet": "#B9A6FF",
+}
 
 # Every optional column, in the order ticket 23 lists them. The Sel
 # column and the Star column always show, so neither appears here.
@@ -124,7 +176,7 @@ class TuiConfig(BaseModel):
     keybindings: dict[str, str] = Field(default_factory=dict)
     header_height: int = Field(default=DEFAULT_HEADER_HEIGHT, ge=1)
     show_clock: bool = False
-    category_colours: dict[str, SemanticTextRole] = Field(default_factory=dict)
+    category_colours: dict[str, CategoryColourName] = Field(default_factory=dict)
     date_format: str = DEFAULT_DATE_FORMAT
     toast_timeout: int = Field(default=DEFAULT_TOAST_TIMEOUT, ge=1)
     ascii_only: bool = False

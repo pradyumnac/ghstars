@@ -66,6 +66,9 @@ from ghstars.core.tagging import (
 from ghstars.core.unstar import unstar_star
 from ghstars.github import GitHubApiError
 from ghstars.tui.config import (
+    CATEGORY_COLOURS_DARK,
+    CATEGORY_COLOURS_LIGHT,
+    CategoryColourName,
     LayoutPreset,
     TuiConfig,
     TuiState,
@@ -76,22 +79,25 @@ from ghstars.tui.config import (
 
 _LOCK = "\U0001f512"
 _GLOBE = "\U0001f310"
-_CATEGORY_ROLES = (
-    "text-primary",
-    "text-secondary",
-    "text-accent",
-    "text-success",
-)
+_CATEGORY_COLOUR_NAMES: tuple[CategoryColourName, ...] = tuple(CATEGORY_COLOURS_LIGHT)
 
 
-def _category_role(category: str | None, overrides: Mapping[str, str]) -> str:
-    """Return a stable semantic text role for a Category."""
+def _category_colour(
+    category: str | None, overrides: Mapping[str, CategoryColourName]
+) -> CategoryColourName | None:
+    """Return the named colour for a Category, or `None` for no Category.
+
+    A digest of the name picks the default, so the same Category keeps
+    its colour across launches and across TUI surfaces. Two names can
+    collide; the Category text is the primary cue, so a collision only
+    costs a shade (ADR 0008).
+    """
     if not category:
-        return "text-muted"
+        return None
     if category in overrides:
         return overrides[category]
-    index = hashlib.sha256(category.encode()).digest()[0] % len(_CATEGORY_ROLES)
-    return _CATEGORY_ROLES[index]
+    index = hashlib.sha256(category.encode()).digest()[0] % len(_CATEGORY_COLOUR_NAMES)
+    return _CATEGORY_COLOUR_NAMES[index]
 
 
 def _rich_colour(value: str) -> str:
@@ -99,48 +105,80 @@ def _rich_colour(value: str) -> str:
     return value[:7] if value.startswith("#") and len(value) == 9 else value
 
 
+@dataclass(frozen=True)
+class CategoryPalette:
+    """The hex values a Category cue draws with under one active theme.
+
+    Built per render pass, not cached: the user can switch theme mid
+    session, and a light theme and a dark theme need different hexes for
+    the same named colour (`tui/config.py`).
+    """
+
+    muted: str
+    hexes: Mapping[CategoryColourName, str]
+
+    @classmethod
+    def of[ReturnType](cls, app: App[ReturnType]) -> CategoryPalette:
+        variables = app.get_css_variables()
+        return cls(
+            # `$text-muted` is a Textual expression (`auto 60%`), not a Rich
+            # colour. Use the active theme's muted foreground instead.
+            muted=_rich_colour(variables["foreground-muted"]),
+            hexes=(
+                CATEGORY_COLOURS_DARK
+                if app.current_theme.dark
+                else CATEGORY_COLOURS_LIGHT
+            ),
+        )
+
+    def style_for(
+        self, category: str | None, overrides: Mapping[str, CategoryColourName]
+    ) -> str:
+        colour = _category_colour(category, overrides)
+        return self.muted if colour is None else self.hexes[colour]
+
+
 def _styled_category(
-    category: str | None, variables: dict[str, str], overrides: Mapping[str, str]
+    category: str | None,
+    palette: CategoryPalette,
+    overrides: Mapping[str, CategoryColourName],
 ) -> Text:
-    """Render Category text with a colour from the active Textual theme."""
-    label = category or "-"
-    role = _category_role(category, overrides)
-    # `$text-muted` is a Textual expression (`auto 60%`), not a Rich colour.
-    # Use the active theme's muted foreground for Rich table cells.
-    resolved_role = "foreground-muted" if role == "text-muted" else role
-    return Text(label, style=_rich_colour(variables[resolved_role]))
+    """Render Category text in its named colour."""
+    return Text(category or "-", style=palette.style_for(category, overrides))
 
 
 def _styled_list(
-    lst: List, variables: dict[str, str], overrides: Mapping[str, str]
+    lst: List, palette: CategoryPalette, overrides: Mapping[str, CategoryColourName]
 ) -> Text:
     """Render a full List name while keeping its Category as the colour cue."""
     text = Text()
     if lst.intent and lst.category:
         text.append(f"{lst.intent}: ")
-        text.append_text(_styled_category(lst.category, variables, overrides))
+        text.append_text(_styled_category(lst.category, palette, overrides))
     else:
-        text.append(lst.name, style=_rich_colour(variables["foreground-muted"]))
+        text.append(lst.name, style=palette.muted)
     return text
 
 
 def _membership_chip(
-    lst: List, variables: dict[str, str], overrides: Mapping[str, str]
+    lst: List, palette: CategoryPalette, overrides: Mapping[str, CategoryColourName]
 ) -> Text:
     """Render one text-first Intent and Category membership cue."""
     text = Text(f"[{_LOCK if lst.is_private else _GLOBE} ")
     if lst.intent and lst.category:
         text.append(f"{lst.intent} · ")
-        text.append_text(_styled_category(lst.category, variables, overrides))
+        text.append_text(_styled_category(lst.category, palette, overrides))
     else:
-        text.append(lst.name, style=_rich_colour(variables["foreground-muted"]))
+        text.append(lst.name, style=palette.muted)
     text.append("]")
     text.stylize(Style(meta={"@click": f"app.filter_membership({lst.id!r})"}))
     return text
 
 
 def _membership_chips(
-    lists: list[List], variables: dict[str, str], overrides: Mapping[str, str]
+    lists: list[List],
+    palette: CategoryPalette,
+    overrides: Mapping[str, CategoryColourName],
 ) -> Text:
     """Render several membership cues without hiding their text labels."""
     if not lists:
@@ -149,7 +187,7 @@ def _membership_chips(
     for index, lst in enumerate(lists):
         if index:
             text.append(" ")
-        text.append_text(_membership_chip(lst, variables, overrides))
+        text.append_text(_membership_chip(lst, palette, overrides))
     return text
 
 
@@ -200,7 +238,7 @@ class DetailPane(Static):
     def __init__(
         self,
         *,
-        category_colours: Mapping[str, str] | None = None,
+        category_colours: Mapping[str, CategoryColourName] | None = None,
         id: str | None = None,
     ) -> None:
         super().__init__(id=id)
@@ -249,7 +287,7 @@ class DetailPane(Static):
                 body.append_text(
                     _styled_list(
                         lst,
-                        self.app.get_css_variables(),
+                        CategoryPalette.of(self.app),
                         self._category_colours,
                     )
                 )
@@ -278,7 +316,7 @@ class ListPickerScreen(ModalScreen[TagChoice | None]):
         lists: list[List],
         *,
         target_count: int,
-        category_colours: Mapping[str, str] | None = None,
+        category_colours: Mapping[str, CategoryColourName] | None = None,
     ) -> None:
         super().__init__()
         self._lists = sorted(lists, key=lambda lst: lst.name)
@@ -302,12 +340,12 @@ class ListPickerScreen(ModalScreen[TagChoice | None]):
     def on_mount(self) -> None:
         table = self.query_one("#picker-table", DataTable)
         table.add_columns("List", "Intent", "Category", "Visibility")
-        variables = self.app.get_css_variables()
+        palette = CategoryPalette.of(self.app)
         for lst in self._lists:
             table.add_row(
-                _styled_list(lst, variables, self._category_colours),
+                _styled_list(lst, palette, self._category_colours),
                 lst.intent or "-",
-                _styled_category(lst.category, variables, self._category_colours),
+                _styled_category(lst.category, palette, self._category_colours),
                 _visibility_label(lst.is_private),
                 key=lst.id,
             )
@@ -641,7 +679,7 @@ class ListsOverviewScreen(ModalScreen[None]):
         self,
         lists: list[List],
         *,
-        category_colours: Mapping[str, str] | None = None,
+        category_colours: Mapping[str, CategoryColourName] | None = None,
     ) -> None:
         super().__init__()
         self._lists = sorted(lists, key=lambda lst: lst.name)
@@ -655,12 +693,12 @@ class ListsOverviewScreen(ModalScreen[None]):
     def on_mount(self) -> None:
         table = self.query_one("#overview-table", DataTable)
         table.add_columns("List", "Intent", "Category", "Visibility", "Items")
-        variables = self.app.get_css_variables()
+        palette = CategoryPalette.of(self.app)
         for lst in self._lists:
             table.add_row(
-                _styled_list(lst, variables, self._category_colours),
+                _styled_list(lst, palette, self._category_colours),
                 lst.intent or "-",
-                _styled_category(lst.category, variables, self._category_colours),
+                _styled_category(lst.category, palette, self._category_colours),
                 _visibility_label(lst.is_private),
                 str(len(lst.items)),
                 key=lst.id,
@@ -1133,7 +1171,7 @@ class TuiApp(App[None]):
                 row.append(
                     _membership_chips(
                         member_lists,
-                        self.get_css_variables(),
+                        CategoryPalette.of(self),
                         self._config.category_colours,
                     )
                 )
@@ -1389,13 +1427,11 @@ class TuiApp(App[None]):
                 return
             if kind == "category":
                 values = sorted({lst.category for lst in self._lists if lst.category})
-                variables = self.get_css_variables()
+                palette = CategoryPalette.of(self)
                 options = [
                     (
                         f"category:{value}",
-                        _styled_category(
-                            value, variables, self._config.category_colours
-                        ),
+                        _styled_category(value, palette, self._config.category_colours),
                     )
                     for value in values
                 ]
@@ -1405,11 +1441,11 @@ class TuiApp(App[None]):
                 options = [(f"intent:{value}", value) for value in values]
                 title = "Filter by Intent"
             elif kind == "list":
-                variables = self.get_css_variables()
+                palette = CategoryPalette.of(self)
                 options = [
                     (
                         f"list:{lst.id}",
-                        _styled_list(lst, variables, self._config.category_colours),
+                        _styled_list(lst, palette, self._config.category_colours),
                     )
                     for lst in sorted(self._lists, key=lambda item: item.name)
                 ]
