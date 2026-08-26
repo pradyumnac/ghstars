@@ -6,8 +6,16 @@
 
 **Status:** done
 
-- [ ] TUI supports single-item tagging against `ghstars.core`
-- [ ] TUI supports bulk tagging across a selected batch of Stars
-- [ ] TUI supports retagging (moving a Star between Category/Intent)
-- [ ] Each List's public/private status is visibly and unambiguously displayed
-- [ ] TUI shows remaining GitHub API rate limit (`GitHubClient.check_rate_limit()`, already implemented since ticket 01/02 — this is a UI-only addition, no new core/client work needed)
+- [x] TUI supports single-item tagging against `ghstars.core`
+- [x] TUI supports bulk tagging across a selected batch of Stars
+- [x] TUI supports retagging (moving a Star between Category/Intent)
+- [x] Each List's public/private status is visibly and unambiguously displayed
+- [x] TUI shows the remaining GitHub API rate limit
+  (`GitHubClient.check_rate_limit()`). This is a UI-only addition.
+
+## Comments
+
+Commit `8c55b2d` added `ghstars tui`. The TUI calls `tag_star()` for
+single-item tags, multi-selection bulk tags, and retags. Star rows, the List
+picker, and the Lists overview show each List's visibility. `RateLimitBar`
+loads on startup and refreshes on demand. Ticket-specific tests pass.
