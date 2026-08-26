@@ -1,6 +1,7 @@
 import json
 
 import typer
+from filelock import Timeout
 from rich.console import Console
 
 # `app` is imported by name -- not just reached via `cli.app` -- so mypy
@@ -38,6 +39,14 @@ def sync_cmd(
             )
     except (RateLimitExceededError, GitHubApiError) as exc:
         fail(str(exc))
+    except Timeout:
+        # A concurrent `ghstars` command already holds the state lock --
+        # a clean error beats a raw traceback; nothing was written either
+        # way (the lock never acquired). Same pattern as tag.py.
+        fail(
+            "could not acquire the local state lock — another ghstars "
+            "command may be running. Try again."
+        )
 
     if json_output:
         typer.echo(json.dumps(result.model_dump(mode="json")))

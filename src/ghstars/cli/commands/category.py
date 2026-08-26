@@ -2,6 +2,7 @@ import json
 from typing import NoReturn
 
 import typer
+from filelock import Timeout
 
 from ghstars import cli
 from ghstars.cli import category_app  # imported by name for mypy; see commands/sync.py
@@ -19,6 +20,13 @@ def _category_not_found(category: str) -> NoReturn:
     fail(
         f"no Explore/Current/Retired List found for category {category!r}. "
         "Run `ghstars sync` first, or check for a typo."
+    )
+
+
+def _lock_timeout() -> NoReturn:
+    fail(
+        "could not acquire the local state lock — another ghstars "
+        "command may be running. Try again."
     )
 
 
@@ -53,6 +61,8 @@ def category_rename_cmd(
         _category_not_found(old)
     except GitHubApiError as exc:
         fail(str(exc))
+    except Timeout:
+        _lock_timeout()
 
     if json_output:
         typer.echo(json.dumps(result.model_dump(mode="json")))
@@ -104,6 +114,8 @@ def category_drain_cmd(
         _category_not_found(from_category)
     except GitHubApiError as exc:
         fail(str(exc))
+    except Timeout:
+        _lock_timeout()
 
     if json_output:
         typer.echo(json.dumps(result.model_dump(mode="json")))

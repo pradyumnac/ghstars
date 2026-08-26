@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 import yaml
 from conftest import NOW, StarFactory
+from filelock import Timeout
 from typer.testing import CliRunner
 
 import ghstars.cli as cli_module
@@ -34,6 +35,25 @@ def _use_client(monkeypatch: pytest.MonkeyPatch, client: FakeGitHubClient) -> No
 
 def _use_export_config(monkeypatch: pytest.MonkeyPatch, path: Path) -> None:
     monkeypatch.setattr(cli_module, "get_export_config_path", lambda: path)
+
+
+class _TimeoutOnEnter:
+    """A context manager that raises `Timeout` on entry, never on exit."""
+
+    def __init__(self, lock_path: str) -> None:
+        self._lock_path = lock_path
+
+    def __enter__(self) -> None:
+        raise Timeout(self._lock_path)
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
+def _make_lock_time_out(store: StateStore) -> None:
+    """Simulate a concurrent `ghstars` command already holding the lock."""
+    lock_path = str(store.base_dir / "state" / ".lock")
+    store.lock = lambda timeout=None: _TimeoutOnEnter(lock_path)  # type: ignore[assignment,method-assign,return-value]
 
 
 def test_retriage_json_lists_queue_contents(
@@ -441,3 +461,50 @@ def test_category_drain_cmd_fails_when_category_not_found(
 
     assert result.exit_code == 1
     assert "no Explore/Current/Retired List found" in result.output
+
+
+def test_sync_cmd_fails_gracefully_when_lock_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _make_lock_time_out(store)
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient())
+
+    result = runner.invoke(app, ["sync"])
+
+    assert result.exit_code == 1
+    assert "could not acquire the local state lock" in result.output
+
+
+def test_unstar_cmd_fails_gracefully_when_lock_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    star = make_star("pradyumnac/x", list_ids=[])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    _make_lock_time_out(store)
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient(stars=[star]))
+
+    result = runner.invoke(app, ["unstar", "pradyumnac/x"])
+
+    assert result.exit_code == 1
+    assert "unstarred pradyumnac/x on GitHub" in result.output
+    assert "could not acquire the local state lock" in result.output
+
+
+def test_category_rename_cmd_fails_gracefully_when_lock_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old_list = List(id="L_1", name="Explore: Old", slug="explore-old")
+    store = StateStore(tmp_path)
+    store.save_lists([old_list])
+    _make_lock_time_out(store)
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient(lists=[old_list]))
+
+    result = runner.invoke(app, ["category", "rename", "Old", "New"])
+
+    assert result.exit_code == 1
+    assert "could not acquire the local state lock" in result.output
