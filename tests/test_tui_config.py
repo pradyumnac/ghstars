@@ -425,7 +425,7 @@ async def test_tui_app_persists_last_layout_over_config_default(
         await pilot.pause()
         columns = [str(column.label) for column in _table(app2).columns.values()]
 
-    assert {"License", "Owner", "Starred"} <= set(columns)
+    assert {"License", "Owner", "Starred at"} <= set(columns)
 
 
 async def test_tui_app_restores_view_mode_across_relaunch(
