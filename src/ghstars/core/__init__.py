@@ -27,7 +27,9 @@ from ghstars.core.models import (
     Star,
 )
 from ghstars.core.state_store import StateStore
+from ghstars.core.status import StatusReport, build_status, verify_state
 from ghstars.core.sync import (
+    EXPLORE_GENERAL,
     RateLimitExceededError,
     SyncResult,
     archive_star,
@@ -53,6 +55,7 @@ from ghstars.core.taxonomy import (
 
 __all__ = [
     "DEFAULT_EXPORT_FIELDS",
+    "EXPLORE_GENERAL",
     "LIFECYCLE_INTENTS",
     "CategoryNotFoundError",
     "DrainResult",
@@ -76,10 +79,12 @@ __all__ = [
     "StarListMembershipDriftError",
     "StarNotFoundError",
     "StateStore",
+    "StatusReport",
     "SyncResult",
     "TagPushError",
     "TagResult",
     "archive_star",
+    "build_status",
     "classify_list",
     "drain_category",
     "load_export_config",
@@ -92,4 +97,5 @@ __all__ = [
     "strip_lifecycle_siblings",
     "sync",
     "tag_star",
+    "verify_state",
 ]
