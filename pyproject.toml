@@ -71,6 +71,7 @@ module = [
   "ghstars.core.status",
   "ghstars.core.sync",
   "ghstars.core.tagging",
+  "ghstars.core.unstar",
   "ghstars.github.schema",
   "ghstars.tui.config",
 ]

@@ -51,6 +51,7 @@ from ghstars.core.taxonomy import (
     parse_list_name,
     strip_lifecycle_siblings,
 )
+from ghstars.core.unstar import UnstarResult, unstar_star
 
 __all__ = [
     "DEFAULT_EXPORT_FIELDS",
@@ -81,6 +82,7 @@ __all__ = [
     "SyncResult",
     "TagPushError",
     "TagResult",
+    "UnstarResult",
     "archive_star",
     "build_status",
     "classify_list",
@@ -95,5 +97,6 @@ __all__ = [
     "strip_lifecycle_siblings",
     "sync",
     "tag_star",
+    "unstar_star",
     "verify_state",
 ]

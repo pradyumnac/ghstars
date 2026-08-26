@@ -33,6 +33,7 @@ and active Filter, read at launch and written on quit
 """
 
 import json
+import webbrowser
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -58,6 +59,7 @@ from ghstars.core.tagging import (
     TagPushError,
     tag_star,
 )
+from ghstars.core.unstar import unstar_star
 from ghstars.github import GitHubApiError
 from ghstars.tui.config import (
     TuiColours,
@@ -256,6 +258,33 @@ class ListPickerScreen(ModalScreen[TagChoice | None]):
         self.dismiss(TagChoice(list_name=name, is_private=is_private))
 
 
+class ConfirmUnstarScreen(ModalScreen[bool]):
+    """A real, irreversible GitHub mutation (spec stories 67-68) must
+    never fire from one keypress -- this gate is the only way in."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, full_name: str) -> None:
+        super().__init__()
+        self._full_name = full_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-body"):
+            yield Static(
+                f"Unstar [b]{escape(self._full_name)}[/b] on GitHub?\n"
+                "This removes the star from your GitHub account."
+            )
+            with Horizontal(id="picker-buttons"):
+                yield Button("Unstar", id="confirm", variant="error")
+                yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "confirm")
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class ListsOverviewScreen(ModalScreen[None]):
     """Read-only view of every locally synced List, visibility shown."""
 
@@ -291,7 +320,7 @@ class TuiApp(App[None]):
     """Interactive triage: tag, bulk-tag, and retag Stars (ticket 09)."""
 
     CSS = """
-    #picker-body, #lists-overview {
+    #picker-body, #lists-overview, #confirm-body {
         width: 80%;
         height: auto;
         max-height: 80%;
@@ -334,6 +363,8 @@ class TuiApp(App[None]):
         Binding("a", "select_all", "Select all"),
         Binding("c", "clear_selection", "Clear selection"),
         Binding("l", "show_lists", "Lists"),
+        Binding("o", "open_in_browser", "Open"),
+        Binding("u", "unstar_selected", "Unstar"),
         Binding("r", "refresh_rate_limit", "Refresh rate limit"),
     ]
 
@@ -352,6 +383,7 @@ class TuiApp(App[None]):
         self._lists: list[List] = []
         self._selected: set[str] = set()
         self._picker_open = False
+        self._unstar_confirm_open = False
 
         # Ticket 21: `config/tui.toml` (user-authored, read-only here) and
         # `state/tui-state.toml` (machine-owned, read + written here). A
@@ -620,6 +652,59 @@ class TuiApp(App[None]):
 
     def action_refresh_rate_limit(self) -> None:
         self._fetch_rate_limit()
+
+    # -- open in browser / unstar ---------------------------------------------
+
+    def action_open_in_browser(self) -> None:
+        full_name = self._current_row_full_name()
+        star = self._star_by_full_name(full_name) if full_name else None
+        if star is None:
+            self.notify("No star selected.", severity="warning")
+            return
+        webbrowser.open(star.html_url)
+
+    def action_unstar_selected(self) -> None:
+        """A real, irreversible GitHub mutation (spec stories 67-68) --
+        single-Star only (the Star under the cursor), never the bulk
+        `_selected` set: unstarring several repos from one confirm
+        dialog is a much bigger blast radius than tagging several into
+        the same List, and isn't what this action is for.
+        """
+        if self._unstar_confirm_open:
+            return
+        full_name = self._current_row_full_name()
+        if full_name is None:
+            self.notify("No star selected.", severity="warning")
+            return
+        self._unstar_confirm_open = True
+        self._confirm_and_unstar(full_name)
+
+    @work
+    async def _confirm_and_unstar(self, full_name: str) -> None:
+        try:
+            confirmed = await self.push_screen_wait(ConfirmUnstarScreen(full_name))
+        finally:
+            self._unstar_confirm_open = False
+        if confirmed:
+            self._run_unstar(full_name)
+
+    @work(thread=True)
+    def _run_unstar(self, full_name: str) -> None:
+        try:
+            result = unstar_star(self._client, self._store, full_name)
+        except (GitHubApiError, Timeout) as exc:
+            self.call_from_thread(self._on_unstar_error, full_name, exc)
+            return
+        self.call_from_thread(self._on_unstar_done, result.full_name)
+
+    def _on_unstar_done(self, full_name: str) -> None:
+        self._selected.discard(full_name)
+        self._reload_local_state()
+        self._refresh_table()
+        self.notify(f"Unstarred {full_name}.")
+
+    def _on_unstar_error(self, full_name: str, exc: Exception) -> None:
+        self.notify(f"{full_name}: unstar failed: {exc}", severity="error", timeout=8)
 
     # -- tagging / bulk-tagging / retagging ----------------------------------
 

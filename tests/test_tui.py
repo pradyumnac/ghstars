@@ -20,6 +20,7 @@ from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
 from ghstars.github.schema import RateLimitResponse
 from ghstars.tui.app import (
+    ConfirmUnstarScreen,
     DetailPane,
     ListPickerScreen,
     RateLimitBar,
@@ -587,3 +588,75 @@ async def test_detail_pane_visible_by_default_and_toggles_with_d(
 
         await pilot.press("d")
         assert pane.display is True
+
+
+async def test_unstar_confirm_calls_remove_star_and_archives_locally(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+    client = FakeGitHubClient(stars=[star])
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("u")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmUnstarScreen)
+        await pilot.click("#confirm")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        # Archived stars drop out of the table -- _reload_local_state()
+        # filters them the same way sync()-detected unstars already do.
+        assert _table(app).row_count == 0
+
+    assert "pradyumnac/ghstars" not in {s.full_name for s in client.fetch_stars()}
+    saved = {s.full_name: s for s in store.load_stars()}
+    assert saved["pradyumnac/ghstars"].archived is True
+
+
+async def test_unstar_cancel_leaves_star_untouched(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+    client = FakeGitHubClient(stars=[star])
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("u")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmUnstarScreen)
+        await pilot.click("#cancel")
+        await pilot.pause()
+
+    assert "pradyumnac/ghstars" in {s.full_name for s in client.fetch_stars()}
+    saved = {s.full_name: s for s in store.load_stars()}
+    assert saved["pradyumnac/ghstars"].archived is False
+
+
+async def test_open_in_browser_launches_html_url(
+    tmp_path: Path, make_star: StarFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+
+    opened: list[str] = []
+    monkeypatch.setattr("webbrowser.open", opened.append)
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("o")
+
+    assert opened == [star.html_url]

@@ -41,6 +41,7 @@ if resuming with new tasks in flight.
 - Issue 20 — fix TUI rate-limit-bar defects: complete.
 - Issue 21 — TUI config foundation: tui.toml and tui-state.toml: complete.
 - Issue 22 — TUI detail pane: complete.
+- Issue 29 — Open in browser, and unstar with confirmation: complete.
 
 See each ticket file's own `Status:`/`## Comments` for implementation
 detail. Reconciled against the ticket files directly on 2026-08-26.
@@ -72,10 +73,9 @@ not that it's unblocked — check the Blocked-by column.
 | 26 | Grid view mode                                            | ready-for-agent — blocked                                      | 25                             |
 | 27 | Finding and ordering Stars: filters, search, sort         | ready-for-agent — blocked                                      | 25                             |
 | 28 | Colour system for Lists and Categories                    | ready-for-agent — unblocked                                    | none                           |
-| 29 | Open in browser, and unstar with confirmation             | ready-for-agent — unblocked                                    | none                           |
 
-**Next batch to start (queued by user, 2026-08-26):** 12, 23, 25, 28, 29 — all
-unblocked per the table above.
+**Next batch to start (queued by user, 2026-08-26):** 12, 23, 25, 28 — all
+unblocked per the table above. (29 done, see the Done list.)
 
 ### New TUI defect to ticket (queued by user, 2026-08-26)
 

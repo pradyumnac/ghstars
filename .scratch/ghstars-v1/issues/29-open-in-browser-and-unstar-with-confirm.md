@@ -6,10 +6,34 @@
 
 **Blocked by:** 21 (keybind config).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A new `ghstars.core` function performs the unstar orchestration (`remove_star()`, then locked archive + list-membership update), used by both `unstar_cmd` and the TUI
-- [ ] `unstar_cmd`'s existing CLI tests still pass unchanged after the extraction — behavior is provably identical, not just similar
-- [ ] Pressing the open-in-browser key on the Star under the cursor launches `html_url` via `webbrowser`
-- [ ] Pressing the unstar key opens a confirm dialog; only confirming calls the new core unstar function
-- [ ] Cancelling the confirm dialog leaves the Star, local state, and GitHub untouched
+- [x] A new `ghstars.core` function performs the unstar orchestration (`remove_star()`, then locked archive + list-membership update), used by both `unstar_cmd` and the TUI
+- [x] `unstar_cmd`'s existing CLI tests still pass unchanged after the extraction — behavior is provably identical, not just similar
+- [x] Pressing the open-in-browser key on the Star under the cursor launches `html_url` via `webbrowser`
+- [x] Pressing the unstar key opens a confirm dialog; only confirming calls the new core unstar function
+- [x] Cancelling the confirm dialog leaves the Star, local state, and GitHub untouched
+
+## Comments
+
+Prefactor: `unstar_star()` added to a new `ghstars.core.unstar` module —
+`client.remove_star()`, then the locked archive + list-membership update,
+exactly what `unstar_cmd` (`cli/commands/unstar.py`) used to inline.
+`unstar_cmd` now just calls it and translates `GitHubApiError`/`Timeout`
+into its existing CLI messages; its own tests pass unchanged. Note:
+`pyproject.toml`'s `disallow_any_explicit` mypy override list needed
+`ghstars.core.unstar` added — a known mypy/pydantic quirk (see the
+comment above that list) that flags every module defining a `BaseModel`
+subclass, unrelated to this ticket's logic.
+
+TUI: `o` opens `html_url` via `webbrowser.open()` (no confirm needed,
+non-destructive); `u` opens `ConfirmUnstarScreen` (modal, matching
+`ListPickerScreen`'s pattern) and only calls `unstar_star()` off the UI
+thread if confirmed. Single-Star only (the Star under the cursor), never
+the bulk `_selected` set — unstarring several repos from one dialog is a
+much bigger blast radius than bulk-tagging. Kept the label "Unstar"
+(not "Archive") per spec story 68's own wording and to match the
+existing `ghstars unstar` CLI command — flagged and confirmed with the
+user before implementing, since "Archive" already means something
+different and non-destructive in this domain (story 17's Retired
+Category, "without unstarring it").
