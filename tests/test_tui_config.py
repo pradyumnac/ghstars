@@ -17,6 +17,8 @@ from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.state_store import StateStore
 from ghstars.tui.app import TuiApp
 from ghstars.tui.config import (
+    CATEGORY_COLOURS_DARK,
+    CATEGORY_COLOURS_LIGHT,
     DEFAULT_LAYOUTS,
     LayoutPreset,
     TuiConfig,
@@ -162,16 +164,24 @@ def test_load_tui_config_invalid_toml_raises(tmp_path: Path) -> None:
         raise AssertionError("expected TuiConfigError")
 
 
-def test_load_tui_config_rejects_unknown_category_colour_role(
-    tmp_path: Path,
-) -> None:
+def test_load_tui_config_accepts_a_named_category_colour(tmp_path: Path) -> None:
     path = tmp_path / "tui.toml"
     path.write_text('[category_colours]\nAI = "magenta"\n')
+
+    assert load_tui_config(path).category_colours == {"AI": "magenta"}
+
+
+def test_load_tui_config_rejects_unknown_category_colour(tmp_path: Path) -> None:
+    path = tmp_path / "tui.toml"
+    path.write_text('[category_colours]\nAI = "text-accent"\n')
 
     try:
         load_tui_config(path)
     except TuiConfigError as exc:
-        assert "category_colours" in str(exc)
+        message = str(exc)
+        assert "category_colours" in message
+        assert "text-accent" in message
+        assert "magenta" in message
     else:
         raise AssertionError("expected TuiConfigError")
 
@@ -524,3 +534,41 @@ async def test_tui_app_ignores_unrecognized_saved_sort_key(
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app._sort_mode == "starred_desc"
+
+
+def _relative_luminance(hex_colour: str) -> float:
+    """WCAG 2.1 relative luminance of an #rrggbb value."""
+    raw = hex_colour.lstrip("#")
+    channels = [int(raw[index : index + 2], 16) / 255 for index in (0, 2, 4)]
+    linear = [
+        value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+        for value in channels
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast(first: str, second: str) -> float:
+    lighter, darker = sorted(
+        (_relative_luminance(first), _relative_luminance(second)), reverse=True
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_every_category_colour_clears_three_to_one_contrast() -> None:
+    """ADR 0008's rule, recomputed from the shipped hex values.
+
+    The backgrounds are Textual's own: `$background`, `$surface`, and
+    `$panel` of `textual-light` and of `textual-dark`.
+    """
+    light_backgrounds = ("#FFFFFF", "#E0E0E0", "#D0D0D0")
+    dark_backgrounds = ("#121212", "#1E1E1E", "#242F38")
+
+    assert set(CATEGORY_COLOURS_LIGHT) == set(CATEGORY_COLOURS_DARK)
+    for name, colour in CATEGORY_COLOURS_LIGHT.items():
+        for background in light_backgrounds:
+            ratio = _contrast(colour, background)
+            assert ratio >= 3.0, f"{name} {colour} on {background} is {ratio:.2f}:1"
+    for name, colour in CATEGORY_COLOURS_DARK.items():
+        for background in dark_backgrounds:
+            ratio = _contrast(colour, background)
+            assert ratio >= 3.0, f"{name} {colour} on {background} is {ratio:.2f}:1"

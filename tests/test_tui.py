@@ -30,11 +30,15 @@ from ghstars.tui.app import (
     FilterScreen,
     ListPickerScreen,
     TuiApp,
-    _category_role,
+    _category_colour,
     _format_date,
     _visibility_label,
 )
-from ghstars.tui.config import load_tui_state
+from ghstars.tui.config import (
+    CATEGORY_COLOURS_DARK,
+    CATEGORY_COLOURS_LIGHT,
+    load_tui_state,
+)
 
 
 def _table(app: TuiApp) -> DataTable[str]:
@@ -45,18 +49,48 @@ def _detail_text(app: TuiApp) -> str:
     return str(app.query_one("#detail-pane", DetailPane).render())
 
 
-def test_category_roles_are_stable_semantic_cues() -> None:
-    role = _category_role("AI", {})
+def test_category_colours_are_stable_named_cues() -> None:
+    """The digest picks the same colour for the same Category name every
+    time. Two names may land on the same colour; the Category text is
+    always there to tell them apart (ADR 0008), so nothing asserts that
+    the mapping is one to one."""
+    colour = _category_colour("AI", {})
 
-    assert role == _category_role("AI", {})
-    assert role in {
-        "text-primary",
-        "text-secondary",
-        "text-accent",
-        "text-success",
-    }
-    assert _category_role(None, {}) == "text-muted"
-    assert _category_role("AI", {"AI": "text-accent"}) == "text-accent"
+    assert colour == _category_colour("AI", {})
+    assert colour in CATEGORY_COLOURS_LIGHT
+    assert _category_colour("AI", {"AI": "magenta"}) == "magenta"
+
+
+def test_category_colour_never_hashes_an_empty_category() -> None:
+    assert _category_colour(None, {}) is None
+    assert _category_colour("", {}) is None
+
+
+async def test_category_colour_is_stable_across_app_instances(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Two launches of the same store paint the Category the same way."""
+    category_list = List(
+        id="L1",
+        name="Explore: AI",
+        slug="explore-ai",
+        intent="Explore",
+        category="AI",
+    )
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars", list_ids=["L1"])])
+    store.save_lists([category_list])
+
+    styles: list[list[str]] = []
+    for _ in range(2):
+        app = TuiApp(client=FakeGitHubClient(), store=store)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            membership: object = _table(app).get_row_at(0)[4]
+            assert isinstance(membership, Text)
+            styles.append([str(span.style) for span in membership.spans])
+
+    assert styles[0] == styles[1]
 
 
 async def test_stars_table_shows_membership_with_visibility(
@@ -97,17 +131,76 @@ async def test_category_override_colours_membership_without_hiding_text(
     store.save_lists([category_list])
     config_path = tmp_path / "config" / "tui.toml"
     config_path.parent.mkdir()
-    config_path.write_text('[category_colours]\nAI = "text-accent"\n')
+    config_path.write_text('[category_colours]\nAI = "magenta"\n')
 
     app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         membership: object = _table(app).get_row_at(0)[4]
-        accent = app.get_css_variables()["text-accent"]
+        theme_colours = (
+            CATEGORY_COLOURS_DARK if app.current_theme.dark else CATEGORY_COLOURS_LIGHT
+        )
+        expected = theme_colours["magenta"]
 
     assert isinstance(membership, Text)
     assert str(membership) == "[🌐 Explore · AI]"
-    assert any(str(span.style) == accent for span in membership.spans)
+    assert any(str(span.style) == expected for span in membership.spans)
+
+
+async def test_category_colour_follows_the_active_theme_polarity(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """A light theme takes the light hex table. No single hex clears 3:1
+    on both polarities, so the wrong table is an illegible cue."""
+    category_list = List(
+        id="L1",
+        name="Explore: AI",
+        slug="explore-ai",
+        intent="Explore",
+        category="AI",
+    )
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/ghstars", list_ids=["L1"])])
+    store.save_lists([category_list])
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text('[category_colours]\nAI = "magenta"\n')
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        app.theme = "textual-light"
+        app._refresh_table()
+        await pilot.pause()
+        membership: object = _table(app).get_row_at(0)[4]
+
+    assert isinstance(membership, Text)
+    assert str(membership) == "[🌐 Explore · AI]"
+    assert any(
+        str(span.style) == CATEGORY_COLOURS_LIGHT["magenta"]
+        for span in membership.spans
+    )
+
+
+async def test_general_list_membership_renders_muted_with_its_name(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """A List with no Intent and no Category keeps its own name and takes
+    the theme's muted foreground, not a hashed colour."""
+    general_list = List(id="L1", name="Tools", slug="tools")
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars", list_ids=["L1"])])
+    store.save_lists([general_list])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        membership: object = _table(app).get_row_at(0)[4]
+        muted = app.get_css_variables()["foreground-muted"][:7]
+
+    assert isinstance(membership, Text)
+    assert "Tools" in str(membership)
+    assert any(str(span.style) == muted for span in membership.spans)
 
 
 async def test_stale_pending_list_ids_is_ignored_by_the_table(
@@ -1079,6 +1172,31 @@ async def test_ascii_only_replaces_glyphs_with_text_markers(
     assert sync_status == "o idle"
     assert _visibility_label(True, ascii_only=True) in detail
     assert "\U0001f512" not in detail
+
+
+async def test_ascii_only_replaces_membership_chip_glyphs(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """The table's Membership column goes through `_membership_chips`,
+    a separate render path from the detail pane's `_visibility_label` --
+    `ascii_only` must reach both."""
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text("ascii_only = true\n")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/repo", list_ids=["L1"])])
+    store.save_lists(
+        [List(id="L1", name="Current: Tool", slug="current-tool", is_private=True)]
+    )
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        row = _table(app).get_row_at(0)
+
+    row_text = " ".join(str(cell) for cell in row)
+    assert "P" in row_text
+    assert "\U0001f512" not in row_text
 
 
 async def test_show_clock_adds_a_clock_only_when_configured(

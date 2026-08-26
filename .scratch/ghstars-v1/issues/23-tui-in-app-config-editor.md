@@ -58,15 +58,15 @@ both.
 This scope overrides ticket 28. Read ADR 0008's "Overrides ticket 28"
 section first.
 
-- [ ] `category_colours` maps a Category name to a named colour from a
+- [x] `category_colours` maps a Category name to a named colour from a
       fixed set. It no longer maps to a Textual semantic text role.
-- [ ] Every colour in the set reaches 3:1 contrast on a light background
+- [x] Every colour in the set reaches 3:1 contrast on a light background
       and on a dark background. Record the measured values.
-- [ ] A stable digest of the Category name picks the default colour. This
+- [x] A stable digest of the Category name picks the default colour. This
       keeps ticket 28's behaviour. A collision is acceptable.
-- [ ] The Category text stays visible. Colour is never the only Category
+- [x] The Category text stays visible. Colour is never the only Category
       cue. This keeps ticket 28's WCAG 2.2 rule.
-- [ ] Render General Lists in a muted colour. Do not hash an empty
+- [x] Render General Lists in a muted colour. Do not hash an empty
       Category.
 
 ## Scope 3 — Narrow terminals
@@ -137,3 +137,40 @@ ticket 28 overrides. ADR 0008 records the decisions and the rejected
 settings. The session also produced a research pass over the codebase for
 hardcoded values that deserve a config field. Scope 1's new fields come
 from that pass.
+
+**2026-08-26, Scope 2 landed: the Category colour set.**
+
+`category_colours` now maps a Category name to one of eight named
+colours: red, orange, yellow, green, cyan, blue, magenta, and violet. An
+unknown name fails validation and the error names both the bad value and
+the whole set.
+
+No single hex clears 3:1 on both polarities. A light theme bottoms out at
+`$panel` #D0D0D0 (relative luminance 0.60) and a dark theme tops out at
+`$panel` #242F38 (0.028); the two limits leave no overlapping band. Each
+colour therefore ships two hex values, and the TUI selects the table that
+matches the active Textual theme.
+
+Measured WCAG 2.1 contrast against the worst-case background of each
+polarity:
+
+| Colour  | Light hex | vs #D0D0D0 | Dark hex | vs #242F38 |
+| ------- | --------- | ---------- | -------- | ---------- |
+| red     | #B3261E   | 4.24       | #FF8A80  | 5.98       |
+| orange  | #8F4700   | 4.44       | #FFB870  | 8.02       |
+| yellow  | #6E5600   | 4.55       | #EBD26A  | 9.07       |
+| green   | #1F6B36   | 4.24       | #7FD69A  | 7.79       |
+| cyan    | #00595F   | 5.25       | #5FD6DC  | 7.89       |
+| blue    | #1A56C4   | 4.29       | #8AB4FF  | 6.53       |
+| magenta | #A81E80   | 4.31       | #F79AD9  | 6.88       |
+| violet  | #5B3FCB   | 4.51       | #B9A6FF  | 6.47       |
+
+Every value also clears 3:1 on the other backgrounds of its polarity
+(#FFFFFF and #E0E0E0; #121212 and #1E1E1E).
+`test_every_category_colour_clears_three_to_one_contrast` recomputes the
+whole table from the shipped hex values, so a later edit that breaks the
+guarantee fails the suite.
+
+Ticket 28's other rules stand: a digest of the Category name picks the
+default, a collision is acceptable, General Lists stay muted, an empty
+Category is never hashed, and the Category text is always visible.
