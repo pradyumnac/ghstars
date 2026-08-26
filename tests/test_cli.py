@@ -6,8 +6,10 @@ Uses typer's own `CliRunner` -- no network, no real GitHub client. `main()`'s
 to a no-op alongside `get_store`, so nothing outside `tmp_path` is touched.
 """
 
+import contextlib
 import json
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -464,39 +466,74 @@ def test_category_drain_cmd_fails_when_category_not_found(
     assert "no Explore/Current/Retired List found" in result.output
 
 
+@contextlib.contextmanager
+def _reset_fetcher_logger() -> Iterator[logging.Logger]:
+    fetcher_logger = logging.getLogger("ghstars.github")
+    prev_level = fetcher_logger.level
+    prev_handlers = list(fetcher_logger.handlers)
+    prev_propagate = fetcher_logger.propagate
+    try:
+        yield fetcher_logger
+    finally:
+        fetcher_logger.setLevel(prev_level)
+        fetcher_logger.propagate = prev_propagate
+        for handler in list(fetcher_logger.handlers):
+            if handler not in prev_handlers:
+                fetcher_logger.removeHandler(handler)
+
+
 def test_sync_cmd_debug_flag_prints_plain_stage_lines_and_raises_logger_level(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     store = StateStore(tmp_path)
     _use_store(monkeypatch, store)
     _use_client(monkeypatch, FakeGitHubClient())
-    fetcher_logger = logging.getLogger("ghstars.github")
-    fetcher_logger.setLevel(logging.WARNING)
 
-    result = runner.invoke(app, ["sync", "--debug"])
+    with _reset_fetcher_logger() as fetcher_logger, caplog.at_level(logging.WARNING):
+        fetcher_logger.setLevel(logging.WARNING)
 
-    assert result.exit_code == 0
-    # Plain, non-animated stage lines -- not the spinner glyph -- so
-    # --debug output interleaves cleanly with the log lines it enables.
-    assert "Fetching starred repos..." in result.output
-    assert fetcher_logger.level == logging.DEBUG
+        result = runner.invoke(app, ["sync", "--debug"])
+
+        assert result.exit_code == 0
+        # Plain, non-animated stage lines -- not the spinner glyph -- so
+        # --debug output interleaves cleanly with the log lines it enables.
+        assert "Fetching starred repos..." in result.output
+        assert fetcher_logger.level == logging.DEBUG
 
 
 def test_sync_cmd_debug_env_var_also_enables_debug(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     store = StateStore(tmp_path)
     _use_store(monkeypatch, store)
     _use_client(monkeypatch, FakeGitHubClient())
-    fetcher_logger = logging.getLogger("ghstars.github")
-    fetcher_logger.setLevel(logging.WARNING)
     monkeypatch.setenv("GHSTARS_DEBUG", "1")
 
-    result = runner.invoke(app, ["sync"])
+    with _reset_fetcher_logger() as fetcher_logger, caplog.at_level(logging.WARNING):
+        fetcher_logger.setLevel(logging.WARNING)
 
-    assert result.exit_code == 0
-    assert "Fetching starred repos..." in result.output
-    assert fetcher_logger.level == logging.DEBUG
+        result = runner.invoke(app, ["sync"])
+
+        assert result.exit_code == 0
+        assert "Fetching starred repos..." in result.output
+        assert fetcher_logger.level == logging.DEBUG
+
+
+def test_sync_cmd_debug_env_var_non_boolean_value_still_enables_debug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient())
+    monkeypatch.setenv("GHSTARS_DEBUG", "verbose")
+
+    with _reset_fetcher_logger() as fetcher_logger, caplog.at_level(logging.WARNING):
+        fetcher_logger.setLevel(logging.WARNING)
+
+        result = runner.invoke(app, ["sync"])
+
+        assert result.exit_code == 0
+        assert fetcher_logger.level == logging.DEBUG
 
 
 def test_sync_cmd_fails_gracefully_when_lock_is_held(

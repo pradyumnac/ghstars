@@ -227,6 +227,7 @@ def _graphql(
     try:
         payload = cast(dict[str, object], json.loads(result.stdout))
     except json.JSONDecodeError as exc:
+        logger.debug("gh api graphql: malformed JSON stdout=%r", result.stdout)
         raise GitHubApiError("gh api graphql returned malformed JSON") from exc
 
     if payload.get("errors"):
@@ -235,6 +236,7 @@ def _graphql(
 
     data = payload.get("data")
     if not isinstance(data, dict):
+        logger.debug("gh api graphql: no data, payload=%s", payload)
         raise GitHubApiError("gh api graphql returned no data")
     logger.debug("gh api graphql response: keys=%s", list(data.keys()))
     return cast(dict[str, object], data)

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 
 import typer
@@ -28,7 +29,6 @@ def sync_cmd(
     debug: bool = typer.Option(
         False,
         "--debug",
-        envvar="GHSTARS_DEBUG",
         help="Emit verbose fetcher debug logging (gh api calls, pagination, "
         "per-item progress) to stderr. Also honors GHSTARS_DEBUG=1.",
     ),
@@ -36,13 +36,31 @@ def sync_cmd(
     """Fetch stars and Lists from GitHub into local state."""
     client = cli.get_client()
     store = cli.get_store()
+    # Read the env var manually rather than via typer's `envvar=` -- that
+    # goes through click's strict boolean parsing, so a non-boolean value
+    # (e.g. GHSTARS_DEBUG=verbose) would crash the whole sync instead of
+    # just falling back. Any non-empty value here is treated as truthy,
+    # matching the help text ("Also honors GHSTARS_DEBUG=1").
+    debug = debug or bool(os.environ.get("GHSTARS_DEBUG"))
     if debug:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            stream=sys.stderr,
-            format="%(asctime)s %(name)s %(message)s",
-        )
-        logging.getLogger(_FETCHER_LOGGER_NAME).setLevel(logging.DEBUG)
+        # Attach a handler to the fetcher logger only, and stop it from
+        # propagating -- logging.basicConfig() would set the *root*
+        # logger's level instead, which also turns on DEBUG for
+        # unrelated third-party loggers (e.g. filelock logs 4 lines per
+        # state-lock acquire/release, of which sync() does several).
+        fetcher_logger = logging.getLogger(_FETCHER_LOGGER_NAME)
+        # Drop any handler this command attached on a prior invocation in
+        # the same process (e.g. repeated `runner.invoke()` calls in
+        # tests) before adding a fresh one, so they don't pile up.
+        for old_handler in list(fetcher_logger.handlers):
+            if getattr(old_handler, "_ghstars_debug_handler", False):
+                fetcher_logger.removeHandler(old_handler)
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
+        handler._ghstars_debug_handler = True  # type: ignore[attr-defined]
+        fetcher_logger.addHandler(handler)
+        fetcher_logger.setLevel(logging.DEBUG)
+        fetcher_logger.propagate = False
 
     # A sync can take minutes (one `gh` subprocess round trip per page,
     # per pending tag push -- see docs/explanation/known-limitations.md)

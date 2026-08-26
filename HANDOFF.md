@@ -37,17 +37,16 @@ if resuming with new tasks in flight.
 - Issue 16 — lightweight push (immediate tag push): complete.
 - Issue 17 — audit findings, mid-term fixes: complete.
 - Issue 19 — architecture cleanup, post-layer: complete.
+- Issue 08 — agent-mode status command & verify: complete.
+- Issue 20 — fix TUI rate-limit-bar defects: complete.
+- Issue 21 — TUI config foundation: tui.toml and tui-state.toml: complete.
+- Issue 22 — TUI detail pane: complete.
 
 See each ticket file's own `Status:`/`## Comments` for implementation
-detail. Reconciled against the ticket files directly on 2026-08-18.
+detail. Reconciled against the ticket files directly on 2026-08-26.
 
-### Gaps to fix (last updated 2026-08-18)
+### Gaps to fix (last updated 2026-08-26)
 
-- Ticket 09's own file still says `Status: ready-for-agent`, though the
-  work is done and merged (commit `8c55b2d`). Update the file to `done`.
-- Ticket 11's own file still says `Status: ready-for-agent`, though the
-  work is done and merged (`ghstars diff` ships in `cli/commands/diff.py`).
-  Update the file to `done`.
 - Spec story 47 (retire `gh-stars.py` and the `github-stars` skill once
   ghstars is stable) has no ticket. Ticket 14 explicitly punts on the
   retirement mechanism. Spec.md's Further Notes calls retirement "a
@@ -62,22 +61,56 @@ not that it's unblocked — check the Blocked-by column.
 
 | #  | Ticket                                                    | Status                                                          | Blocked by                    |
 | -- | ------------------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------ |
-| 8  | Agent-mode status command & verify                        | **ready-for-agent — unblocked, pick up next**                  | 3, 5, 19 (all done)            |
-| 12 | Nudges                                                    | ready-for-agent — blocked                                      | 8                              |
-| 13 | Packaging & distribution (Linux)                          | ready-for-agent — blocked                                      | 5, 6, 7, 8, 9, 10, 11, 12, 14  |
-| 14 | Accompanying agent skill (replaces github-stars)          | ready-for-agent — blocked                                      | 4, 5, 6, 7, 8, 10, 11, 12      |
+| 12 | Nudges                                                    | ready-for-agent — unblocked                                    | none                           |
+| 13 | Packaging & distribution (Linux)                          | ready-for-agent — blocked                                      | 9, 10, 11, 12, 14              |
+| 14 | Accompanying agent skill (replaces github-stars)          | ready-for-agent — blocked                                      | 4, 5, 6, 7, 10, 11, 12         |
 | 15 | Windows & macOS release binaries                          | ready-for-agent — blocked                                      | 13                             |
 | 18 | Distinguish "cleared on GitHub" from "never classified"   | needs design, not yet speced — no acceptance criteria yet — deliberately deferred until 05-12, 14 done | 5, 6, 7, 8, 9, 10, 11, 12, 14 |
-| 20 | Fix TUI rate-limit-bar defects                            | ready-for-agent — unblocked                                    | none                           |
-| 21 | TUI config foundation: tui.toml and tui-state.toml        | ready-for-agent — unblocked                                    | none                           |
-| 22 | TUI detail pane                                           | ready-for-agent — unblocked                                    | none                           |
-| 23 | In-TUI config editor                                      | ready-for-agent — blocked                                      | 21                             |
-| 24 | Chrome, live state, and an explicit sync key              | ready-for-agent — blocked                                      | 20, 21                         |
-| 25 | View mode switcher and Folder view                        | ready-for-agent — blocked                                      | 21                             |
+| 23 | In-TUI config editor                                      | ready-for-agent — unblocked                                    | none                           |
+| 24 | Chrome, live state, and an explicit sync key              | ready-for-agent — unblocked                                    | none                           |
+| 25 | View mode switcher and Folder view                        | ready-for-agent — unblocked                                    | none                           |
 | 26 | Grid view mode                                            | ready-for-agent — blocked                                      | 25                             |
-| 27 | Finding and ordering Stars: filters, search, sort         | ready-for-agent — blocked                                      | 21, 25                         |
-| 28 | Colour system for Lists and Categories                    | ready-for-agent — blocked                                      | 21                             |
-| 29 | Open in browser, and unstar with confirmation             | ready-for-agent — blocked                                      | 21                             |
+| 27 | Finding and ordering Stars: filters, search, sort         | ready-for-agent — blocked                                      | 25                             |
+| 28 | Colour system for Lists and Categories                    | ready-for-agent — unblocked                                    | none                           |
+| 29 | Open in browser, and unstar with confirmation             | ready-for-agent — unblocked                                    | none                           |
+
+**Next batch to start (queued by user, 2026-08-26):** 12, 23, 25, 28, 29 — all
+unblocked per the table above.
+
+### New TUI defect to ticket (queued by user, 2026-08-26)
+
+Star-list ("repo list") view: pressing the select key on a row should flip
+its `[ ]` mark to `[x]`, but the mark instead goes blank/vanishes. Reported
+as specific to the star-list table — not reproduced in the List/Category
+picker screens used for tagging (`table.add_columns("List", "Intent",
+"Category", "Visibility"[, "Items"])`, `tui/app.py:197,251`), which have no
+"Sel" column at all and aren't a toggle-select surface — you drill into a
+List there, you don't multi-select rows. **Caution:** that picker is
+probably what's being called "folder mode" in the report, not an actual
+Folder view — ticket 25 (Folder view) is not implemented yet (`grep -i
+folder src/ghstars/tui/` finds nothing), so re-confirm the repro against
+the real running TUI before assuming a genuine list-vs-folder inconsistency.
+
+Investigated by inspection (`tui/app.py:558-570`,
+`action_toggle_select`/`_refresh_table`): the underlying data path looks
+correct — a `run_test()` pilot repro confirms `table.get_cell(row, "sel")`
+returns `"[x]"` after pressing the select key, and `DataTable.update_cell()`
+(Textual 8.2.8) calls `self.refresh()` internally, so this isn't an obvious
+missing-repaint bug at the code level. The vanishing is likely a real
+terminal-rendering artifact (bracket characters, cell justification, or
+row-height/cursor-highlight interaction) that only shows up in an actual
+running TUI, not in a headless pilot test. Needs a live repro (`ghstars
+tui`, arrow to a row, press the select key, watch the cell) before ticketing
+a fix — no ticket number assigned yet.
+
+### Detail pane — already implemented (ticket 22, answering a question queued 2026-08-26)
+
+Yes — `DetailPane` (`tui/app.py:92`, wired at line 356). It's not a
+separate mode you switch into: it's a panel that's always visible and
+auto-refreshes to show whatever star the cursor is currently on, via
+`on_data_table_row_highlighted` → `_refresh_detail_pane()` (`tui/app.py:522-538`).
+No keybinding needed — just move the cursor (arrow keys) over the star
+table and the pane updates.
 
 ## TUI UI overhaul (tickets 20-29)
 
@@ -161,5 +194,5 @@ Operational notes:
 ## `docs/explanation/known-limitations.md` — what's already documented
 
 Sync isn't an atomic snapshot; sync always re-fetches everything (no
-incremental path); pending tag pushes and default-classification pushes
-aren't batched. Don't rediscover these.
+incremental path); pending tag pushes aren't batched. Don't rediscover
+these.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 04.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] TUI supports single-item tagging against `ghstars.core`
 - [ ] TUI supports bulk tagging across a selected batch of Stars

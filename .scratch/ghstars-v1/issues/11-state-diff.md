@@ -4,7 +4,7 @@
 
 **Blocked by:** 04.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `ghstars diff` shows a diff of classification changes via `git diff`/`git log -p` when `state/` is already a git repo
 - [ ] Clear, non-crashing message when `state/` is not git-tracked

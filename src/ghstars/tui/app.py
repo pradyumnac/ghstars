@@ -32,11 +32,13 @@ and active Filter, read at launch and written on quit
 (`action_quit`).
 """
 
+import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import ClassVar
 
 from filelock import Timeout
+from pydantic import ValidationError
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
@@ -441,9 +443,11 @@ class TuiApp(App[None]):
 
     # -- local state, read from the last `ghstars sync` --------------------
 
-    def _reload_local_state(self) -> None:
+    def _reload_local_state(self) -> bool:
         """Load `self._stars`/`self._lists` from the store, tolerating a
-        concurrent `ghstars` process holding the state lock.
+        concurrent `ghstars` process holding the state lock or a
+        corrupt/truncated state file. Returns whether the reload
+        succeeded.
 
         Called both on first mount (where `self._stars`/`self._lists`
         already default to `[]`) and after a tag push completes. A
@@ -451,7 +455,10 @@ class TuiApp(App[None]):
         the TUI still opens (empty, with an error notification) rather
         than never launching at all; after a tag push, the last
         successfully loaded state is left in place rather than wiped,
-        same as `_fetch_rate_limit`'s own broad-catch precedent.
+        same as `_fetch_rate_limit`'s own broad-catch precedent. A
+        corrupt `stars.json`/`lists.json` is treated the same way `sync()`
+        self-heals from it (`core/sync.py`'s `_load_self_healing`) rather
+        than crashing the TUI on mount with a raw traceback.
         """
         try:
             stars = [s for s in self._store.load_stars() if not s.archived]
@@ -463,9 +470,17 @@ class TuiApp(App[None]):
                 severity="error",
                 timeout=8,
             )
-            return
+            return False
+        except (OSError, json.JSONDecodeError, ValidationError) as exc:
+            self.notify(
+                f"could not load local state — {exc}",
+                severity="error",
+                timeout=8,
+            )
+            return False
         self._stars = stars
         self._lists = lists
+        return True
 
     def _lists_by_id(self) -> dict[str, List]:
         return {lst.id: lst for lst in self._lists}
@@ -691,13 +706,19 @@ class TuiApp(App[None]):
     def _on_tag_done(
         self, choice: TagChoice, tagged: int, removed_total: int, errors: list[str]
     ) -> None:
-        self._reload_local_state()
+        reloaded = self._reload_local_state()
         self._selected.clear()
         self._refresh_table()
         if tagged:
             message = f"Tagged {tagged} star(s) into {choice.list_name!r}."
             if removed_total:
                 message += f" ({removed_total} sibling List membership(s) removed.)"
+            if not reloaded:
+                # `_reload_local_state()` already showed its own error
+                # notification; the table still reflects pre-tag
+                # membership, so say so instead of a bare success toast
+                # that would otherwise look contradictory next to it.
+                message += " (table may not reflect this yet — reload failed.)"
             self.notify(message)
         for error in errors:
             self.notify(error, severity="error", timeout=8)
