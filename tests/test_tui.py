@@ -16,6 +16,7 @@ from textual.widgets import DataTable, Input
 from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
+from ghstars.github.schema import RateLimitResponse
 from ghstars.tui.app import ListPickerScreen, RateLimitBar, TuiApp, _visibility_label
 
 
@@ -104,6 +105,49 @@ async def test_rate_limit_bar_flags_when_not_ok(
         bar = app.query_one("#rate-limit-bar", RateLimitBar)
         has_low_class = "-low" in bar.classes
 
+    assert has_low_class
+
+
+async def test_rate_limit_bar_shows_checking_state_before_first_fetch_resolves(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Acceptance: the bar must never paint blank while the first
+    `check_rate_limit()` call (~0.7s on a real client) is in flight."""
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+
+    bar = RateLimitBar(id="rate-limit-bar")
+    text = str(bar.render())
+
+    assert "checking" in text.lower()
+    assert text.strip() != ""
+
+
+async def test_rate_limit_bar_shows_error_when_model_validate_raises(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """A `ValidationError` from `RateLimitResponse.model_validate` (e.g.
+    GitHub returning a response shape `_graphql` doesn't wrap into
+    `GitHubApiError`) must not leave the bar blank forever with no
+    notification -- it must show an explicit error state."""
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+
+    class RaisingRateLimitClient(FakeGitHubClient):
+        def check_rate_limit(self) -> RateLimitStatus:
+            RateLimitResponse.model_validate({})  # raises ValidationError
+            raise AssertionError("model_validate should have raised")
+
+    app = TuiApp(client=RaisingRateLimitClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        bar = app.query_one("#rate-limit-bar", RateLimitBar)
+        text = str(bar.render())
+        has_low_class = "-low" in bar.classes
+
+    assert "checking" not in text.lower()
+    assert text.strip() != ""
     assert has_low_class
 
 
