@@ -34,6 +34,7 @@ and active Filter, read at launch and written on quit
 
 import json
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
 
@@ -89,6 +90,10 @@ def _visibility_label(is_private: bool) -> str:
     return f"{_LOCK} Private" if is_private else f"{_GLOBE} Public"
 
 
+def _format_date(value: datetime | None) -> str:
+    return "-" if value is None else value.strftime("%d-%b-%Y")
+
+
 class DetailPane(Static):
     """Shows every field the last `ghstars sync` stored for the Star
     under the cursor (spec story 59), including `description` and
@@ -122,10 +127,14 @@ class DetailPane(Static):
             f"Stars: {star.stargazer_count}",
             f"Fork: {star.fork}    Follow: {star.follow}",
             f"Archived: {star.archived}"
-            + (f" (at {star.archived_at})" if star.archived_at else ""),
-            f"Starred at: {star.starred_at}",
-            f"First seen: {star.first_seen}",
-            f"Last checked: {star.last_checked}",
+            + (
+                f" (at {_format_date(star.archived_at)})"
+                if star.archived_at
+                else ""
+            ),
+            f"Starred at: {_format_date(star.starred_at)}",
+            f"First seen: {_format_date(star.first_seen)}",
+            f"Last checked: {_format_date(star.last_checked)}",
             f"Lists: {memberships}",
             f"Pending list edit: {pending}",
         ]
@@ -291,9 +300,13 @@ class TuiApp(App[None]):
         background: $error;
         color: $text;
     }
+    #stars-table {
+        height: 1fr;
+    }
     DetailPane {
         height: 12;
-        padding: 0 1;
+        padding: 1;
+        margin-bottom: 1;
         background: $panel;
         border-top: solid $primary;
     }
@@ -302,6 +315,7 @@ class TuiApp(App[None]):
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("q", "quit", "Quit"),
         Binding("t", "tag_selected", "Tag / Retag"),
+        Binding("d", "toggle_detail_pane", "Detail"),
         Binding("space", "toggle_select", "Select"),
         Binding("a", "select_all", "Select all"),
         Binding("c", "clear_selection", "Clear selection"),
@@ -359,7 +373,12 @@ class TuiApp(App[None]):
     def on_mount(self) -> None:
         self.title = "ghstars"
         table = self.query_one("#stars-table", DataTable)
-        table.add_columns(("Sel", "sel"), "Star", "Language", "Lists")
+        table.add_columns(("Sel", "sel"), "Star", "Language", "Stars", "Lists")
+        # Detail pane starts hidden -- it's a view-details toggle ("d"),
+        # not an always-on panel, so the table gets the full screen by
+        # default. `#stars-table { height: 1fr }` picks up the freed
+        # space automatically when it's hidden.
+        self.query_one("#detail-pane", DetailPane).display = False
         self._reload_local_state()
         self._refresh_table()
         self._fetch_rate_limit()
@@ -503,6 +522,7 @@ class TuiApp(App[None]):
                 mark,
                 star.full_name,
                 star.language or "-",
+                f"{star.stargazer_count:,}",
                 memberships or "-",
                 height=self._config.row_height,
                 key=star.full_name,
@@ -527,6 +547,12 @@ class TuiApp(App[None]):
             pane.show_empty()
         else:
             pane.show_star(star, self._lists_by_id())
+
+    def action_toggle_detail_pane(self) -> None:
+        pane = self.query_one("#detail-pane", DetailPane)
+        pane.display = not pane.display
+        if pane.display:
+            self._refresh_detail_pane()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         """Keeps the detail pane in step with the cursor (spec story 59)

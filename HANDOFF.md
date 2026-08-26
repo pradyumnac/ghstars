@@ -103,14 +103,30 @@ running TUI, not in a headless pilot test. Needs a live repro (`ghstars
 tui`, arrow to a row, press the select key, watch the cell) before ticketing
 a fix — no ticket number assigned yet.
 
-### Detail pane — already implemented (ticket 22, answering a question queued 2026-08-26)
+### Detail pane — resolved (2026-08-26)
 
-Yes — `DetailPane` (`tui/app.py:92`, wired at line 356). It's not a
-separate mode you switch into: it's a panel that's always visible and
-auto-refreshes to show whatever star the cursor is currently on, via
-`on_data_table_row_highlighted` → `_refresh_detail_pane()` (`tui/app.py:522-538`).
-No keybinding needed — just move the cursor (arrow keys) over the star
-table and the pane updates.
+`DetailPane` (`tui/app.py:92`) exists (ticket 22) and auto-refreshes to
+the cursor's star via `on_data_table_row_highlighted` →
+`_refresh_detail_pane()`. It was reported "not visible" — a genuine
+layout bug: `#stars-table` had no explicit `height`, so it inherited
+`DataTable`'s built-in `height: auto; max-height: 100%` and greedily
+claimed the whole flow region, rendering `DetailPane` at the same `y` as
+the docked `Footer` (overlapping/clipped). Fixed with
+`#stars-table { height: 1fr; }` (`tui/app.py:303-305`).
+
+Per the user's explicit preference, the pane is no longer always-visible
+(superseding ticket 22's original "always visible" spec, story 59):
+starts hidden, toggled with `d` (`action_toggle_detail_pane`,
+`tui/app.py`), content still refreshes on cursor move even while hidden
+so it's current the moment it's shown. `DetailPane` also got
+`margin-bottom: 1` so it doesn't touch the Footer, and `padding: 1` for
+internal breathing room. Also confirmed: every `action_*` method has a
+matching `Binding(...)` — the Footer's key legend is complete.
+
+Other TUI polish landed alongside this: a "Stars" (stargazer count)
+column added to the star table; `DetailPane`'s date fields
+(`starred_at`, `first_seen`, `last_checked`, `archived_at`) now render
+as `dd-Mon-YYYY` via `_format_date()` instead of a raw datetime repr.
 
 ## TUI UI overhaul (tickets 20-29)
 

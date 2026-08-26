@@ -21,3 +21,15 @@ shows as "none pending" when null per ADR 0004, with no further special-case
 logic. Tests added in `tests/test_tui.py` cover cursor-driven updates, full
 field coverage, empty-table placeholder, and rendering before the rate-limit
 worker completes.
+
+**2026-08-26 amendment:** a layout bug (`#stars-table` had no explicit
+`height`, so `DataTable`'s default `height: auto; max-height: 100%`
+squeezed `DetailPane` off-screen behind the Footer) made the pane
+invisible in the real running TUI — fixed with `#stars-table { height:
+1fr; }`. Per the user's explicit request, this ticket's original
+"always visible" design (story 59) is superseded: the pane now starts
+hidden and is toggled with `d` (`action_toggle_detail_pane`), not an
+always-on panel. Content still refreshes on cursor move while hidden.
+Also added in the same pass: date fields render as `dd-Mon-YYYY`
+(`_format_date()`), and `margin-bottom`/`padding` for spacing from the
+Footer.

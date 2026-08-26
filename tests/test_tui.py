@@ -24,6 +24,7 @@ from ghstars.tui.app import (
     ListPickerScreen,
     RateLimitBar,
     TuiApp,
+    _format_date,
     _visibility_label,
 )
 
@@ -53,9 +54,9 @@ async def test_stars_table_shows_membership_with_visibility(
         row = _table(app).get_row_at(0)
 
     assert row[1] == "pradyumnac/ghstars"
-    assert "Current: Tool" in row[3]
-    assert _visibility_label(True) in row[3]
-    assert "pending" not in row[3]
+    assert "Current: Tool" in row[4]
+    assert _visibility_label(True) in row[4]
+    assert "pending" not in row[4]
 
 
 async def test_stale_pending_list_ids_is_ignored_by_the_table(
@@ -77,8 +78,8 @@ async def test_stale_pending_list_ids_is_ignored_by_the_table(
         await pilot.pause()
         row = _table(app).get_row_at(0)
 
-    assert "Explore: Tool" not in row[3]
-    assert "pending sync" not in row[3]
+    assert "Explore: Tool" not in row[4]
+    assert "pending sync" not in row[4]
 
 
 async def test_rate_limit_bar_shows_remaining_after_mount(
@@ -472,9 +473,9 @@ async def test_detail_pane_shows_full_record_of_star_under_cursor(
     assert "Python" in text
     assert "7" in text
     assert "True" in text  # fork / follow
-    assert str(star.starred_at) in text
-    assert str(star.first_seen) in text
-    assert str(star.last_checked) in text
+    assert _format_date(star.starred_at) in text
+    assert _format_date(star.first_seen) in text
+    assert _format_date(star.last_checked) in text
     assert "Current: Tool" in text
     assert _visibility_label(True) in text
     assert "none pending" in text  # pending_list_ids is None by default
@@ -564,3 +565,26 @@ async def test_detail_pane_shows_placeholder_when_table_is_empty(
         text = _detail_text(app)
 
     assert "No star selected" in text
+
+
+async def test_detail_pane_starts_hidden_and_toggles_with_d(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """The detail pane is a view-details toggle ("d"), not an
+    always-visible panel -- it starts hidden so the star table gets the
+    full screen by default."""
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app.query_one("#detail-pane", DetailPane)
+        assert pane.display is False
+
+        await pilot.press("d")
+        assert pane.display is True
+
+        await pilot.press("d")
+        assert pane.display is False
