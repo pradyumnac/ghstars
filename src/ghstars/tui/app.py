@@ -70,6 +70,52 @@ def _visibility_label(is_private: bool) -> str:
     return f"{_LOCK} Private" if is_private else f"{_GLOBE} Public"
 
 
+class DetailPane(Static):
+    """Shows every field the last `ghstars sync` stored for the Star
+    under the cursor (spec story 59), including `description` and
+    `html_url` -- neither of which appears anywhere else in this TUI.
+
+    Reads only from the `Star` object handed to it; never touches
+    `GitHubClient`, so it can never block the initial paint.
+    """
+
+    def show_star(self, star: Star, lists: dict[str, List]) -> None:
+        memberships = (
+            ", ".join(
+                f"{lists[lid].name} ({_visibility_label(lists[lid].is_private)})"
+                for lid in star.list_ids
+                if lid in lists
+            )
+            or "none"
+        )
+        pending = (
+            "none pending"
+            if star.pending_list_ids is None
+            else ", ".join(star.pending_list_ids) or "none pending"
+        )
+        lines = [
+            f"[b]{star.full_name}[/b]",
+            star.html_url,
+            "",
+            star.description or "(no description)",
+            "",
+            f"Language: {star.language or '-'}",
+            f"Stars: {star.stargazer_count}",
+            f"Fork: {star.fork}    Follow: {star.follow}",
+            f"Archived: {star.archived}"
+            + (f" (at {star.archived_at})" if star.archived_at else ""),
+            f"Starred at: {star.starred_at}",
+            f"First seen: {star.first_seen}",
+            f"Last checked: {star.last_checked}",
+            f"Lists: {memberships}",
+            f"Pending list edit: {pending}",
+        ]
+        self.update("\n".join(lines))
+
+    def show_empty(self) -> None:
+        self.update("No star selected.")
+
+
 class RateLimitBar(Static):
     """Shows the remaining GitHub API rate limit (spec story 49).
 
@@ -226,6 +272,12 @@ class TuiApp(App[None]):
         background: $error;
         color: $text;
     }
+    DetailPane {
+        height: 12;
+        padding: 0 1;
+        background: $panel;
+        border-top: solid $primary;
+    }
     """
 
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -251,6 +303,7 @@ class TuiApp(App[None]):
         yield Header(show_clock=True)
         yield RateLimitBar(id="rate-limit-bar")
         yield DataTable(id="stars-table", cursor_type="row")
+        yield DetailPane(id="detail-pane")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -291,6 +344,35 @@ class TuiApp(App[None]):
                 memberships or "-",
                 key=star.full_name,
             )
+        # `DataTable.clear()` resets the cursor to row 0, but only *posts*
+        # `RowHighlighted` when that's an actual change of coordinate --
+        # if the cursor was already sitting on row 0 (the common case),
+        # clearing and refilling the table is a no-op move and no event
+        # fires. Refreshing the detail pane explicitly here, rather than
+        # relying on that event, keeps it correct after every table
+        # rebuild regardless of where the cursor happened to be.
+        self._refresh_detail_pane()
+
+    def _star_by_full_name(self, full_name: str) -> Star | None:
+        return next((s for s in self._stars if s.full_name == full_name), None)
+
+    def _refresh_detail_pane(self) -> None:
+        pane = self.query_one("#detail-pane", DetailPane)
+        full_name = self._current_row_full_name()
+        star = self._star_by_full_name(full_name) if full_name else None
+        if star is None:
+            pane.show_empty()
+        else:
+            pane.show_star(star, self._lists_by_id())
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Keeps the detail pane in step with the cursor (spec story 59)
+        as the user moves it with the keyboard. `_refresh_table()`
+        handles the table-rebuild case itself (see the comment there),
+        so this only needs to cover genuine cursor movement."""
+        if event.data_table.id != "stars-table":
+            return
+        self._refresh_detail_pane()
 
     def _current_row_full_name(self) -> str | None:
         table = self.query_one("#stars-table", DataTable)
