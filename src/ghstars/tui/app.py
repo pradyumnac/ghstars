@@ -589,7 +589,9 @@ class TuiApp(App[None]):
         self.title = "ghstars"
         table = self.query_one("#stars-table", DataTable)
         table.add_columns(("Sel", "sel"), "Star", "Language", "Stars", "Lists")
-        self.query_one("#detail-pane", DetailPane).display = self._state.detail_pane_visible
+        self.query_one(
+            "#detail-pane", DetailPane
+        ).display = self._state.detail_pane_visible
         # The table fills the space when the detail pane is hidden.
         self._update_sort_binding_description()
         self._reload_local_state()
@@ -915,7 +917,9 @@ class TuiApp(App[None]):
         except Exception as exc:  # noqa: BLE001 -- worker must report all failures
             self.call_from_thread(self._show_sync_error, str(exc))
             return
-        self.call_from_thread(self._show_sync_done, result.star_count, result.list_count)
+        self.call_from_thread(
+            self._show_sync_done, result.star_count, result.list_count
+        )
 
     def _show_sync_stage(self, stage: str) -> None:
         self.query_one("#sync-status", Static).update(f"Sync: {stage}...")
@@ -931,7 +935,9 @@ class TuiApp(App[None]):
 
     def _show_sync_error(self, detail: str) -> None:
         self._sync_in_progress = False
-        self.query_one("#sync-status", Static).update(f"Sync: failed ({escape(detail)})")
+        self.query_one("#sync-status", Static).update(
+            f"Sync: failed ({escape(detail)})"
+        )
         self.notify(f"Sync failed: {detail}", severity="error", timeout=8)
 
     # Cycle through the supported sort modes with "s".
