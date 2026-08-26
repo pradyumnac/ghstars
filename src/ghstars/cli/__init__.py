@@ -8,6 +8,8 @@ from ghstars.cli.deps import (
     get_client,
     get_export_config_path,
     get_store,
+    get_tui_config_path,
+    get_tui_state_path,
 )
 from ghstars.cli.errors import fail
 from ghstars.cli.git_diff import git_unavailable_reason
@@ -28,6 +30,8 @@ __all__ = [
     "get_client",
     "get_export_config_path",
     "get_store",
+    "get_tui_config_path",
+    "get_tui_state_path",
     "git_unavailable_reason",
 ]
 

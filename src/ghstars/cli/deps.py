@@ -40,3 +40,27 @@ def get_export_config_path() -> Path:
     behalf (ADR 0002).
     """
     return GHSTARS_HOME / "config" / "export.toml"
+
+
+def get_tui_config_path() -> Path:
+    """`~/.ghstars/config/tui.toml` (ticket 21).
+
+    Not scaffolded with default content, same reasoning as
+    `get_export_config_path()`: a missing file means "every TUI
+    default applies" (`ghstars.tui.config.load_tui_config`), and
+    ghstars never writes into `config/` on the user's behalf (ADR
+    0002) — `tui.toml` stays stow-managed dotfiles, hand-edited by
+    the user.
+    """
+    return GHSTARS_HOME / "config" / "tui.toml"
+
+
+def get_tui_state_path() -> Path:
+    """`~/.ghstars/state/tui-state.toml` (ticket 21).
+
+    Lives under `state/`, alongside `StateStore`'s own `stars.json`/
+    `lists.json` — machine-owned, read at TUI launch and written back
+    at quit (spec story 71). A missing file means every default
+    applies, same rule as `get_tui_config_path()`.
+    """
+    return GHSTARS_HOME / "state" / "tui-state.toml"

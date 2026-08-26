@@ -11,4 +11,9 @@ def tui_cmd() -> None:
     """
     from ghstars.tui import TuiApp
 
-    TuiApp(client=cli.get_client(), store=cli.get_store()).run()
+    TuiApp(
+        client=cli.get_client(),
+        store=cli.get_store(),
+        config_path=cli.get_tui_config_path(),
+        state_path=cli.get_tui_state_path(),
+    ).run()

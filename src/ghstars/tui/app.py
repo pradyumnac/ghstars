@@ -23,9 +23,17 @@ incremental and costs real API points every time).
 This module never calls `ghstars.core.sync`. Syncing stays a
 deliberate `ghstars sync` on the command line; this TUI only reads and
 tags against whatever was last synced.
+
+Config (ticket 21, `ghstars.tui.config`): `config/tui.toml` overrides
+keybindings, header/row sizing, and the colour palette, applied in
+`__init__` before the first paint; this module never writes it (ADR
+0002). `state/tui-state.toml` remembers the last View Mode, sort key,
+and active Filter, read at launch and written on quit
+(`action_quit`).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import ClassVar
 
 from textual import work
@@ -46,6 +54,14 @@ from ghstars.core.tagging import (
     tag_star,
 )
 from ghstars.github import GitHubApiError
+from ghstars.tui.config import (
+    TuiColours,
+    TuiConfig,
+    TuiState,
+    load_tui_config,
+    load_tui_state,
+    save_tui_state,
+)
 
 _LOCK = "\U0001f512"
 _GLOBE = "\U0001f310"
@@ -224,7 +240,14 @@ class TuiApp(App[None]):
         Binding("r", "refresh_rate_limit", "Refresh rate limit"),
     ]
 
-    def __init__(self, client: GitHubClient, store: StateStore) -> None:
+    def __init__(
+        self,
+        client: GitHubClient,
+        store: StateStore,
+        *,
+        config_path: Path | None = None,
+        state_path: Path | None = None,
+    ) -> None:
         super().__init__()
         self._client = client
         self._store = store
@@ -233,10 +256,34 @@ class TuiApp(App[None]):
         self._selected: set[str] = set()
         self._picker_open = False
 
+        # Ticket 21: `config/tui.toml` (user-authored, read-only here) and
+        # `state/tui-state.toml` (machine-owned, read + written here). A
+        # caller (`ghstars.cli.commands.tui`) passes explicit paths from
+        # `cli.get_tui_config_path()`/`cli.get_tui_state_path()`; the
+        # defaults below (siblings of `store`'s own directory, per ADR
+        # 0002's `~/.ghstars/{config,state}/` layout) exist so this
+        # module -- and tests -- never need to import `ghstars.cli`.
+        self._config_path = config_path or (
+            store.base_dir.parent / "config" / "tui.toml"
+        )
+        self._state_path = state_path or (store.base_dir / "tui-state.toml")
+        self._config: TuiConfig = load_tui_config(self._config_path)
+        self._state: TuiState = load_tui_state(self._state_path)
+
+        # Applied here, before `compose()`/first paint -- not deferred to
+        # `on_mount()` -- so the very first render (including the
+        # Footer's key legend) already reflects any override.
+        self._apply_keybinding_overrides(self._config.keybindings)
+        self._apply_colour_overrides(self._config.colours)
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield RateLimitBar(id="rate-limit-bar")
-        yield DataTable(id="stars-table", cursor_type="row")
+        yield DataTable(
+            id="stars-table",
+            cursor_type="row",
+            header_height=self._config.header_height,
+        )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -246,6 +293,83 @@ class TuiApp(App[None]):
         self._reload_local_state()
         self._refresh_table()
         self._fetch_rate_limit()
+
+    async def action_quit(self) -> None:
+        """Persist `state/tui-state.toml` before exiting (spec story 71).
+
+        Overrides `App.action_quit` -- bound to the existing `q` entry
+        in `BINDINGS` above, unchanged -- rather than hooking
+        `on_unmount`, so the write happens deterministically before
+        Textual starts tearing the app down, not racing it.
+        """
+        save_tui_state(self._state_path, self._state)
+        await super().action_quit()
+
+    # -- config: keybindings and colour palette -------------------------
+
+    def _apply_keybinding_overrides(self, overrides: dict[str, str]) -> None:
+        """Rebind an action's key per `tui.toml`'s `[keybindings]` table
+        (e.g. `tag_selected = "shift+t"`). Composes with the static
+        `BINDINGS` list declared on this class -- it changes which key
+        triggers an existing `action_*`, it never adds a new action --
+        rather than replacing Textual's binding mechanism.
+
+        Mutates `self._bindings.key_to_bindings` in place -- the merged
+        map `DOMNode.__init__` already built from the full class
+        hierarchy, not just `self.BINDINGS` -- moving only the key(s)
+        currently bound to an overridden action. Rebuilding
+        `self._bindings` from `self.BINDINGS` alone (an earlier version
+        of this method did exactly that) silently dropped every
+        App-level binding TuiApp itself never declares -- `ctrl+q`
+        force-quit, `ctrl+c`, and the command palette's `ctrl+p` among
+        them -- the moment a user configured even one override.
+
+        An override naming an action with no matching `action_<name>`
+        method, or with no existing key bound to it, is a silent no-op
+        -- config plumbing only, no new UI, never a hard error.
+        """
+        if not overrides:
+            return
+        key_to_bindings = self._bindings.key_to_bindings
+        for action, raw_key in overrides.items():
+            normalized_key = next(
+                iter(Binding.make_bindings([Binding(raw_key, action, "")]))
+            ).key
+            for key in list(key_to_bindings):
+                moved = [b for b in key_to_bindings[key] if b.action == action]
+                if not moved:
+                    continue
+                remaining = [b for b in key_to_bindings[key] if b.action != action]
+                if remaining:
+                    key_to_bindings[key] = remaining
+                else:
+                    del key_to_bindings[key]
+                key_to_bindings.setdefault(normalized_key, []).extend(
+                    replace(b, key=normalized_key) for b in moved
+                )
+
+    def _apply_colour_overrides(self, colours: TuiColours) -> None:
+        """Apply `tui.toml`'s `[colours]` table on top of the active
+        Textual theme (`textual-dark` by default), via Textual's own
+        theme system (`App.register_theme`/`App.theme`) rather than
+        hand-rolled CSS variable injection. `colours.text` maps to the
+        `$text` CSS variable via `Theme.variables` -- `Theme` itself has
+        no `text` field (Textual derives it from `foreground` by
+        default), so it is the one field that goes through `variables`
+        instead of a constructor keyword.
+        """
+        overrides = colours.model_dump(exclude_none=True)
+        text_override = overrides.pop("text", None)
+        if not overrides and text_override is None:
+            return
+        base = self.get_theme(self.theme)
+        assert base is not None, f"active theme {self.theme!r} is not registered"
+        variables = dict(base.variables)
+        if text_override is not None:
+            variables["text"] = text_override
+        custom = replace(base, name="ghstars-config", variables=variables, **overrides)
+        self.register_theme(custom)
+        self.theme = "ghstars-config"
 
     # -- local state, read from the last `ghstars sync` --------------------
 
@@ -275,6 +399,7 @@ class TuiApp(App[None]):
                 star.full_name,
                 star.language or "-",
                 memberships or "-",
+                height=self._config.row_height,
                 key=star.full_name,
             )
 
