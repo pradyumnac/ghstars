@@ -24,16 +24,17 @@ operational JSON. Keep discovery rules in `ghstars.core`; the TUI and CLI must
 not have separate filter implementations.
 
 Ticket 14 is blocked until ticket 30 passes its completion gate. Do not write
-the agent skill against unstable commands or JSON schemas.
+the agent skill against unstable commands or JSON schemas. Ticket 12 is
+retired; ticket 14 reports workflow observations directly to the user.
 
 ### 2. Complete the remaining product work
 
 | Ticket | State | Next action |
 | --- | --- | --- |
-| 12 | Ready | Add the local nudge store. It is required before ticket 14. |
+| 12 | Retired | Do not build a Nudge store. Ticket 14 reports observations directly. |
 | 24 | Retired | No further work is planned under this ticket. |
 | 18 | Retired | Empty List membership always means Unclassified. |
-| 13 | Ready | Start after tickets 12 and 14 complete. |
+| 13 | Ready | Start after ticket 14 completes. |
 | 15 | Ready | Start after ticket 13. |
 
 ## Retired scope

@@ -75,13 +75,9 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
  3. As a developer, I want a `ghstars diff` command, so that I (or an agent) can see exactly what changed in my classification since the last sync.
  4. As a developer, I want `config/` to stay plain files, never auto-committed by ghstars, so that stowing it into my dotfiles repo doesn't create a nested-repo conflict.
 
-### Nudges
+### Agent observations
 
- 1. As a developer, I want the accompanying agent skill to record "nudges" — observations about workflow friction — without acting on them, so that I retain full control over whether to actually change my config or workflow.
- 2. As a developer, I want nudges deduplicated by a stable key, so that repeated friction doesn't spam me with duplicate notes.
- 3. As a developer, I want nudge surfacing off by default, so that this feature doesn't clutter normal usage until I've opted in.
- 4. As a developer, I want nudges to never appear in `--json`/agent-mode output, so that they don't undercut the token-efficiency the CLI's agent mode is meant to provide.
- 5. As an agent, I want to only read the nudge files when I have something new to record, so that normal operation doesn't pay the token cost of loading nudge state on every call.
+ 1. As a developer, I want the agent skill to tell me about relevant workflow friction directly, without persisting or applying the observation, so that I retain control over any response.
 
 ### Distribution & retirement
 
@@ -172,7 +168,7 @@ ticket already cross-references.
 
 **Modules**
 
-- `ghstars.core` — the single test seam. Pydantic data models, the sync engine (fetch/merge/conflict/push), taxonomy validation, the export engine, an abstract GitHub client interface, the local state store, the Retriage Queue, and the nudge store.
+- `ghstars.core` — the single test seam. Pydantic data models, the sync engine (fetch/merge/conflict/push), taxonomy validation, the export engine, an abstract GitHub client interface, the local state store, and the Retriage Queue.
 - `ghstars.github` — the concrete GitHub API client, implementing `ghstars.core`'s abstract client interface over `gh api graphql`.
 - `ghstars.cli` — Typer CLI, a thin wrapper over `ghstars.core`. Owns `--json`/`--fields`/agent-mode conventions.
 - `ghstars.tui` — Textual TUI, a thin wrapper over `ghstars.core`.
@@ -183,7 +179,6 @@ ticket already cross-references.
 - `Star`: full_name, html_url, description, starred_at, first_seen, language, license, stargazer_count, fork, follow, archived, archived_at, last_checked, list memberships.
 - `List`: id (GitHub node ID), name, slug, description, is_private, intent (`Explore`/`Current`/`Retired`/`Reference`/`None` for General), category, items.
 - `RetriageEntry`: star full_name, attempted list change, conflict detected at, resolved (bool).
-- `Nudge`: stable slug/key, theme, message, count, last_seen.
 - No separate sync-log schema — `state/`'s git commits (when present) serve this role; no bespoke log format to design or maintain.
 
 **GitHub API contract (GraphQL)**
@@ -237,7 +232,7 @@ why ghstars cannot reapply keybindings in a running session.
 A missing file means defaults, never an error — the same rule
 `load_export_config` already follows for `export.toml`.
 
-- `~/.ghstars/runtime/` — ephemeral: caches, nudge files under `runtime/nudges/<theme>.md`, one file per theme, entries deduplicated by stable slug.
+- `~/.ghstars/runtime/` — ephemeral caches.
 
 **Diff support**
 
@@ -269,7 +264,7 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 
 **What makes a good test here:** assert on external behavior only — the returned Star/List records, Intent/Category assignments, Retriage Queue contents, `state/`'s git commits when present. Never assert on `ghstars.core`'s internal data structures. A good test survives a valid internal refactor and fails only when actual sync/conflict/taxonomy behavior changes.
 
-**Modules to test:** the sync/merge engine (all four conflict scenarios: local-only change, remote-only change, both-same, both-different), taxonomy validation (name parsing, Intent/Category extraction, malformed-name detection), the export engine (mapping → output file content), Retriage Queue mechanics, nudge dedup logic.
+**Modules to test:** the sync/merge engine (all four conflict scenarios: local-only change, remote-only change, both-same, both-different), taxonomy validation (name parsing, Intent/Category extraction, malformed-name detection), the export engine (mapping → output file content), and Retriage Queue mechanics.
 
 **Prior art:** none in this repo (greenfield). The closest precedent is the old `gh-stars.py`'s `verify()` function — a deterministic, offline structural-check pattern worth mirroring for `ghstars`' own verification tests.
 
@@ -280,7 +275,7 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 - Auto-committing `config/` to git — explicitly rejected, to avoid nested-repo conflicts with a stowed dotfiles repo.
 - Any form of automatic `git init` — explicitly rejected; git support for `state/` is opt-in only.
 - `pipx`/`uvx`/`mise`/`eget` packaging implementation — designed for, not built, in this spec.
-- Nudge auto-application — nudges are observational only and never self-modify config.
+- Persisted agent observations — the agent reports relevant workflow friction directly and never applies it.
 - Import/migration from the old `905.github/stars/stars.json` — out of scope entirely for v1; ghstars starts from a fresh GitHub fetch, no local-file import path.
 - Auto-committing `state/` — explicitly rejected; committing state/'s git history (when the user tracks it) is the user's responsibility, not ghstars'.
 - Retriage Queue auto-resolution — always requires manual review; no auto-merge/union logic.

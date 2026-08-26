@@ -62,9 +62,3 @@ screen. The form body scrolls under fixed key help.
 A local-only holding area for a Star whose pending List-membership change
 conflicted with a GitHub change since the last sync. It never syncs to GitHub.
 _Avoid_: Staging list, conflict list.
-
-**Nudge**:
-An observation that the agent skill records about workflow friction. It never
-auto-applies. Files use a stable slug under `runtime/nudges/`. Human surfaces
-show Nudges only when enabled. JSON and agent-mode output never show them.
-_Avoid_: Suggestion, TODO, hint.
