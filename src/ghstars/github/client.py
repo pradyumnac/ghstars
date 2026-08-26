@@ -1,4 +1,5 @@
 import json
+import logging
 import subprocess
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
@@ -25,6 +26,15 @@ from ghstars.github.schema import (
     UserListNode,
     UserListsResponse,
 )
+
+# Debug logging for every fetcher below (fetch_stars, fetch_lists,
+# check_rate_limit) and the two chokepoints they all go through
+# (_graphql, _paginate_all). Silent by default -- a caller enables it via
+# `ghstars sync --debug` or the `GHSTARS_DEBUG` env var (see
+# `cli/commands/sync.py`), which attaches a stderr handler and raises
+# this logger's level; library code here never configures handlers or
+# levels itself.
+logger = logging.getLogger("ghstars.github")
 
 PAGE_SIZE = 100
 # A sync makes several paginated calls; require enough headroom that one
@@ -193,6 +203,7 @@ def _graphql(
         else:
             cmd += ["-f", f"{name}={value}"]
 
+    logger.debug("gh api graphql request: cursor=%r variables=%s", cursor, variables)
     try:
         result = subprocess.run(
             cmd,
@@ -202,11 +213,15 @@ def _graphql(
             timeout=_GH_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
+        logger.debug("gh api graphql: timed out after %ss", _GH_TIMEOUT_SECONDS)
         raise GitHubApiError(
             f"gh api graphql timed out after {_GH_TIMEOUT_SECONDS}s"
         ) from exc
 
     if result.returncode != 0:
+        logger.debug(
+            "gh api graphql: exit=%d stderr=%r", result.returncode, result.stderr
+        )
         raise GitHubApiError(result.stderr.strip() or "gh api graphql failed")
 
     try:
@@ -215,11 +230,13 @@ def _graphql(
         raise GitHubApiError("gh api graphql returned malformed JSON") from exc
 
     if payload.get("errors"):
+        logger.debug("gh api graphql: errors=%s", payload["errors"])
         raise GitHubApiError(str(payload["errors"]))
 
     data = payload.get("data")
     if not isinstance(data, dict):
         raise GitHubApiError("gh api graphql returned no data")
+    logger.debug("gh api graphql response: keys=%s", list(data.keys()))
     return cast(dict[str, object], data)
 
 
@@ -227,9 +244,17 @@ def _paginate_all[T](
     query: str, parse_page: Callable[[dict[str, object]], tuple[list[T], PageInfo]]
 ) -> Iterator[T]:
     cursor: str | None = None
+    page = 0
     while True:
+        page += 1
         data = _graphql(query, cursor=cursor)
         items, page_info = parse_page(data)
+        logger.debug(
+            "paginate: page=%d items=%d has_next_page=%s",
+            page,
+            len(items),
+            page_info.has_next_page,
+        )
         yield from items
 
         if not page_info.has_next_page:
@@ -318,13 +343,21 @@ class RealGitHubClient:
     def check_rate_limit(self) -> RateLimitStatus:
         data = _graphql(_RATE_LIMIT_QUERY)
         parsed = RateLimitResponse.model_validate(data)
-        return RateLimitStatus(
+        status = RateLimitStatus(
             remaining=parsed.rate_limit.remaining,
             limit=parsed.rate_limit.limit,
             ok=parsed.rate_limit.remaining > MIN_RATE_LIMIT_REMAINING,
         )
+        logger.debug(
+            "check_rate_limit: remaining=%d limit=%d ok=%s",
+            status.remaining,
+            status.limit,
+            status.ok,
+        )
+        return status
 
     def fetch_stars(self) -> list[Star]:
+        logger.debug("fetch_stars: starting")
         forked_parents = self._fetch_forked_parents()
         followed_logins = self._fetch_followed_logins()
 
@@ -349,20 +382,25 @@ class RealGitHubClient:
                     last_checked=now,
                 )
             )
+        logger.debug("fetch_stars: fetched %d star(s)", len(stars))
         return stars
 
     def _fetch_forked_parents(self) -> set[str]:
-        return {
+        parents = {
             node.parent.name_with_owner
             for node in _paginate_all(_OWNED_FORKS_QUERY, _parse_owned_forks_page)
             if node.parent is not None
         }
+        logger.debug("fetch_stars: %d forked parent(s)", len(parents))
+        return parents
 
     def _fetch_followed_logins(self) -> set[str]:
-        return {
+        logins = {
             node.login
             for node in _paginate_all(_FOLLOWING_QUERY, _parse_following_page)
         }
+        logger.debug("fetch_stars: following %d login(s)", len(logins))
+        return logins
 
     def fetch_lists(self) -> list[List]:
         """Fetch `viewer.lists` with each List's full item membership.
@@ -370,6 +408,7 @@ class RealGitHubClient:
         Raw `name`/`description` only. `ghstars.core.taxonomy` classifies
         Intent/Category in `sync()`, not here.
         """
+        logger.debug("fetch_lists: starting")
         lists: list[List] = []
         for node in _paginate_all(_LISTS_QUERY, _parse_lists_page):
             lists.append(
@@ -382,15 +421,18 @@ class RealGitHubClient:
                     items=self._fetch_list_items(node.id),
                 )
             )
+        logger.debug("fetch_lists: fetched %d list(s)", len(lists))
         return lists
 
     def _fetch_list_items(self, list_id: str) -> list[str]:
         query = _list_items_query(list_id)
-        return [
+        items = [
             item.name_with_owner
             for item in _paginate_all(query, _parse_list_items_page)
             if item is not None and item.name_with_owner is not None
         ]
+        logger.debug("fetch_lists: list %s has %d item(s)", list_id, len(items))
+        return items
 
     def create_list(
         self, name: str, *, is_private: bool = False, description: str | None = None

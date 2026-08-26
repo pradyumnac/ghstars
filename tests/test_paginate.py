@@ -53,6 +53,29 @@ def test_paginate_all_walks_multiple_pages(monkeypatch: pytest.MonkeyPatch) -> N
     assert fake.calls == [None, "c1"]
 
 
+def test_paginate_all_logs_debug_per_page(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    pages: list[dict[str, object]] = [
+        {
+            "items": ["a", "b"],
+            "page_info": PageInfo(has_next_page=True, end_cursor="c1"),
+        },
+        {
+            "items": ["c"],
+            "page_info": PageInfo(has_next_page=False, end_cursor=None),
+        },
+    ]
+    monkeypatch.setattr(gh_client, "_graphql", _FakeGraphQL(pages))
+
+    with caplog.at_level("DEBUG", logger="ghstars.github"):
+        list(gh_client._paginate_all("QUERY", _parse_page))
+
+    messages = [r.message for r in caplog.records if r.name == "ghstars.github"]
+    assert any("page=1 items=2" in m for m in messages)
+    assert any("page=2 items=1" in m for m in messages)
+
+
 def test_paginate_all_stops_on_single_page(monkeypatch: pytest.MonkeyPatch) -> None:
     pages: list[dict[str, object]] = [
         {

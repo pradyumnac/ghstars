@@ -1,4 +1,6 @@
 import json
+import logging
+import sys
 
 import typer
 from filelock import Timeout
@@ -17,14 +19,31 @@ from ghstars.cli.errors import fail
 from ghstars.core import RateLimitExceededError, sync
 from ghstars.github import GitHubApiError
 
+_FETCHER_LOGGER_NAME = "ghstars.github"
+
 
 @app.command("sync")
 def sync_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        envvar="GHSTARS_DEBUG",
+        help="Emit verbose fetcher debug logging (gh api calls, pagination, "
+        "per-item progress) to stderr. Also honors GHSTARS_DEBUG=1.",
+    ),
 ) -> None:
     """Fetch stars and Lists from GitHub into local state."""
     client = cli.get_client()
     store = cli.get_store()
+    if debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            stream=sys.stderr,
+            format="%(asctime)s %(name)s %(message)s",
+        )
+        logging.getLogger(_FETCHER_LOGGER_NAME).setLevel(logging.DEBUG)
+
     # A sync can take minutes (one `gh` subprocess round trip per page,
     # per pending tag push -- see docs/explanation/known-limitations.md)
     # with nothing else written to the console in the meantime. stderr,
@@ -33,10 +52,22 @@ def sync_cmd(
     # isn't a terminal (e.g. piped/CI), rather than garbling output.
     console = Console(stderr=True)
     try:
-        with console.status("Starting sync...", spinner="dots") as spinner:
-            result = sync(
-                client, store, on_stage=lambda stage: spinner.update(f"{stage}...")
-            )
+        if debug:
+            # The animated spinner and raw debug log lines both target
+            # stderr; the spinner redraws its own line in place, which
+            # garbles interleaved plain log output. Plain stage lines
+            # instead, so --debug output stays readable top to bottom.
+            def _on_stage(stage: str) -> None:
+                typer.echo(f"{stage}...", err=True)
+
+            result = sync(client, store, on_stage=_on_stage)
+        else:
+            with console.status("Starting sync...", spinner="dots") as spinner:
+                result = sync(
+                    client,
+                    store,
+                    on_stage=lambda stage: spinner.update(f"{stage}..."),
+                )
     except (RateLimitExceededError, GitHubApiError) as exc:
         fail(str(exc))
     except Timeout:
