@@ -112,28 +112,32 @@ cross-reference reason.
 
 **Finding Stars**
 
- 1. As a developer, I want to filter the Stars on screen by Category, Intent, List, Language, and repository metadata, so that I can narrow a large account to the set I care about.
+ 1. As a developer, I want to filter the Stars on screen by Category, Intent, List, Language, License, Owner, Fork, Follow, and repository metadata, so that I can narrow a large account to the set I care about.
  2. As a developer, I want a Filter to work inside Folder mode as well as the flat modes, so that the container I am in and the Filter I applied stay independent.
  3. As a developer, I want to search Stars by name and description as I type, so that I can reach one repo out of 1530 without scrolling. Search composes with every Filter.
  4. As a developer, I want a Filter for unclassified Stars only, so that I have a direct triage queue.
- 5. As a developer, I want to sort by name, star date, stargazer count, language, and List count, and to reverse any of them, so that I can order the view for the task at hand. Star date descending is the default, because the newest Stars are the ones that need classification.
+ 5. As a developer, I want to sort by name, star date, stargazer count, language, List count, and List name, and to reverse any of them, so that I can order the view for the task at hand. Star date descending is the default, because the newest Stars are the ones that need classification.
 
 **Finding Stars filter design:**
 
-- Press `f` to open one Filter menu. Use `fc` for Category, `fi` for Intent,
-  `fl` for List, `fg` for Language, `fu` for Unclassified, and `fx` to clear
-  the active Filter. The menu also exposes these actions for discovery.
+- Press `f` to open one Filter menu. From that menu, press `c` for Category,
+  `i` for Intent, `l` for List, `g` for Language, `v` for License, `r` for
+  Recency, `o` for Owner, `k` for Forks, `w` for Followed, `u` for
+  Unclassified, and `x` to clear the active Filter. The menu exposes every
+  action for discovery.
 - Filter by `starred_at` recency with these ranges: 1 day, 1 week, 1 month,
   3 months, 1 year, and older than 1 year. Use the current time as the
-  reference, not the last sync time.
-- Offer local metadata filters for Fork, Follow, and Archived when the view
-  can include Archived Stars. The default active-Star view still excludes
-  Archived Stars.
-- Add License to the Star record and the detail pane before offering a
-  License Filter. The current local snapshot does not store license data.
+  reference, not the last sync time. In the Recency picker, use `d`, `w`,
+  `m`, `3`, `y`, and `o` for these ranges.
+- Offer local metadata filters for Forks, Followed owners, and Owner. The
+  default active-Star view excludes Archived Stars, so Archived is not an
+  active filter until a view includes archived records.
+- Filter by License using the value fetched into the Star record.
 - Search and Filter apply together. A Filter first narrows the candidate
   Stars; Search then matches the repository name and description within that
-  result.
+  result. Escape clears Search. Enter keeps Search active and returns focus
+  to the Star table.
+
  1. As a developer, I want a detail pane for the Star under the cursor, showing every field the last sync stored, so that I can judge a repo without opening a browser.
 
 **Presentation**
@@ -146,7 +150,7 @@ cross-reference reason.
 
 **Actions**
 
- 1. As a developer, I want a key that starts a full sync from inside the TUI, so that I can refresh stale data where I noticed it was stale. ghstars only syncs when I press the key (see ADR 0006).
+ 1. As a developer, I want the `y` key to start a full sync from inside the TUI, so that I can refresh stale data where I noticed it was stale. ghstars only syncs when I press the key (see ADR 0006). The TUI shows each sync stage, completion, and errors. It never starts sync automatically.
  2. As a developer, I want a separate, short-named key that refreshes the API rate limit alone, so that a cheap check stays distinct from a full sync.
  3. As a developer, I want to open the Star under the cursor in my browser, so that I can read the repo itself. ghstars uses the XDG default handler.
  4. As a developer, I want to unstar the Star under the cursor after I confirm in a dialog, so that a real, irreversible GitHub change can never happen from one keypress.
@@ -155,7 +159,7 @@ cross-reference reason.
 
  1. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use.
  2. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting.
- 3. As a developer, I want ghstars to remember my last View Mode, sort, and Filter between sessions, so that the TUI opens where I left it.
+ 3. As a developer, I want ghstars to remember my last View Mode, sort, Filter, and Detail pane visibility between sessions, so that the TUI opens where I left it.
 
 **Responsiveness**
 
@@ -181,7 +185,7 @@ cross-reference reason.
 
 **GitHub API contract (GraphQL)**
 
-- Read: `viewer.starredRepositories` (stars, paginated), `viewer.repositories(affiliations:[OWNER])` (forks), `viewer.following`, `viewer.lists` (`UserListConnection`: id, name, slug, description, isPrivate, items).
+- Read: `viewer.starredRepositories` (stars, paginated, including `licenseInfo`), `viewer.repositories(affiliations:[OWNER])` (forks), `viewer.following`, `viewer.lists` (`UserListConnection`: id, name, slug, description, isPrivate, items).
 - Write: `createUserList`, `updateUserList`, `deleteUserList`, `updateUserListsForItem(itemId, listIds[])`, `removeStar(starrableId)` (unstarring the repo itself, per story 8 — distinct from list-membership mutations).
 - Load-bearing detail: `updateUserListsForItem` replaces a Star's *entire* list membership per call — it is not additive. The sync engine must always compute and send the complete desired `listIds` set per Star, never a delta.
 
@@ -200,7 +204,7 @@ Three-way merge per Star, per sync: base (last-synced snapshot) vs. current GitH
 **State/config layout** (see ADR 0002)
 
 - `~/.ghstars/config/` — taxonomy definitions, export mappings, TUI settings (`tui.toml`: keybindings, colour palette, header height, row height). Plain TOML/YAML files, user- or dotfiles-managed. Never auto-committed by ghstars.
-- `~/.ghstars/state/` — local snapshot, Retriage Queue, TUI session state (`tui-state.toml`: last View Mode, sort, Filter). ghstars never runs `git init` and never auto-commits; if the user already git-tracks this directory, `ghstars diff` can use its history, but committing is left entirely to the user.
+- `~/.ghstars/state/` — local snapshot, Retriage Queue, and TUI session state (`tui-state.toml`: last View Mode, sort, Filter, and Detail pane visibility). ghstars never runs `git init` and never auto-commits; if the user already git-tracks this directory, `ghstars diff` can use its history, but committing is left entirely to the user.
 
 **TUI config: two files, split by who writes them** (story 69-71, ADR 0002)
 
