@@ -32,6 +32,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
+from textual.markup import escape
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, Static
 
@@ -70,7 +71,16 @@ def _visibility_label(is_private: bool) -> str:
 
 
 class RateLimitBar(Static):
-    """Shows the remaining GitHub API rate limit (spec story 49)."""
+    """Shows the remaining GitHub API rate limit (spec story 49).
+
+    Constructed with a "checking" placeholder rather than empty content:
+    a real `check_rate_limit()` call takes ~0.7s, and an empty `Static`
+    paints as a blank strip for that whole window -- indistinguishable
+    from the bar being broken.
+    """
+
+    def __init__(self, *, id: str | None = None) -> None:
+        super().__init__("API rate limit: checking...", id=id)
 
     def show_status(self, status: RateLimitStatus) -> None:
         marker = "ok" if status.ok else "LOW"
@@ -80,7 +90,11 @@ class RateLimitBar(Static):
         self.set_class(not status.ok, "-low")
 
     def show_unknown(self, detail: str) -> None:
-        self.update(f"API rate limit: unknown ({detail})")
+        # `detail` can be an arbitrary exception message -- a
+        # `ValidationError`'s, for instance, routinely contains `[...]`
+        # -- which Textual's markup parser would otherwise choke on
+        # (`MarkupError`) instead of just displaying it.
+        self.update(f"API rate limit: unknown ({escape(detail)})")
         self.set_class(True, "-low")
 
 
@@ -464,7 +478,16 @@ class TuiApp(App[None]):
     def _fetch_rate_limit(self) -> None:
         try:
             status = self._client.check_rate_limit()
-        except GitHubApiError as exc:
+        except Exception as exc:  # noqa: BLE001 -- same reasoning as
+            # `_apply_tag` above: this runs off the UI thread, and
+            # `check_rate_limit()` can fail in ways beyond the
+            # documented `GitHubApiError` -- notably a `ValidationError`
+            # from `RateLimitResponse.model_validate` when GitHub's
+            # response shape doesn't match, which `_graphql` never
+            # wraps. Anything that escapes this thread never reaches
+            # `call_from_thread`, leaving the bar's "checking..."
+            # placeholder stuck forever with no notification --
+            # indistinguishable from a hang.
             self.call_from_thread(self._show_rate_limit_error, str(exc))
             return
         self.call_from_thread(self._show_rate_limit, status)
@@ -474,3 +497,4 @@ class TuiApp(App[None]):
 
     def _show_rate_limit_error(self, detail: str) -> None:
         self.query_one("#rate-limit-bar", RateLimitBar).show_unknown(detail)
+        self.notify(f"Rate limit check failed: {escape(detail)}", severity="error")
