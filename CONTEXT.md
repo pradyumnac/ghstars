@@ -33,8 +33,12 @@ A List with no Intent prefix — freeform, outside the Current/Explore/Reference
 _Avoid_: Freeform List, Uncategorized List.
 
 **View Mode**:
-The arrangement ghstars uses to put Stars on screen. A View Mode changes the arrangement only. It never changes which Stars the user sees — a Filter does that.
-_Avoid_: Layout, Display, Screen.
+The arrangement ghstars uses to put Stars on screen — a flat Star list, a grid, or a Folder. A View Mode changes the arrangement only. It never changes which Stars the user sees — a Filter does that.
+_Avoid_: Display, Screen. Do not use Layout for this concept; a Layout is a different thing (see below).
+
+**Layout**:
+A named density preset for the Star table, holding a column list, a row height, a detail-pane height, and whether the detail pane shows. ghstars ships two: `compact` and `balanced`. `config/tui.toml` defines what each preset contains; `state/tui-state.toml` records which one is active (ADR 0008). A Layout is not a View Mode: a View Mode picks the arrangement (list, grid, Folder), and a Layout tunes how dense the flat table inside it is.
+_Avoid_: View Mode, Density, Theme.
 
 **Folder**:
 A View Mode that shows each List as a container, and the Stars of one List as the contents of that container. The hierarchy is one level deep: a Folder holds Stars, and never another Folder. A Star that belongs to no List falls back to one default Folder.

@@ -10,12 +10,17 @@ Every new bar shows a labelled placeholder immediately, never a blank strip, per
 
 **Sizing note:** this ticket bundles what was originally scoped as two — chrome/bars, and the sync key — because the sync key updates the same top bar this ticket builds. If it proves too large for one session, the natural split point is: chrome/bars first, sync key and progress modal second, in that order.
 
-**Blocked by:** 20, 21.
+**Config note:** ticket 23 owns the config schema. It adds `show_clock`
+and moves `row_height` into each layout preset. The star-count column
+becomes one entry in a preset's `columns` list. This ticket reads those
+fields. It does not define them. Read ADR 0008 first.
+
+**Blocked by:** 20, 21, 23 (the config fields this ticket reads).
 
 **Status:** ready-for-agent
 
-- [ ] Header height, clock visibility, and row height read from `tui.toml` (ticket 21) and apply on launch
-- [ ] Star-count column shown at row height 1; at row height 2, description shows on the second line instead
+- [ ] Header height, clock visibility, and row height read from `tui.toml` (ticket 23) and apply on launch
+- [ ] The star-count column shows when a layout preset lists it in `columns`; at row height 2, description shows on the second line
 - [ ] Top bar shows rate limit, last sync time, and List count, each with a labelled placeholder before its first real value arrives
 - [ ] Bottom status bar shows "X of Y" Stars, pending-edit count, active sort, active Filter — sort and Filter last, each showing its keybind
 - [ ] A sync key runs `ghstars.core.sync.sync()` with `on_stage` driving a progress modal; the key is distinct from the rate-limit-only refresh key

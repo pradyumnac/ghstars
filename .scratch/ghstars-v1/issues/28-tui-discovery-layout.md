@@ -107,3 +107,25 @@ Verification:
 - `uv run ruff format --check .`: passed.
 - `uv run ruff check .`: passed.
 - `uv run mypy src tests`: passed.
+
+**2026-08-26, two criteria overridden by ticket 23 and ADR 0008.**
+
+Scope 1's Category colour rules change. `category_colours` no longer maps
+a Category to a Textual semantic text role. It maps to a named colour
+from a fixed set. Every colour in that set must reach 3:1 contrast on a
+light background and on a dark background.
+
+The rest of Scope 1 stands. Colour is never the only Category cue. The
+Category text stays visible. A stable digest still picks the default.
+
+Scope 2's narrow-terminal rules change. The table now keeps every
+configured column and scrolls horizontally. Progressive column hiding,
+the `_narrow` check, and its 90-column threshold are removed. The layout
+preset and the user's toggle control the detail pane.
+
+Scope 2's "Store the user default layout in `config/tui.toml`. Store the
+last active layout in `state/tui-state.toml`" rule stands. ADR 0008
+records why a preset definition and an active selection are two facts,
+not one duplicated fact.
+
+Scope 3 is unchanged.

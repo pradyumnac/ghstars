@@ -142,9 +142,9 @@ cross-reference reason.
 
 **Presentation**
 
- 1. As a developer, I want List and Category names shown in colour, so that I can tell groups apart at a glance. ghstars derives the colour from the Category name, and ships soft pastel defaults.
- 2. As a developer, I want to set the colour palette in config, so that the colours suit my terminal theme. The palette must stay readable on a light and a dark background.
- 3. As a developer, I want to set header height, row height, and whether the clock shows, so that I can trade screen density against readability.
+ 1. As a developer, I want List and Category names shown in colour, so that I can tell groups apart at a glance. A stable digest of the Category name picks its default colour. The Category text always stays visible, so colour is never the only cue (ticket 28, WCAG 2.2).
+ 2. As a developer, I want to set a Category's colour in config, so that the colours suit my terminal. ghstars offers a fixed set of named colours. Every colour in that set reaches 3:1 contrast on a light background and on a dark background. ghstars does not ship an application theme or palette — the TUI uses the active Textual theme (ticket 28, ADR 0008).
+ 3. As a developer, I want to set header height, row height, and whether the clock shows, so that I can trade screen density against readability. Row height belongs to a layout preset. Header height and the clock are global (ADR 0008).
  4. As a developer, I want a top bar showing remaining API rate limit, last sync time, and List count, so that I can see account state without leaving the TUI.
  5. As a developer, I want a bottom status bar showing the visible and total Star count, the pending-edit count, the active sort, and the active Filter, so that I always know what the view is showing me. The sort and the Filter appear last, each with its key, for example `sort: newest [s]`.
 
@@ -157,13 +157,24 @@ cross-reference reason.
 
 **Configuration**
 
- 1. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use.
- 2. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting.
- 3. As a developer, I want ghstars to remember my last View Mode, sort, Filter, and Detail pane visibility between sessions, so that the TUI opens where I left it.
+ 1. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use. ghstars reserves `ctrl+q`, `ctrl+c`, and `ctrl+p`, because rebinding `ctrl+p` locks me out of the config editor itself (ADR 0008).
+ 2. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting. A saved change takes effect on the next launch (ADR 0008).
+ 3. As a developer, I want ghstars to remember my last layout, View Mode, sort, Filter, and Detail pane visibility between sessions, so that the TUI opens where I left it.
 
 **Responsiveness**
 
  1. As a developer, I want the TUI to draw immediately on launch and never block on a network call, so that a slow GitHub response never looks like a hang. Every panel that waits on data shows a labelled placeholder first.
+
+**More configuration**
+
+These four stories belong with the Configuration group above. They sit
+here, after story 72, so that adding them does not renumber any story a
+ticket already cross-references.
+
+ 1. As a developer, I want to choose which columns the Star table shows and in what order, so that the table holds the fields I use. Each layout preset carries its own column list. When the columns do not fit the terminal, the table scrolls (ADR 0008).
+ 2. As a developer, I want to set the date format, so that dates read the way I expect.
+ 3. As a developer, I want to set how long a notification stays on screen, so that I can read an error before it clears.
+ 4. As a developer, I want a text-only mode for the TUI's glyphs, so that a terminal without the fonts still renders every marker.
 
 ## Implementation Decisions
 
@@ -203,10 +214,11 @@ Three-way merge per Star, per sync: base (last-synced snapshot) vs. current GitH
 
 **State/config layout** (see ADR 0002)
 
-- `~/.ghstars/config/` — taxonomy definitions, export mappings, TUI settings (`tui.toml`: keybindings, colour palette, header height, row height). Plain TOML/YAML files, user- or dotfiles-managed. Never auto-committed by ghstars.
-- `~/.ghstars/state/` — local snapshot, Retriage Queue, and TUI session state (`tui-state.toml`: last View Mode, sort, Filter, and Detail pane visibility). ghstars never runs `git init` and never auto-commits; if the user already git-tracks this directory, `ghstars diff` can use its history, but committing is left entirely to the user.
+- `~/.ghstars/config/` — taxonomy definitions, export mappings, TUI settings (`tui.toml`: keybindings, Category colours, header height, clock, date format, notification timeout, text-only mode, grid card truncation, default Filter, and the layout presets). Plain TOML/YAML files, user- or dotfiles-managed. Never auto-committed by ghstars.
+- `~/.ghstars/state/` — local snapshot, Retriage Queue, and TUI session state (`tui-state.toml`: active layout, last View Mode, sort, Filter, and Detail pane visibility). ghstars never runs `git init` and never auto-commits; if the user already git-tracks this directory, `ghstars diff` can use its history, but committing is left entirely to the user.
 
-**TUI config: two files, split by who writes them** (story 69-71, ADR 0002)
+**TUI config: two files, split by who writes them** (stories 69-71 and
+73-76, ADR 0002, ADR 0008)
 
 `config/tui.toml` holds settings the user authors. ghstars reads it on
 launch. ghstars writes it only when the user saves an edit from the TUI
@@ -217,6 +229,15 @@ unasked-for rewrite would show up as churn in the user's dotfiles repo.
 `state/tui-state.toml` holds session state ghstars writes on its own
 (story 71). It lives under `state/`, which is already untracked, so
 remembering a sort order never dirties a dotfiles repo.
+
+ADR 0008 decides which file holds a given field. A value the user wants
+under version control is config. A value that records what the user last
+looked at is state. One fact never lives in both files. A preset
+definition and the active preset are two facts, so config defines the
+layout presets and state records which one is active.
+
+A saved config change takes effect on the next launch. ADR 0008 records
+why ghstars cannot reapply keybindings in a running session.
 
 A missing file means defaults, never an error — the same rule
 `load_export_config` already follows for `export.toml`.
@@ -278,6 +299,7 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 - ADR 0001 (GitHub is the sole source of truth for List membership) and ADR 0002 (single `~/.ghstars/` directory instead of XDG base dirs) are binding architectural context — read both before implementing the sync engine or state layout.
 - ADR 0006 (the TUI can sync on an explicit keypress) supersedes ADR 0003 and governs stories 65 and 66. Read it before adding any live GitHub call to the TUI.
 - ADR 0005 (compound Category) is `proposed`, not accepted. Do not build against it.
+- ADR 0008 (TUI config and TUI state hold disjoint fields) governs stories 60-62, 69-71, and 73-76. Read it before you add a TUI setting. It also records two ticket 28 criteria that ticket 23 reverses: Category colours become named colours instead of Textual semantic text roles, and the Star table scrolls instead of hiding columns on a narrow terminal.
 - ADR 0007 supersedes story 4 as originally written: a never-classified Star is never pushed into `Explore: General` or any other List. "Unclassified" is a derived local view (`list_ids == [] and not archived`), never a real GitHub List membership ghstars writes on the user's behalf.
 - The TUI's rate-limit worker catches only `GitHubApiError` (`tui/app.py:432`). A `ValidationError` from `RateLimitResponse.model_validate` escapes the worker and leaves the bar blank with no message. Story 63 must fix this, and match the broad-catch reasoning `_apply_tag` already documents.
 - `updateUserListsForItem`'s full-replace semantics (confirmed via live GraphQL schema introspection and a live query against the user's own account, which returned 6 real Lists) is a load-bearing API detail, not an assumption.

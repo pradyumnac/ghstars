@@ -36,6 +36,18 @@ definitions land with a later ticket. Export mappings go in
 `~/.ghstars/config/export.toml` — see
 [`docs/how-to/export.md`](docs/how-to/export.md).
 
+TUI settings go in `~/.ghstars/config/tui.toml`: keybindings, Category
+colours, the table columns, and the layout presets. A missing file means
+every default applies. `ghstars` writes this file only when you save an
+edit from the TUI. A saved change takes effect on the next launch.
+
+`~/.ghstars/state/tui-state.toml` holds what the TUI remembers between
+sessions: the active layout, sort, Filter, and detail-pane visibility.
+`ghstars` owns this file. Do not edit it by hand.
+
+Both directories hold plain text, so you can stow `config/` into a
+dotfiles repository. `ghstars` never runs `git` against either one.
+
 ## Develop
 
 ```bash

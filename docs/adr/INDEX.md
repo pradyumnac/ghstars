@@ -12,3 +12,4 @@ Rationale lives in each file under `docs/adr/`; this is an index only.
 | [0005](0005-compound-category-kind-and-subject.md) | proposed | n/a | Compound Category: a kind and a subject in one List name |
 | [0006](0006-tui-may-sync-on-an-explicit-keypress.md) | accepted | not-started | The TUI can sync on an explicit keypress |
 | [0007](0007-never-classified-stars-are-never-auto-tagged.md) | accepted | done | Never-classified Stars are never auto-tagged; "Unclassified" is a local, derived view |
+| [0008](0008-tui-config-and-state-are-disjoint.md) | accepted | not-started | TUI config and TUI state hold disjoint fields |

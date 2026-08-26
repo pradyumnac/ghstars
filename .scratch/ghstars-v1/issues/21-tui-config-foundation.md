@@ -80,3 +80,17 @@ Per the spec's "TUI config: two files, split by who writes them" note: `config/t
   `__init__`, `compose()`'s `DataTable(...)` line, `_refresh_table()`'s
   `add_row(...)` call, and added `action_quit`/two `_apply_*` helper
   methods.
+
+**2026-08-26, superseded in part by ticket 23 and ADR 0008.** The
+comments above describe the schema this ticket shipped. Three parts of it
+change:
+
+- `TuiColours` and `_apply_colour_overrides` are removed. Ticket 28
+  forbids an application palette. Nothing replaces them.
+- `TuiState.layout` is no longer an override of `TuiConfig.layout`.
+  Config defines the layout presets. State records the active preset.
+- `category_colours` no longer maps a Category to a Textual semantic text
+  role. It maps to a named colour from a fixed set.
+
+Read ADR 0008 before you use this ticket's comments as a description of
+the current schema.
