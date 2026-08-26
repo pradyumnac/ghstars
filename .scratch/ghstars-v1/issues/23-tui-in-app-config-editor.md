@@ -5,10 +5,9 @@ edits it from inside the TUI. Read ADR 0008 first. It defines which
 fields are config, which are state, and why. Spec stories 5, 60, 61, 62,
 69, 70, 71.
 
-This ticket both changes the schema and builds the editor. Ticket 21
-shipped a partial schema. Ticket 24 and ticket 26 each name a setting
-that no file holds yet. One ticket lands all of them, so the editor
-never ships against a schema that is about to move.
+This ticket changes the schema and builds the editor. Ticket 21 shipped a
+partial schema. Ticket 24 names a setting that no file holds yet. This ticket
+lands it before the editor ships.
 
 `config/tui.toml` is stow-managed dotfiles (ADR 0002). ghstars writes it
 only when the user saves. An unasked-for rewrite looks like unrelated
@@ -16,7 +15,7 @@ churn in the user's dotfiles repository.
 
 **Blocked by:** 21 (done).
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## Scope 1 — The config schema
 
@@ -26,7 +25,6 @@ Add these fields to `TuiConfig`:
 - `toast_timeout` — replaces the hardcoded `timeout=8`.
 - `ascii_only` — draws text markers in place of the glyphs at
   `tui/app.py:77-78` and the status icons.
-- `grid_card_truncation` — the character limit ticket 26 needs.
 - `default_filter` — the Filter to apply on a first launch.
 - `show_clock` — the clock ticket 24 names.
 - `[layouts.compact]` and `[layouts.balanced]`. Each preset holds
@@ -38,19 +36,19 @@ Keep `keybindings`, `header_height`, `category_colours`, and `layout`.
 `header_height` and `show_clock` stay top-level fields. Ticket 24 reads
 both.
 
-- [ ] `columns` holds an ordered list of column names. The order sets the
+- [x] `columns` holds an ordered list of column names. The order sets the
       column order.
-- [ ] The column names are Owner, Language, License, Stars, Starred at,
+- [x] The column names are Owner, Language, License, Stars, Starred at,
       First seen, Membership, Fork, Follow, Archived, Archived at, and
       Last checked. The Sel column and the Star column always show.
-- [ ] `detail_pane_visible`, `row_height`, and `detail_pane_height` read
+- [x] `detail_pane_visible`, `row_height`, and `detail_pane_height` read
       from the active preset, not from the top level.
-- [ ] `header_height` stays a top-level field.
-- [ ] A `tui.toml` that holds a `[colours]` table fails to load. The
+- [x] `header_height` stays a top-level field.
+- [x] A `tui.toml` that holds a `[colours]` table fails to load. The
       error names the removed table and tells the user that ghstars now
       uses the active Textual theme.
-- [ ] `TuiColours` and `_apply_colour_overrides` are removed.
-- [ ] The docstrings of `TuiConfig` and `TuiState` hold the config and
+- [x] `TuiColours` and `_apply_colour_overrides` are removed.
+- [x] The docstrings of `TuiConfig` and `TuiState` hold the config and
       state test from ADR 0008.
 
 ## Scope 2 — Category colours
@@ -73,52 +71,52 @@ section first.
 
 This scope overrides ticket 28. Read ADR 0008 first.
 
-- [ ] The table keeps every configured column and scrolls horizontally
+- [x] The table keeps every configured column and scrolls horizontally
       when the columns do not fit.
-- [ ] The `_narrow` check and its hardcoded 90-column threshold are
+- [x] The `_narrow` check and its hardcoded 90-column threshold are
       removed.
-- [ ] The layout preset and the user's toggle control the detail pane.
+- [x] The layout preset and the user's toggle control the detail pane.
       Terminal width no longer hides the pane.
-- [ ] Replace the ticket 28 tests that cover progressive column hiding.
+- [x] Replace the ticket 28 tests that cover progressive column hiding.
 
 ## Scope 4 — Keybindings
 
-- [ ] The user can rebind the 17 actions in `TuiApp.BINDINGS`.
-- [ ] A config that names `ctrl+q`, `ctrl+c`, `ctrl+p`, or `g` fails
+- [x] The user can rebind the 17 actions in `TuiApp.BINDINGS`.
+- [x] A config that names `ctrl+q`, `ctrl+c`, `ctrl+p`, or `g` fails
       validation with a clear error.
-- [ ] An unknown action name fails validation. Ticket 21 made it a silent
+- [x] An unknown action name fails validation. Ticket 21 made it a silent
       no-op.
-- [ ] An unparseable key string fails validation.
-- [ ] Two actions bound to the same key fail validation. This includes a
+- [x] An unparseable key string fails validation.
+- [x] Two actions bound to the same key fail validation. This includes a
       collision with a default the user did not override.
-- [ ] Modal screen keys stay fixed.
+- [x] Modal screen keys stay fixed.
 
 ## Scope 5 — The editor
 
-- [ ] The `g` key opens a modal that lists every field in Scope 1.
-- [ ] A Ctrl+P "Edit config" entry opens the same modal.
-- [ ] The modal reads the values on disk, not the values in memory.
-- [ ] Keybindings show as the last section, with one text field per
+- [x] The `g` key opens a modal that lists every field in Scope 1.
+- [x] A Ctrl+P "Edit config" entry opens the same modal.
+- [x] The modal reads the values on disk, not the values in memory.
+- [x] Keybindings show as the last section, with one text field per
       action.
-- [ ] Category colours show as add and remove rows with a colour picker.
-- [ ] Columns show as an ordered add and remove list, one list per
+- [x] Category colours show as add and remove rows with a colour picker.
+- [x] Columns show as an ordered add and remove list, one list per
       layout preset.
-- [ ] Esc validates a changed form. A validation error keeps the editor
+- [x] Esc validates a changed form. A validation error keeps the editor
       open, shows a notification, and prevents the write.
-- [ ] Save writes `tui.toml` through `tomlkit`. A round trip that changes
+- [x] Save writes `tui.toml` through `tomlkit`. A round trip that changes
       nothing reproduces the same comments and key order.
-- [ ] Save writes only `config/tui.toml`. It never writes
+- [x] Save writes only `config/tui.toml`. It never writes
       `state/tui-state.toml`.
-- [ ] Save writes only the fields the user changed. Every other field
+- [x] Save writes only the fields the user changed. Every other field
       appears as a comment that names its default.
-- [ ] A save shows a toast that tells the user to restart.
-- [ ] The `x` key discards edits and leaves the file unchanged.
-- [ ] The `q` key quits only from the main screen.
-- [ ] The form body scrolls while the Esc Save and `x` Discard help stays
+- [x] A save shows a toast that tells the user to restart.
+- [x] The `x` key discards edits and leaves the file unchanged.
+- [x] The `q` key quits only from the main screen.
+- [x] The form body scrolls while the Esc Save and `x` Discard help stays
       visible.
-- [ ] Boolean fields use Yes and No selectors. Initial Layout uses a
+- [x] Boolean fields use Yes and No selectors. Initial Layout uses a
       Compact and Balanced selector.
-- [ ] A Ctrl+P "Show config path" entry prints the path.
+- [x] A Ctrl+P "Show config path" entry prints the path.
 
 ## Out of scope
 
@@ -179,3 +177,13 @@ guarantee fails the suite.
 Ticket 28's other rules stand: a digest of the Category name picks the
 default, a collision is acceptable, General Lists stay muted, an empty
 Category is never hashed, and the Category text is always visible.
+
+**2026-08-26, complete.** All five scopes are implemented in commits
+`ae2d3e0`, `163f827`, `ee2e17a`, `8f35273`, and `1e92b73`. The final
+commit completed the in-app editor and the documentation.
+
+Verification from the final implementation: `uv run pytest`, `uv run ruff
+format --check .`, `uv run ruff check .`, and `uv run mypy src tests` passed.
+
+**2026-08-26, scope update.** Ticket 26 is retired. The unused
+`grid_card_truncation` field is removed from the schema and editor.

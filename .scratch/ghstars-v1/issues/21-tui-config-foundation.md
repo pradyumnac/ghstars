@@ -1,6 +1,6 @@
 # 21 — TUI config foundation: tui.toml and tui-state.toml
 
-**What to build:** ghstars reads `~/.ghstars/config/tui.toml` at TUI launch for keybinding overrides, header/row sizing, and the colour palette, and applies them before the first paint. It reads `~/.ghstars/state/tui-state.toml` at launch for the last View Mode, sort key, and active Filter, and writes that file back on quit. A missing file means every default applies, the same rule `load_export_config` already follows for `export.toml`.
+**What to build:** ghstars reads `~/.ghstars/config/tui.toml` at TUI launch for keybinding overrides, header and row sizing, and the colour palette. It reads `~/.ghstars/state/tui-state.toml` at launch for the active Layout, sort key, and Filter, and writes that file on quit. A missing file means every default applies, the same rule `load_export_config` already follows for `export.toml`.
 
 This ticket adds `tomlkit` as a dependency — run a dependency-review pass first — and uses it for both files, so the config-editor ticket needs no second dependency pass.
 
@@ -12,9 +12,9 @@ Per the spec's "TUI config: two files, split by who writes them" note: `config/t
 
 - [x] `tomlkit` added to `pyproject.toml` after a dependency-review pass; `uv.lock` regenerated
 - [x] `config/tui.toml`, if present, overrides default keybindings, header height, row height, and colour palette; a missing file changes nothing
-- [x] `state/tui-state.toml` is read at launch (missing file → defaults) and written at quit, holding at least the last View Mode, sort key, and active Filter
+- [x] `state/tui-state.toml` is read at launch (missing file → defaults) and written at quit, holding the active Layout, sort key, and Filter
 - [x] Hand-editing `tui.toml` to rebind a key and change row height, then relaunching, shows both changes take effect
-- [x] Changing View Mode, quitting, and relaunching restores the same View Mode from `tui-state.toml`
+- [x] Changing Layout, quitting, and relaunching restores the same Layout from `tui-state.toml`
 - [x] ghstars never writes to `config/tui.toml` in this ticket — only `state/tui-state.toml` is machine-written here (ADR 0002)
 
 ## Comments
@@ -81,9 +81,9 @@ Per the spec's "TUI config: two files, split by who writes them" note: `config/t
   `add_row(...)` call, and added `action_quit`/two `_apply_*` helper
   methods.
 
-**2026-08-26, superseded in part by ticket 23 and ADR 0008.** The
-comments above describe the schema this ticket shipped. Three parts of it
-change:
+**2026-08-26, superseded in part by tickets 23 and 25 and ADR 0008.** The
+comments above describe the schema this ticket shipped. The current schema
+removes the unused `view_mode` state field. These parts change:
 
 - `TuiColours` and `_apply_colour_overrides` are removed. Ticket 28
   forbids an application palette. Nothing replaces them.

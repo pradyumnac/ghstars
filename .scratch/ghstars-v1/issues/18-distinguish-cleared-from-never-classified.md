@@ -11,8 +11,6 @@ Local state has no signal to distinguish these today, so case 2 currently gets s
 
 **Deliberately deferred — this is edge-case cleanup, not core v1 functionality.** Do not pick this up, or let it block/execute, until the main v1 flow is implemented. Mirrors ticket 13's own "all v1-functional pieces must be in place" gate for the same reason.
 
-**Blocked by:** 05, 06, 07, 08, 09, 10, 11, 12, 14.
-
 **Status:** needs design, not yet speced — no acceptance criteria yet. Write these once the main flow lands and the user decides whether this distinction is worth new state, and if so, what shape that state takes (a tombstone record? a `last_classified_at` timestamp compared against sync history? something else?).
 
 ## Comments (originating finding, 2026-08-17)

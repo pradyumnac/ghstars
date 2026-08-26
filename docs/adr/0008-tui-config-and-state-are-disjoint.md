@@ -6,7 +6,7 @@ accepted
 
 ## Implemented
 
-not-started
+done
 
 ## Context
 
@@ -23,10 +23,8 @@ Ticket 23 adds an editor for `tui.toml` inside the TUI. The editor must
 show a field list. A field that lives in both files has no correct place
 in that list. The split needs a rule before the editor is built.
 
-Ticket 24 and ticket 26 each name a setting that no file holds yet.
-Ticket 24 names clock visibility. Ticket 26 names a card truncation
-length. More settings will follow. A rule must decide where each one
-lands.
+Ticket 24 names clock visibility. More settings can follow. A rule must
+decide where each one lands.
 
 ## Decision
 
@@ -58,7 +56,6 @@ Copy this test into the docstring of `TuiConfig` and `TuiState`.
 - `date_format`.
 - `toast_timeout`.
 - `ascii_only`.
-- `grid_card_truncation`.
 - `default_filter`.
 - `[layouts.compact]` and `[layouts.balanced]`. Each preset holds
   `columns`, `detail_pane_visible`, `row_height`, and
@@ -82,7 +79,6 @@ show. Description is not a column.
 - `filter`.
 - `detail_pane_visible` — a session override of the preset value. A
   layout switch resets this override.
-- `view_mode`.
 
 No field in this list gets a config counterpart. The TUI never shows
 these fields in the config editor.
@@ -130,6 +126,10 @@ not reread the file, so the restart rule holds.
 - `_apply_colour_overrides`.
 - `TuiState.layout` as an override of `TuiConfig.layout`. State keeps
   `layout` as the active preset instead.
+- `TuiConfig.grid_card_truncation`. Ticket 26 is retired because ghstars has
+  no grid view.
+- `TuiState.view_mode`. Ticket 25 is retired because the flat Star table and
+  Filters cover the required navigation.
 
 A `tui.toml` that holds a `[colours]` table fails to load. The error
 names the removed table.
@@ -169,5 +169,7 @@ These stay out of config:
 | Search debounce | Only matters on a very large account. |
 | Star-count number format | Low value. |
 | Description column | The detail pane already shows the description. |
+| Grid card truncation | ghstars has no grid view. |
+| View Mode | ghstars uses a flat Star table and Layout presets. |
 | Auto-refresh interval | ADR 0006 makes every sync explicit. |
 | Unstar confirmation toggle | A safety rail. Story 68 requires it. |

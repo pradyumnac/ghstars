@@ -32,7 +32,6 @@ DEFAULT_ROW_HEIGHT = 1
 DEFAULT_DATE_FORMAT = "%d-%b-%Y"
 DEFAULT_TOAST_TIMEOUT = 8
 DEFAULT_DETAIL_PANE_HEIGHT = 14
-DEFAULT_GRID_CARD_TRUNCATION = 120
 
 # ADR 0008: four App-level keys stay fixed. `ctrl+c` is a terminal
 # convention, `ctrl+q` is the force-quit path, and `ctrl+p` opens the
@@ -260,7 +259,6 @@ class TuiConfig(BaseModel):
     date_format: str = DEFAULT_DATE_FORMAT
     toast_timeout: int = Field(default=DEFAULT_TOAST_TIMEOUT, ge=1)
     ascii_only: bool = False
-    grid_card_truncation: int = Field(default=DEFAULT_GRID_CARD_TRUNCATION, ge=1)
     default_filter: str | None = None
     layout: LayoutDensity = "compact"
     layouts: dict[LayoutDensity, LayoutPreset] = Field(
@@ -338,6 +336,11 @@ def load_tui_config(path: Path) -> TuiConfig:
             " an application palette; the TUI uses the active Textual theme."
             " Delete the table."
         )
+    if "grid_card_truncation" in raw:
+        raise TuiConfigError(
+            f"{path}: grid_card_truncation was removed because ghstars has no "
+            "grid view. Delete the field."
+        )
     try:
         return TuiConfig.model_validate(raw)
     except ValidationError as exc:
@@ -356,16 +359,8 @@ class TuiState(BaseModel):
     `layout` records which preset is active now. `TuiConfig` defines the
     presets. `detail_pane_visible` is a session override of the active
     preset's value; a layout switch resets it.
-
-    `view_mode` is a forward-compatible stub, not a real feature yet:
-    there is no View Mode switcher in the code today (ticket 25 builds
-    it). Today there is exactly one mode, `"list"`, and this field
-    exists purely so ticket 25 has a state slot to read/write from
-    without a second migration -- it is persisted and restored here,
-    but nothing in this ticket lets the user change it.
     """
 
-    view_mode: str = "list"
     sort_key: str | None = None
     filter: str | None = None
     detail_pane_visible: bool | None = None

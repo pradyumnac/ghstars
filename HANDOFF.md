@@ -1,36 +1,57 @@
 # Handoff
 
-## Sources
+## Start here
 
-Read these files before you change behavior:
+Read these sources before you change behavior:
 
-| Source | Content |
+| Source | Use |
 | --- | --- |
-| `.scratch/ghstars-v1/spec.md` | Product stories, storage layout, and non-goals. |
-| `.scratch/ghstars-v1/issues/` | Acceptance criteria and implementation notes. |
-| `docs/adr/` | Architecture decisions. |
+| `.scratch/ghstars-v1/spec.md` | Product stories and non-goals. |
+| `.scratch/ghstars-v1/issues/` | Acceptance criteria and ticket state. |
+| `docs/adr/` | Accepted design decisions. |
 | `CONTEXT.md` | Domain terms. |
-| `docs/agents/issue-tracker.md` | Local issue workflow. |
-| `docs/explanation/known-limitations.md` | Accepted limitations. |
+| `docs/explanation/known-limitations.md` | Accepted limits. |
 
-## Current state
+## Next work
 
-Ticket 23 is complete. The config editor opens with `g` or from the
-Ctrl+P command palette. Esc validates and saves. The `x` key discards
-edits. The fixed help stays visible while the form body scrolls.
+### 1. Establish the agent CLI contract
 
-## Follow-up work
+Start ticket 30. Run its Scope 0 readiness review before you add parity
+features. The review must give a go or no-go verdict for agentic LLM use.
 
-- Replace each Layout column field with a two-pane chooser. Show
-  Available and Selected columns. Use Space to move a column. Use
-  Shift+J/K to reorder selected columns.
-- Add h/j/k/l navigation to TUI DataTables. Keep text-input and modal
-  keys unchanged.
-- Review ticket 25 and its dependents. Retire Folder View Mode if
-  filtering replaces its remaining use cases. Update the spec, README,
-  CONTEXT, ADRs, and affected issues in that task.
-- Reproduce the disappearing Star selection mark in a real terminal.
-  Headless tests do not reproduce it.
+Then implement the shared discovery query, explicit-name bulk actions, and
+operational JSON. Keep discovery rules in `ghstars.core`; the TUI and CLI must
+not have separate filter implementations.
+
+Ticket 14 is blocked until ticket 30 passes its completion gate. Do not write
+the agent skill against unstable commands or JSON schemas.
+
+### 2. Complete the remaining product work
+
+| Ticket | State | Next action |
+| --- | --- | --- |
+| 12 | Ready | Add the local nudge store. It is required before ticket 14. |
+| 24 | Partial | Reconcile each acceptance criterion with the existing TUI chrome and explicit sync code. Implement or record each missing behavior. |
+| 18 | Needs design | Decide whether cleared and never-classified Stars need distinct local state. Do not implement before a design decision. |
+| 13 | Ready | Start after tickets 12 and 14 complete. |
+| 15 | Ready | Start after ticket 13. |
+
+## Retired scope
+
+Tickets 25 and 26 are retired. ghstars has no Folder or grid view. The flat
+Star table uses Layout presets. A Layout changes density and visible columns;
+it does not change navigation or Star arrangement.
+
+Ticket 27 is complete because its only pending requirement was Filter behavior
+inside the retired Folder view.
+
+## Unscheduled follow-ups
+
+- Replace the Layout column text fields with a two-pane chooser.
+- Add `h`/`j`/`k`/`l` navigation to TUI `DataTable` widgets without changing
+  text-input or modal keys.
+- Reproduce the disappearing Star-selection mark in a real terminal. Headless
+  tests do not reproduce the problem.
 
 ## Safety
 
@@ -42,5 +63,5 @@ edits. The fixed help stays visible while the form body scrolls.
 ## Checks
 
 Run focused tests, the full test suite, and diagnostics before handoff.
-Regenerate `docs/adr/INDEX.md` with the ADR tool after an index-changing
-ADR update. Do not edit the index by hand.
+Regenerate `docs/adr/INDEX.md` with the ADR tool after an index-changing ADR
+update. Do not edit the index by hand.

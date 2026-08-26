@@ -47,10 +47,6 @@ The default is 8.
 Boolean that replaces status glyphs with text markers.
 The default is false.
 .TP
-.B grid_card_truncation
-Positive integer character limit for grid cards.
-The default is 120.
-.TP
 .B default_filter
 Optional Filter key that applies when TUI state has no Filter.
 The default is unset.
@@ -165,7 +161,6 @@ show_clock = false
 date_format = "%d-%b-%Y"
 toast_timeout = 8
 ascii_only = false
-grid_card_truncation = 120
 
 [keybindings]
 tag_selected = "shift+t"
@@ -188,7 +183,7 @@ The TUI uses the active Textual theme.
 Do not put session state in this file.
 The machine-owned
 .I ~/.ghstars/state/tui-state.toml
-stores the active Layout, sort, Filter, Detail pane override, and View Mode.
+stores the active Layout, sort, Filter, and Detail pane override.
 .SH SEE ALSO
 .BR ghstars (1),
 .BR ghstars-tui (1)

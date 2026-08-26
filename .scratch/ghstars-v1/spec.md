@@ -103,17 +103,9 @@ Stories 50-72 replace the earlier "TUI visual/interaction design left to
 implementation" deferral. Story numbers continue from 49 for the same
 cross-reference reason.
 
-**Navigation**
-
- 1. As a developer, I want to switch View Mode between a flat Star list, a grid, and a Folder, so that I can pick the arrangement that suits the job in front of me.
- 2. As a developer, I want Folder mode to show my Lists as containers and open one List into its Stars, so that I can work through one List at a time.
- 3. As a developer, I want a Star that belongs to no List to appear in one default Folder, so that unclassified Stars stay reachable and never disappear from the TUI.
- 4. As a developer, I want grid mode to show each Star as a card with the description cut to a fixed character count, so that cards stay the same size and the grid stays readable.
-
 **Finding Stars**
 
  1. As a developer, I want to filter the Stars on screen by Category, Intent, List, Language, License, Owner, Fork, Follow, and repository metadata, so that I can narrow a large account to the set I care about.
- 2. As a developer, I want a Filter to work inside Folder mode as well as the flat modes, so that the container I am in and the Filter I applied stay independent.
  3. As a developer, I want to search Stars by name and description as I type, so that I can reach one repo out of 1530 without scrolling. Search composes with every Filter.
  4. As a developer, I want a Filter for unclassified Stars only, so that I have a direct triage queue.
  5. As a developer, I want to sort by name, star date, stargazer count, language, List count, and List name, and to reverse any of them, so that I can order the view for the task at hand. Star date descending is the default, because the newest Stars are the ones that need classification.
@@ -159,7 +151,7 @@ cross-reference reason.
 
  1. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use. ghstars reserves `ctrl+q`, `ctrl+c`, `ctrl+p`, and `g`. The `g` key opens the config editor directly (ADR 0008).
  2. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting. Press `g` or use the Ctrl+P command palette to open the editor. Press Esc to validate and save changes. Press `x` to discard changes. The form stays open when validation fails. The `q` key quits only from the main screen. A saved change takes effect on the next launch (ADR 0008).
- 3. As a developer, I want ghstars to remember my last layout, View Mode, sort, Filter, and Detail pane visibility between sessions, so that the TUI opens where I left it.
+ 3. As a developer, I want ghstars to remember my last Layout, sort, Filter, and Detail pane visibility between sessions, so that the TUI opens where I left it.
 
 **Responsiveness**
 
@@ -214,8 +206,8 @@ Three-way merge per Star, per sync: base (last-synced snapshot) vs. current GitH
 
 **State/config layout** (see ADR 0002)
 
-- `~/.ghstars/config/` — taxonomy definitions, export mappings, TUI settings (`tui.toml`: keybindings, Category colours, header height, clock, date format, notification timeout, text-only mode, grid card truncation, default Filter, and the layout presets). Plain TOML/YAML files, user- or dotfiles-managed. Never auto-committed by ghstars.
-- `~/.ghstars/state/` — local snapshot, Retriage Queue, and TUI session state (`tui-state.toml`: active layout, last View Mode, sort, Filter, and Detail pane visibility). ghstars never runs `git init` and never auto-commits; if the user already git-tracks this directory, `ghstars diff` can use its history, but committing is left entirely to the user.
+- `~/.ghstars/config/` — taxonomy definitions, export mappings, TUI settings (`tui.toml`: keybindings, Category colours, header height, clock, date format, notification timeout, text-only mode, default Filter, and Layout presets). Plain TOML/YAML files, user- or dotfiles-managed. Never auto-committed by ghstars.
+- `~/.ghstars/state/` — local snapshot, Retriage Queue, and TUI session state (`tui-state.toml`: active Layout, sort, Filter, and Detail pane visibility). ghstars never runs `git init` and never auto-commits; if the user already git-tracks this directory, `ghstars diff` can use its history, but committing is left entirely to the user.
 
 **TUI config: two files, split by who writes them** (stories 69-71 and
 73-76, ADR 0002, ADR 0008)

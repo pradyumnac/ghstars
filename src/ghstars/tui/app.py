@@ -29,9 +29,8 @@ ASCII markers, clock, default Filter), and the layout presets. Each
 preset holds its own ordered column list and sizing. The file is read in
 `__init__`, before the first paint. The config editor writes it only when
 Esc validates a changed form (ADR 0002). `state/tui-state.toml` remembers
-the active preset, View Mode,
-sort key, Filter, and detail-pane override, read at launch and written on
-quit (`action_quit`).
+the active preset, sort key, Filter, and detail-pane override, read at
+launch and written on quit (`action_quit`).
 
 Terminal width never drops a column and never hides the detail pane (ADR
 0008). The table scrolls horizontally instead.
@@ -831,11 +830,6 @@ class ConfigEditorScreen(ModalScreen[bool]):
                         ("date_format", "Date format", self.config.date_format),
                         ("toast_timeout", "Toast timeout", self.config.toast_timeout),
                         (
-                            "grid_card_truncation",
-                            "Grid card truncation",
-                            self.config.grid_card_truncation,
-                        ),
-                        (
                             "default_filter",
                             "Default Filter",
                             self.config.default_filter or "",
@@ -967,7 +961,6 @@ class ConfigEditorScreen(ModalScreen[bool]):
             "header_height": integer("header_height"),
             "date_format": text("date_format"),
             "toast_timeout": integer("toast_timeout"),
-            "grid_card_truncation": integer("grid_card_truncation"),
             "default_filter": text("default_filter") or None,
             "show_clock": self.query_one("#config-show_clock", Select).value,
             "ascii_only": self.query_one("#config-ascii_only", Select).value,
@@ -1049,7 +1042,6 @@ class ConfigEditorScreen(ModalScreen[bool]):
             "date_format",
             "toast_timeout",
             "ascii_only",
-            "grid_card_truncation",
             "default_filter",
             "show_clock",
             "layout",

@@ -1,17 +1,15 @@
 # 27 — Finding and ordering Stars: filters, search, sort
 
-**What to build:** filter the visible Stars by Category, by Intent, or by List; a dedicated filter for unclassified Stars only (empty `list_ids`, not Archived); search-as-you-type on name and description; sort by name, star date, stargazer count, language, or List count, any key reversible, defaulting to star date descending (newest first) — the triage order. A Filter narrows the Stars shown; it works the same whether the current View Mode is flat, grid, or inside a Folder. Spec stories 54-58.
+**What to build:** filter the visible Stars by Category, Intent, or List; add an Unclassified-only filter (`list_ids` is empty, but the Star is not Archived); search name and description as the user types; and sort by name, star date, stargazer count, language, List count, or List name. Star date descending is the default triage order. Spec stories 54-58.
 
-**Blocked by:** 21 (persisted filter/sort state), 25 (story 55 requires filters to compose with Folder scope).
-
-**Status:** partial — Folder integration blocked by ticket 25
+**Status:** done
 
 - [x] Filter by Category, by Intent, List, Language, License, Owner, Forks, and Followed
 - [x] A dedicated "unclassified only" filter in the Filter menu
 - [x] Search-as-you-type matches name and description, opened with `/`
 - [x] Filter values narrow their options as the user types; recency keeps its shortcut keys
 - [x] Sort keys: name, star date, stargazer count, language, List count; any key reversible; star date descending is the default
-- [ ] Applying a Filter while inside a Folder narrows that Folder's Stars, without leaving the Folder
+- [x] Folder-scoped filtering is not required because ticket 25 is retired.
 - [x] Sort persists into `state/tui-state.toml` (ticket 21) across a quit/relaunch
 - [x] Filter state persists into `state/tui-state.toml` across a quit/relaunch
 

@@ -51,7 +51,6 @@ def test_load_tui_config_missing_file_is_every_default(tmp_path: Path) -> None:
     assert config.toast_timeout == 8
     assert config.ascii_only is False
     assert config.show_clock is False
-    assert config.grid_card_truncation == 120
     assert config.default_filter is None
     assert config.layouts["compact"].row_height == 1
     assert config.layouts["compact"].detail_pane_visible is True
@@ -71,7 +70,6 @@ def test_load_tui_config_reads_overrides(tmp_path: Path) -> None:
         toast_timeout = 3
         ascii_only = true
         show_clock = true
-        grid_card_truncation = 80
         default_filter = "unclassified"
 
         [keybindings]
@@ -93,7 +91,6 @@ def test_load_tui_config_reads_overrides(tmp_path: Path) -> None:
     assert config.toast_timeout == 3
     assert config.ascii_only is True
     assert config.show_clock is True
-    assert config.grid_card_truncation == 80
     assert config.default_filter == "unclassified"
     assert config.keybindings == {"tag_selected": "shift+t"}
     assert config.layouts["compact"] == LayoutPreset(
@@ -127,6 +124,21 @@ def test_load_tui_config_rejects_removed_colours_table(tmp_path: Path) -> None:
     except TuiConfigError as exc:
         assert "colours" in str(exc)
         assert "theme" in str(exc).lower()
+    else:
+        raise AssertionError("expected TuiConfigError")
+
+
+def test_load_tui_config_rejects_removed_grid_card_truncation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "tui.toml"
+    path.write_text("grid_card_truncation = 80\n")
+
+    try:
+        load_tui_config(path)
+    except TuiConfigError as exc:
+        assert "grid_card_truncation" in str(exc)
+        assert "grid view" in str(exc)
     else:
         raise AssertionError("expected TuiConfigError")
 
@@ -311,7 +323,6 @@ def test_load_tui_state_missing_file_is_every_default(tmp_path: Path) -> None:
     state = load_tui_state(tmp_path / "tui-state.toml")
 
     assert state == TuiState()
-    assert state.view_mode == "list"
     assert state.sort_key is None
     assert state.filter is None
     # `None` means "follow the active layout preset" (ADR 0008); the
@@ -334,7 +345,6 @@ def test_load_tui_state_corrupt_file_falls_back_to_defaults(tmp_path: Path) -> N
 def test_save_then_load_tui_state_round_trips(tmp_path: Path) -> None:
     path = tmp_path / "tui-state.toml"
     state = TuiState(
-        view_mode="folder",
         sort_key="newest",
         filter="unclassified",
         detail_pane_visible=False,
@@ -544,48 +554,11 @@ async def test_tui_app_persists_last_layout_over_config_default(
     assert {"License", "Owner", "Starred at"} <= set(columns)
 
 
-async def test_tui_app_restores_view_mode_across_relaunch(
-    tmp_path: Path, make_star: StarFactory
-) -> None:
-    """Ticket 21 stub: there is no View Mode switcher yet (ticket 25
-    builds it), so this exercises the persistence plumbing directly --
-    a future switcher only needs to mutate `app._state.view_mode`, this
-    round trip already works end to end."""
-    state_path = tmp_path / "state" / "tui-state.toml"
-    store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("example-owner/ghstars")])
-    store.save_lists([])
-
-    app1 = TuiApp(
-        client=FakeGitHubClient(),
-        store=store,
-        config_path=tmp_path / "config" / "tui.toml",
-        state_path=state_path,
-    )
-    async with app1.run_test() as pilot:
-        await pilot.pause()
-        app1._state.view_mode = "folder"
-        await app1.action_quit()
-
-    app2 = TuiApp(
-        client=FakeGitHubClient(),
-        store=store,
-        config_path=tmp_path / "config" / "tui.toml",
-        state_path=state_path,
-    )
-    async with app2.run_test() as pilot:
-        await pilot.pause()
-        restored_view_mode = app2._state.view_mode
-
-    assert restored_view_mode == "folder"
-
-
 async def test_tui_app_restores_sort_key_across_relaunch(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    """Ticket 27 (partial): the active sort key persists into
-    tui-state.toml on quit and is restored on the next launch, same
-    round trip as view_mode above."""
+    """The active sort key persists into `tui-state.toml` on quit and
+    is restored on the next launch."""
     state_path = tmp_path / "state" / "tui-state.toml"
     store = StateStore(tmp_path / "state")
     store.save_stars([make_star("example-owner/ghstars")])
