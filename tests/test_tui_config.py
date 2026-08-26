@@ -337,3 +337,65 @@ async def test_tui_app_restores_view_mode_across_relaunch(
         restored_view_mode = app2._state.view_mode
 
     assert restored_view_mode == "folder"
+
+
+async def test_tui_app_restores_sort_key_across_relaunch(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Ticket 27 (partial): the active sort key persists into
+    tui-state.toml on quit and is restored on the next launch, same
+    round trip as view_mode above."""
+    state_path = tmp_path / "state" / "tui-state.toml"
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+
+    app1 = TuiApp(
+        client=FakeGitHubClient(),
+        store=store,
+        config_path=tmp_path / "config" / "tui.toml",
+        state_path=state_path,
+    )
+    async with app1.run_test() as pilot:
+        await pilot.pause()
+        assert app1._sort_mode == "starred_desc"  # default before any toggle
+        await pilot.press("s")
+        assert app1._sort_mode == "name"
+        await app1.action_quit()
+
+    app2 = TuiApp(
+        client=FakeGitHubClient(),
+        store=store,
+        config_path=tmp_path / "config" / "tui.toml",
+        state_path=state_path,
+    )
+    async with app2.run_test() as pilot:
+        await pilot.pause()
+        restored_sort_mode = app2._sort_mode
+
+    assert restored_sort_mode == "name"
+
+
+async def test_tui_app_ignores_unrecognized_saved_sort_key(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """An older/newer ghstars version's sort key set differing from
+    this build's `_SORT_MODES` must fall back to the default, not
+    crash `_sorted_stars()` with an unrecognized mode."""
+    from ghstars.tui.config import TuiState, save_tui_state
+
+    state_path = tmp_path / "state" / "tui-state.toml"
+    save_tui_state(state_path, TuiState(sort_key="some_future_key"))
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+
+    app = TuiApp(
+        client=FakeGitHubClient(),
+        store=store,
+        config_path=tmp_path / "config" / "tui.toml",
+        state_path=state_path,
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app._sort_mode == "starred_desc"

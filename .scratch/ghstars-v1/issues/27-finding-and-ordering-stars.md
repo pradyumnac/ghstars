@@ -11,7 +11,7 @@
 - [ ] Search-as-you-type matches name and description, opened with `/`
 - [x] Sort keys: name, star date, stargazer count, language, List count; any key reversible; star date descending is the default
 - [ ] Applying a Filter while inside a Folder narrows that Folder's Stars, without leaving the Folder
-- [ ] Active Filter and sort persist into `state/tui-state.toml` (ticket 21) across a quit/relaunch
+- [x] Sort persists into `state/tui-state.toml` (ticket 21) across a quit/relaunch (Filter persistence still open -- no Filter exists yet)
 
 ## Comments
 
@@ -28,6 +28,16 @@ toggle. Not yet persisted to `state/tui-state.toml` (in-memory/session
 only) — this ticket's own AC still requires that, along with every
 filter/search AC, none of which are implemented. Status stays
 `ready-for-agent`, not `done`.
+
+**2026-08-26, sort persistence:** the active sort key now round-trips
+through `state/tui-state.toml`'s existing `sort_key` field (already
+speced in ticket 21, just unused until now) -- `TuiApp.__init__`
+restores `self._sort_mode` from it (falling back to the default if the
+saved value isn't one of this build's `_SORT_MODES`, e.g. after a
+downgrade), and `action_cycle_sort` writes it back on every toggle
+(in-memory only; `action_quit`'s existing `save_tui_state` call does
+the actual disk write). Filter persistence is still open -- there is no
+Filter feature yet to persist.
 
 Also added a sixth key, `list_name` (List name ascending, no-Lists
 sorted last), beyond this ticket's literal five ("List count", not List

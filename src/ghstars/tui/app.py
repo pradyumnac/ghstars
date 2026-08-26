@@ -389,9 +389,6 @@ class TuiApp(App[None]):
         self._selected: set[str] = set()
         self._picker_open = False
         self._unstar_confirm_open = False
-        # Spec story 57's default sort: star date descending (newest
-        # first), the triage order. "s" cycles to "name" and back.
-        self._sort_mode = "starred_desc"
 
         # Ticket 21: `config/tui.toml` (user-authored, read-only here) and
         # `state/tui-state.toml` (machine-owned, read + written here). A
@@ -406,6 +403,16 @@ class TuiApp(App[None]):
         self._state_path = state_path or (store.base_dir / "tui-state.toml")
         self._config: TuiConfig = load_tui_config(self._config_path)
         self._state: TuiState = load_tui_state(self._state_path)
+
+        # Spec story 57's default sort: star date descending (newest
+        # first), the triage order. Restored from tui-state.toml
+        # (spec story 71) if it holds a recognized key -- an
+        # unrecognized one (an older/newer ghstars version's key set)
+        # falls back to the default rather than crashing.
+        saved_sort_key = self._state.sort_key
+        self._sort_mode = (
+            saved_sort_key if saved_sort_key in self._SORT_MODES else "starred_desc"
+        )
 
         # Applied here, before `compose()`/first paint -- not deferred to
         # `on_mount()` -- so the very first render (including the
@@ -743,6 +750,10 @@ class TuiApp(App[None]):
     def action_cycle_sort(self) -> None:
         index = self._SORT_MODES.index(self._sort_mode)
         self._sort_mode = self._SORT_MODES[(index + 1) % len(self._SORT_MODES)]
+        # Spec story 71: persists into tui-state.toml on quit
+        # (action_quit's save_tui_state call) -- just the in-memory
+        # mutation here, no disk write on every toggle.
+        self._state.sort_key = self._sort_mode
         self._refresh_table()
         self._update_sort_binding_description()
         self.notify(f"Sorted by {self._SORT_NOTIFY_LABELS[self._sort_mode]}.")
