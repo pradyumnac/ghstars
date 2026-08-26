@@ -1,37 +1,36 @@
-"""TUI config foundation (ticket 21): `config/tui.toml` (read-only,
-user-authored) and `state/tui-state.toml` (read + write, machine-owned).
+"""The TUI's two files: `config/tui.toml` (user-authored) and
+`state/tui-state.toml` (machine-owned).
 
-Mirrors the load pattern `ghstars.core.export.load_export_config` already
-established for `export.toml` (ADR 0002): a missing file means every
-default applies, never an error.
+ADR 0008 splits them. A value the user wants under version control, or
+the same on every machine, is config. A value that records what the user
+last looked at is state. One fact never lives in both files.
 
-Split per the spec's "TUI config: two files, split by who writes them"
-note (spec.md, ADR 0002): `config/tui.toml` is stow-managed dotfiles --
-this module never writes it, only reads it, applying overrides before the
-first paint. `state/tui-state.toml` is machine-owned -- read at launch and
-written at quit, holding at least the last View Mode, sort key, and
-active Filter.
+A missing file means every default applies, never an error -- the rule
+`ghstars.core.export.load_export_config` already follows for
+`export.toml` (ADR 0002).
 
-Uses `tomlkit`, not stdlib `tomllib`, because `tui-state.toml` must
-round-trip (read, then later write back) -- `tomllib` has no writer, and
-`tomllib` + `tomli_w` would not preserve formatting/comments the way
-`tomlkit` does. `tui.toml` is read via `tomlkit` too, rather than stdlib
-`tomllib`, only so a future config-editor ticket that writes `tui.toml`
-(spec story 70) needs no second TOML dependency -- this ticket itself
-still never writes `tui.toml`.
+Uses `tomlkit`, not stdlib `tomllib`, because both files must round-trip
+through a writer: `tui-state.toml` on every quit, and `tui.toml` when the
+config editor saves. `tomllib` has no writer, and `tomllib` plus
+`tomli_w` would not keep the comments and key order that a stow-managed
+dotfile needs.
 """
 
 from pathlib import Path
 from typing import Literal
 
 import tomlkit
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from tomlkit.exceptions import TOMLKitError
 
 from ghstars.core.state_store import atomic_write
 
 DEFAULT_HEADER_HEIGHT = 1
 DEFAULT_ROW_HEIGHT = 1
+DEFAULT_DATE_FORMAT = "%d-%b-%Y"
+DEFAULT_TOAST_TIMEOUT = 8
+DEFAULT_DETAIL_PANE_HEIGHT = 14
+DEFAULT_GRID_CARD_TRUNCATION = 120
 
 LayoutDensity = Literal["compact", "balanced"]
 SemanticTextRole = Literal[
@@ -39,6 +38,23 @@ SemanticTextRole = Literal[
     "text-secondary",
     "text-accent",
     "text-success",
+]
+
+# Every optional column, in the order ticket 23 lists them. The Sel
+# column and the Star column always show, so neither appears here.
+ColumnName = Literal[
+    "Owner",
+    "Language",
+    "License",
+    "Stars",
+    "Starred at",
+    "First seen",
+    "Membership",
+    "Fork",
+    "Follow",
+    "Archived",
+    "Archived at",
+    "Last checked",
 ]
 
 
@@ -51,25 +67,50 @@ class TuiConfigError(Exception):
     """
 
 
-class TuiColours(BaseModel):
-    """Colour palette overrides, keyed by the same names ghstars' own
-    Textual CSS already uses ($primary, $background, etc, minus the
-    `$`). An unset field falls back to Textual's own active theme, not a
-    hardcoded ghstars default -- so a user who already themes their
-    terminal/Textual app elsewhere is not fighting a second default.
+class LayoutPreset(BaseModel):
+    """One named density. `columns` is ordered -- the list sets which
+    optional columns show and in what order (ADR 0008).
+
+    Sizing lives here rather than at the top level so that switching
+    preset with `z` switches every sizing choice at once.
     """
 
-    primary: str | None = None
-    background: str | None = None
-    surface: str | None = None
-    error: str | None = None
-    text: str | None = None
+    columns: list[ColumnName] = Field(default_factory=list)
+    detail_pane_visible: bool = True
+    row_height: int = Field(default=DEFAULT_ROW_HEIGHT, ge=1)
+    detail_pane_height: int = Field(default=DEFAULT_DETAIL_PANE_HEIGHT, ge=1)
+
+
+DEFAULT_LAYOUTS: dict[LayoutDensity, LayoutPreset] = {
+    "compact": LayoutPreset(columns=["Language", "Stars", "Membership"]),
+    "balanced": LayoutPreset(
+        columns=[
+            "Language",
+            "Stars",
+            "Membership",
+            "License",
+            "Owner",
+            "Starred at",
+        ]
+    ),
+}
 
 
 class TuiConfig(BaseModel):
-    """`config/tui.toml`'s schema. Read-only from this module's point of
-    view -- ghstars never writes this file in this ticket (ADR 0002); a
-    config-editor ticket writing it is future work (spec story 70).
+    """`config/tui.toml`'s schema.
+
+    ADR 0008's test for a new field: a value the user wants under version
+    control, or the same on every machine, is config and belongs here. A
+    value that records what the user last looked at is state and belongs
+    in `TuiState`. One fact never lives in both files.
+
+    A definition and an active selection are two different facts. This
+    class defines the layout presets; `TuiState` records which preset is
+    active. That is not a duplicate.
+
+    ghstars applies this file once, at launch. A saved change takes
+    effect on the next launch, because `_apply_keybinding_overrides` is
+    not idempotent (ADR 0008).
 
     `keybindings` maps an action name (matching `TuiApp`'s existing
     `action_*` methods, e.g. `"tag_selected"`) to a replacement key, so
@@ -78,12 +119,36 @@ class TuiConfig(BaseModel):
     `TuiApp._apply_keybinding_overrides()`.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     keybindings: dict[str, str] = Field(default_factory=dict)
     header_height: int = Field(default=DEFAULT_HEADER_HEIGHT, ge=1)
-    row_height: int = Field(default=DEFAULT_ROW_HEIGHT, ge=1)
-    colours: TuiColours = Field(default_factory=TuiColours)
+    show_clock: bool = False
     category_colours: dict[str, SemanticTextRole] = Field(default_factory=dict)
+    date_format: str = DEFAULT_DATE_FORMAT
+    toast_timeout: int = Field(default=DEFAULT_TOAST_TIMEOUT, ge=1)
+    ascii_only: bool = False
+    grid_card_truncation: int = Field(default=DEFAULT_GRID_CARD_TRUNCATION, ge=1)
+    default_filter: str | None = None
     layout: LayoutDensity = "compact"
+    layouts: dict[LayoutDensity, LayoutPreset] = Field(
+        default_factory=lambda: {
+            name: preset.model_copy(deep=True)
+            for name, preset in DEFAULT_LAYOUTS.items()
+        }
+    )
+
+    @model_validator(mode="after")
+    def _fill_unnamed_presets(self) -> TuiConfig:
+        """A file that defines one preset keeps the shipped value for the
+        other. A partial config must never blank a layout."""
+        for name, preset in DEFAULT_LAYOUTS.items():
+            self.layouts.setdefault(name, preset.model_copy(deep=True))
+        return self
+
+    @property
+    def active_layout(self) -> LayoutPreset:
+        return self.layouts[self.layout]
 
 
 def load_tui_config(path: Path) -> TuiConfig:
@@ -98,6 +163,12 @@ def load_tui_config(path: Path) -> TuiConfig:
         raw = tomlkit.loads(path.read_text())
     except TOMLKitError as exc:
         raise TuiConfigError(f"{path}: invalid TOML: {exc}") from exc
+    if "colours" in raw:
+        raise TuiConfigError(
+            f"{path}: the [colours] table was removed. ghstars no longer ships"
+            " an application palette; the TUI uses the active Textual theme."
+            " Delete the table."
+        )
     try:
         return TuiConfig.model_validate(raw)
     except ValidationError as exc:
@@ -107,6 +178,15 @@ def load_tui_config(path: Path) -> TuiConfig:
 class TuiState(BaseModel):
     """`state/tui-state.toml`'s schema -- session state ghstars remembers
     across launches (spec story 71).
+
+    ADR 0008's test for a new field: a value that records what the user
+    last looked at is state and belongs here. A value the user wants
+    under version control, or the same on every machine, is config and
+    belongs in `TuiConfig`. One fact never lives in both files.
+
+    `layout` records which preset is active now. `TuiConfig` defines the
+    presets. `detail_pane_visible` is a session override of the active
+    preset's value; a layout switch resets it.
 
     `view_mode` is a forward-compatible stub, not a real feature yet:
     there is no View Mode switcher in the code today (ticket 25 builds
@@ -119,7 +199,7 @@ class TuiState(BaseModel):
     view_mode: str = "list"
     sort_key: str | None = None
     filter: str | None = None
-    detail_pane_visible: bool = True
+    detail_pane_visible: bool | None = None
     layout: LayoutDensity | None = None
 
 

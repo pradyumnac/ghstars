@@ -66,7 +66,7 @@ from ghstars.core.tagging import (
 from ghstars.core.unstar import unstar_star
 from ghstars.github import GitHubApiError
 from ghstars.tui.config import (
-    TuiColours,
+    LayoutPreset,
     TuiConfig,
     TuiState,
     load_tui_config,
@@ -799,7 +799,19 @@ class TuiApp(App[None]):
 
         # Apply overrides before the first render.
         self._apply_keybinding_overrides(self._config.keybindings)
-        self._apply_colour_overrides(self._config.colours)
+
+    @property
+    def _preset(self) -> LayoutPreset:
+        """Sizing and columns for the active layout. State picks the
+        preset; config defines it (ADR 0008)."""
+        return self._config.layouts[self._layout]
+
+    def _detail_pane_wanted(self) -> bool:
+        """The preset's value, unless this session overrode it. `z`
+        clears the override, so a layout switch restores the preset."""
+        if self._state.detail_pane_visible is None:
+            return self._preset.detail_pane_visible
+        return self._state.detail_pane_visible
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="title-row"):
@@ -825,9 +837,9 @@ class TuiApp(App[None]):
         table = self.query_one("#stars-table", DataTable)
         self._narrow = self.size.width < 90
         self._configure_table_columns(table)
-        self.query_one("#detail-pane", DetailPane).display = (
-            self._state.detail_pane_visible and not self._narrow
-        )
+        pane = self.query_one("#detail-pane", DetailPane)
+        pane.styles.height = self._preset.detail_pane_height
+        pane.display = self._detail_pane_wanted() and not self._narrow
         # The table fills the space when the detail pane is hidden.
         self._update_sort_binding_description()
         self._refresh_system_status()
@@ -890,29 +902,6 @@ class TuiApp(App[None]):
                 key_to_bindings.setdefault(normalized_key, []).extend(
                     replace(b, key=normalized_key) for b in moved
                 )
-
-    def _apply_colour_overrides(self, colours: TuiColours) -> None:
-        """Apply `tui.toml`'s `[colours]` table on top of the active
-        Textual theme (`textual-dark` by default), via Textual's own
-        theme system (`App.register_theme`/`App.theme`) rather than
-        hand-rolled CSS variable injection. `colours.text` maps to the
-        `$text` CSS variable via `Theme.variables` -- `Theme` itself has
-        no `text` field (Textual derives it from `foreground` by
-        default), so it is the one field that goes through `variables`
-        instead of a constructor keyword.
-        """
-        overrides = colours.model_dump(exclude_none=True)
-        text_override = overrides.pop("text", None)
-        if not overrides and text_override is None:
-            return
-        base = self.get_theme(self.theme)
-        assert base is not None, f"active theme {self.theme!r} is not registered"
-        variables = dict(base.variables)
-        if text_override is not None:
-            variables["text"] = text_override
-        custom = replace(base, name="ghstars-config", variables=variables, **overrides)
-        self.register_theme(custom)
-        self.theme = "ghstars-config"
 
     def _configure_table_columns(self, table: DataTable[object]) -> None:
         """Apply the active density and terminal-width column set."""
@@ -996,7 +985,7 @@ class TuiApp(App[None]):
             return
         self._narrow = narrow
         self.query_one("#detail-pane", DetailPane).display = (
-            self._state.detail_pane_visible and not narrow
+            self._detail_pane_wanted() and not narrow
         )
         table = self.query_one("#stars-table", DataTable)
         self._configure_table_columns(table)
@@ -1158,7 +1147,7 @@ class TuiApp(App[None]):
                     )
             table.add_row(
                 *row,
-                height=self._config.row_height,
+                height=self._preset.row_height,
                 key=star.full_name,
             )
         # Refresh the detail pane because rebuilding row 0 emits no highlight event.
@@ -1329,6 +1318,11 @@ class TuiApp(App[None]):
         """Toggle compact and balanced columns and save the active density."""
         self._layout = "balanced" if self._layout == "compact" else "compact"
         self._state.layout = self._layout
+        # A layout switch drops the session override (ADR 0008).
+        self._state.detail_pane_visible = None
+        pane = self.query_one("#detail-pane", DetailPane)
+        pane.styles.height = self._preset.detail_pane_height
+        pane.display = self._detail_pane_wanted() and not self._narrow
         table = self.query_one("#stars-table", DataTable)
         self._configure_table_columns(table)
         self._refresh_table()

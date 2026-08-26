@@ -1,7 +1,10 @@
-"""Tests for TUI config foundation (ticket 21): `config/tui.toml`
-(read-only) and `state/tui-state.toml` (read + written), plus their
-wiring into `TuiApp` -- keybinding overrides, header/row sizing, colour
-palette, and last-View-Mode/sort/Filter persistence across quit/relaunch.
+"""Tests for the TUI config schema: `config/tui.toml` (read-only) and
+`state/tui-state.toml` (read + written), plus their wiring into
+`TuiApp`.
+
+Ticket 23 and ADR 0008 set the current schema. Config defines the layout
+presets; state records which preset is active. The two files never hold
+the same fact.
 """
 
 from pathlib import Path
@@ -14,6 +17,8 @@ from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.state_store import StateStore
 from ghstars.tui.app import TuiApp
 from ghstars.tui.config import (
+    DEFAULT_LAYOUTS,
+    LayoutPreset,
     TuiConfig,
     TuiConfigError,
     TuiState,
@@ -36,9 +41,19 @@ def test_load_tui_config_missing_file_is_every_default(tmp_path: Path) -> None:
     assert config == TuiConfig()
     assert config.keybindings == {}
     assert config.header_height == 1
-    assert config.row_height == 1
-    assert config.colours.primary is None
     assert config.layout == "compact"
+    assert config.date_format == "%d-%b-%Y"
+    assert config.toast_timeout == 8
+    assert config.ascii_only is False
+    assert config.show_clock is False
+    assert config.grid_card_truncation == 120
+    assert config.default_filter is None
+    assert config.layouts["compact"].row_height == 1
+    assert config.layouts["compact"].detail_pane_visible is True
+    assert config.layouts["compact"].detail_pane_height == 14
+    assert config.layouts["balanced"].columns == DEFAULT_LAYOUTS["balanced"].columns
+    assert not hasattr(config, "colours")
+    assert not hasattr(config, "row_height")
 
 
 def test_load_tui_config_reads_overrides(tmp_path: Path) -> None:
@@ -46,28 +61,93 @@ def test_load_tui_config_reads_overrides(tmp_path: Path) -> None:
     path.write_text(
         """
         header_height = 3
-        row_height = 2
         layout = "balanced"
+        date_format = "%Y-%m-%d"
+        toast_timeout = 3
+        ascii_only = true
+        show_clock = true
+        grid_card_truncation = 80
+        default_filter = "unclassified"
 
         [keybindings]
         tag_selected = "shift+t"
 
-        [colours]
-        primary = "#ff00ff"
-
-        [category_colours]
-        AI = "text-accent"
+        [layouts.compact]
+        columns = ["Language", "Stars"]
+        row_height = 2
+        detail_pane_visible = false
+        detail_pane_height = 9
         """
     )
 
     config = load_tui_config(path)
 
     assert config.header_height == 3
-    assert config.row_height == 2
     assert config.layout == "balanced"
+    assert config.date_format == "%Y-%m-%d"
+    assert config.toast_timeout == 3
+    assert config.ascii_only is True
+    assert config.show_clock is True
+    assert config.grid_card_truncation == 80
+    assert config.default_filter == "unclassified"
     assert config.keybindings == {"tag_selected": "shift+t"}
-    assert config.colours.primary == "#ff00ff"
-    assert config.category_colours == {"AI": "text-accent"}
+    assert config.layouts["compact"] == LayoutPreset(
+        columns=["Language", "Stars"],
+        row_height=2,
+        detail_pane_visible=False,
+        detail_pane_height=9,
+    )
+
+
+def test_load_tui_config_unnamed_preset_keeps_its_default(tmp_path: Path) -> None:
+    """A file that defines only `compact` still gets the shipped
+    `balanced` preset, so a partial config never blanks a layout."""
+    path = tmp_path / "tui.toml"
+    path.write_text('[layouts.compact]\ncolumns = ["Stars"]\n')
+
+    config = load_tui_config(path)
+
+    assert config.layouts["compact"].columns == ["Stars"]
+    assert config.layouts["balanced"] == DEFAULT_LAYOUTS["balanced"]
+
+
+def test_load_tui_config_rejects_removed_colours_table(tmp_path: Path) -> None:
+    """ADR 0008 removed `[colours]`. The error must name the table and
+    point the user at the active Textual theme."""
+    path = tmp_path / "tui.toml"
+    path.write_text('[colours]\nprimary = "#ff00ff"\n')
+
+    try:
+        load_tui_config(path)
+    except TuiConfigError as exc:
+        assert "colours" in str(exc)
+        assert "theme" in str(exc).lower()
+    else:
+        raise AssertionError("expected TuiConfigError")
+
+
+def test_load_tui_config_rejects_unknown_column_name(tmp_path: Path) -> None:
+    path = tmp_path / "tui.toml"
+    path.write_text('[layouts.compact]\ncolumns = ["Nonsense"]\n')
+
+    try:
+        load_tui_config(path)
+    except TuiConfigError as exc:
+        assert "Nonsense" in str(exc)
+    else:
+        raise AssertionError("expected TuiConfigError")
+
+
+def test_load_tui_config_rejects_unknown_preset_name(tmp_path: Path) -> None:
+    path = tmp_path / "tui.toml"
+    path.write_text('[layouts.roomy]\ncolumns = ["Stars"]\n')
+
+    try:
+        load_tui_config(path)
+    except TuiConfigError:
+        pass
+    else:
+        raise AssertionError("expected TuiConfigError")
 
 
 def test_load_tui_config_invalid_toml_raises(tmp_path: Path) -> None:
@@ -118,7 +198,9 @@ def test_load_tui_state_missing_file_is_every_default(tmp_path: Path) -> None:
     assert state.view_mode == "list"
     assert state.sort_key is None
     assert state.filter is None
-    assert state.detail_pane_visible is True
+    # `None` means "follow the active layout preset" (ADR 0008); the
+    # field only holds a bool once the user toggles the pane.
+    assert state.detail_pane_visible is None
     assert state.layout is None
 
 
@@ -264,7 +346,7 @@ async def test_tui_app_applies_row_and_header_height(
 ) -> None:
     config_path = tmp_path / "config" / "tui.toml"
     config_path.parent.mkdir(parents=True)
-    config_path.write_text("header_height = 3\nrow_height = 2\n")
+    config_path.write_text("header_height = 3\n\n[layouts.compact]\nrow_height = 2\n")
 
     store = StateStore(tmp_path / "state")
     store.save_stars([make_star("pradyumnac/ghstars")])
@@ -282,30 +364,6 @@ async def test_tui_app_applies_row_and_header_height(
 
     assert table.header_height == 3
     assert table.get_row_height(RowKey("pradyumnac/ghstars")) == 2
-
-
-async def test_tui_app_applies_colour_override(
-    tmp_path: Path, make_star: StarFactory
-) -> None:
-    config_path = tmp_path / "config" / "tui.toml"
-    config_path.parent.mkdir(parents=True)
-    config_path.write_text('[colours]\nprimary = "#ff00ff"\n')
-
-    store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
-    store.save_lists([])
-
-    app = TuiApp(
-        client=FakeGitHubClient(),
-        store=store,
-        config_path=config_path,
-        state_path=tmp_path / "state" / "tui-state.toml",
-    )
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        primary = app.get_css_variables()["primary"]
-
-    assert primary.lower() == "#ff00ff"
 
 
 async def test_tui_app_never_writes_tui_config(
