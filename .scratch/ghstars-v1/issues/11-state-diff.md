@@ -6,7 +6,13 @@
 
 **Status:** done
 
-- [ ] `ghstars diff` shows a diff of classification changes via `git diff`/`git log -p` when `state/` is already a git repo
-- [ ] Clear, non-crashing message when `state/` is not git-tracked
-- [ ] ghstars never runs `git init` on `state/`
-- [ ] ghstars never auto-commits `state/`, under any condition
+- [x] `ghstars diff` shows a diff of classification changes via `git diff`/`git log -p` when `state/` is already a git repo
+- [x] Clear, non-crashing message when `state/` is not git-tracked
+- [x] ghstars never runs `git init` on `state/`
+- [x] ghstars never auto-commits `state/`, under any condition
+
+## Comments
+
+Triage completed. The implementation and tests meet all acceptance criteria.
+
+Verification: `uv run pytest tests/test_cli_diff.py` passed: 9 tests.
