@@ -66,8 +66,8 @@ Folder integration.
 
 - Add License to the Star DetailPane and Filter. The local snapshot did not
   store License before ticket 27 work; the sync model now fetches it.
-- Add an explicit TUI sync key after ticket 27. The key must never start sync
-  automatically. Show progress, completion, and error states in the TUI.
+- Ticket 27 now has an explicit TUI sync key. The key never starts sync
+  automatically. The TUI shows progress, completion, and error states.
 
 ### New TUI defect to ticket (queued by user, 2026-08-26)
 

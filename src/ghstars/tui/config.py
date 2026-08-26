@@ -108,6 +108,7 @@ class TuiState(BaseModel):
     view_mode: str = "list"
     sort_key: str | None = None
     filter: str | None = None
+    detail_pane_visible: bool = True
 
 
 def load_tui_state(path: Path) -> TuiState:

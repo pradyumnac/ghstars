@@ -97,6 +97,7 @@ def test_load_tui_state_missing_file_is_every_default(tmp_path: Path) -> None:
     assert state.view_mode == "list"
     assert state.sort_key is None
     assert state.filter is None
+    assert state.detail_pane_visible is True
 
 
 def test_load_tui_state_corrupt_file_falls_back_to_defaults(tmp_path: Path) -> None:
@@ -112,7 +113,12 @@ def test_load_tui_state_corrupt_file_falls_back_to_defaults(tmp_path: Path) -> N
 
 def test_save_then_load_tui_state_round_trips(tmp_path: Path) -> None:
     path = tmp_path / "tui-state.toml"
-    state = TuiState(view_mode="folder", sort_key="newest", filter="unclassified")
+    state = TuiState(
+        view_mode="folder",
+        sort_key="newest",
+        filter="unclassified",
+        detail_pane_visible=False,
+    )
 
     save_tui_state(path, state)
     loaded = load_tui_state(path)

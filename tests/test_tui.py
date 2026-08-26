@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from conftest import StarFactory
 from filelock import Timeout
-from textual.widgets import DataTable, Input
+from textual.widgets import DataTable, Input, Static
 
 from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
@@ -589,6 +589,48 @@ async def test_detail_pane_visible_by_default_and_toggles_with_d(
 
         await pilot.press("d")
         assert app.query_one("#detail-pane", DetailPane).display is True
+
+
+async def test_detail_pane_toggle_persists_across_quit(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+    state_path = tmp_path / "tui-state.toml"
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, state_path=state_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("d")
+        await pilot.press("q")
+
+    assert load_tui_state(state_path).detail_pane_visible is False
+
+
+async def test_sync_runs_only_after_explicit_key_and_reports_completion(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    stale = make_star("pradyumnac/stale")
+    fresh = make_star("pradyumnac/fresh")
+    store = StateStore(tmp_path)
+    store.save_stars([stale])
+    store.save_lists([])
+    client = FakeGitHubClient(stars=[fresh])
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert "idle" in str(app.query_one("#sync-status", Static).render())
+        await pilot.press("y")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        status = str(app.query_one("#sync-status", Static).render())
+
+    assert "complete" in status
+    saved = {star.full_name: star for star in store.load_stars()}
+    assert "pradyumnac/fresh" in saved
+    assert saved["pradyumnac/stale"].archived is True
 
 
 async def test_unstar_confirm_calls_remove_star_and_archives_locally(

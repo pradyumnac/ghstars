@@ -20,9 +20,9 @@ limit before `ghstars sync` fails outright
 (docs/explanation/known-limitations.md: a full sync is not
 incremental and costs real API points every time).
 
-This module never calls `ghstars.core.sync`. Syncing stays a
-deliberate `ghstars sync` on the command line; this TUI only reads and
-tags against whatever was last synced.
+This module never syncs automatically. The TUI starts a sync only when
+the user presses its explicit sync key; otherwise it reads and tags against
+the last local snapshot.
 
 Config (ticket 21, `ghstars.tui.config`): `config/tui.toml` overrides
 keybindings, header/row sizing, and the colour palette, applied in
@@ -52,6 +52,7 @@ from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, 
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
+from ghstars.core.sync import sync
 from ghstars.core.tagging import (
     StarArchivedError,
     StarListMembershipDriftError,
@@ -529,6 +530,7 @@ class TuiApp(App[None]):
         # Hide this contextual binding from the Footer.
         Binding("escape", "close_search", "Close search", show=False),
         Binding("r", "refresh_rate_limit", "Refresh rate limit"),
+        Binding("y", "sync", f"Sync{_FOOTER_SEP}"),
     ]
 
     def __init__(
@@ -572,6 +574,7 @@ class TuiApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield RateLimitBar(id="rate-limit-bar")
+        yield Static("Sync: idle", id="sync-status")
         yield Input(placeholder="Search name/description...", id="search-input")
         yield Static(id="result-status")
         yield DataTable(
@@ -586,6 +589,7 @@ class TuiApp(App[None]):
         self.title = "ghstars"
         table = self.query_one("#stars-table", DataTable)
         table.add_columns(("Sel", "sel"), "Star", "Language", "Stars", "Lists")
+        self.query_one("#detail-pane", DetailPane).display = self._state.detail_pane_visible
         # The table fills the space when the detail pane is hidden.
         self._update_sort_binding_description()
         self._reload_local_state()
@@ -839,6 +843,7 @@ class TuiApp(App[None]):
     def action_toggle_detail_pane(self) -> None:
         pane = self.query_one("#detail-pane", DetailPane)
         pane.display = not pane.display
+        self._state.detail_pane_visible = pane.display
         if pane.display:
             self._refresh_detail_pane()
 
@@ -891,6 +896,43 @@ class TuiApp(App[None]):
 
     def action_refresh_rate_limit(self) -> None:
         self._fetch_rate_limit()
+
+    def action_sync(self) -> None:
+        if getattr(self, "_sync_in_progress", False):
+            self.notify("Sync already in progress.", severity="warning")
+            return
+        self._sync_in_progress = True
+        self.query_one("#sync-status", Static).update("Sync: starting...")
+        self._run_sync()
+
+    @work(thread=True)
+    def _run_sync(self) -> None:
+        def on_stage(stage: str) -> None:
+            self.call_from_thread(self._show_sync_stage, stage)
+
+        try:
+            result = sync(self._client, self._store, on_stage=on_stage)
+        except Exception as exc:  # noqa: BLE001 -- worker must report all failures
+            self.call_from_thread(self._show_sync_error, str(exc))
+            return
+        self.call_from_thread(self._show_sync_done, result.star_count, result.list_count)
+
+    def _show_sync_stage(self, stage: str) -> None:
+        self.query_one("#sync-status", Static).update(f"Sync: {stage}...")
+
+    def _show_sync_done(self, star_count: int, list_count: int) -> None:
+        self._sync_in_progress = False
+        self._reload_local_state()
+        self._refresh_table()
+        self.query_one("#sync-status", Static).update(
+            f"Sync: complete ({star_count} stars, {list_count} Lists)"
+        )
+        self.notify(f"Synced {star_count} star(s), {list_count} list(s).")
+
+    def _show_sync_error(self, detail: str) -> None:
+        self._sync_in_progress = False
+        self.query_one("#sync-status", Static).update(f"Sync: failed ({escape(detail)})")
+        self.notify(f"Sync failed: {detail}", severity="error", timeout=8)
 
     # Cycle through the supported sort modes with "s".
     _SORT_MODES: ClassVar[list[str]] = [
