@@ -8,6 +8,7 @@ runs in a `@work(thread=True)` worker, so tests await
 `app.workers.wait_for_complete()` after triggering it.
 """
 
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
@@ -919,46 +920,219 @@ async def test_discovery_rows_show_controls_counts_and_clickable_membership(
     assert filtered_names == ["pradyumnac/classified"]
 
 
-async def test_layout_density_and_narrow_columns(
+async def test_table_renders_the_active_preset_columns_in_order(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
+    """`columns` is ordered: the list sets which optional columns show
+    and in what order (ADR 0008)."""
     config_path = tmp_path / "config" / "tui.toml"
     config_path.parent.mkdir()
-    config_path.write_text('layout = "balanced"\n')
+    config_path.write_text(
+        '[layouts.compact]\ncolumns = ["Owner", "Archived", "Stars", "Language"]\n'
+    )
     store = StateStore(tmp_path / "state")
     store.save_stars(
         [make_star("pradyumnac/repo", language="Python", stargazer_count=42)]
     )
     store.save_lists([])
 
-    wide_app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
-    async with wide_app.run_test(size=(120, 40)) as pilot:
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
-        wide_columns = [
-            str(column.label) for column in _table(wide_app).columns.values()
-        ]
-        wide_app.action_cycle_layout()
-        await pilot.pause()
-        compact_columns = [
-            str(column.label) for column in _table(wide_app).columns.values()
-        ]
+        columns = [str(column.label) for column in _table(app).columns.values()]
+        row = [str(cell) for cell in _table(app).get_row_at(0)]
 
-    narrow_app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
-    async with narrow_app.run_test(size=(80, 24)) as pilot:
-        await pilot.pause()
-        narrow_columns = [
-            str(column.label) for column in _table(narrow_app).columns.values()
-        ]
-        narrow_row = _table(narrow_app).get_row_at(0)
-        narrow_detail_visible = narrow_app.query_one("#detail-pane", DetailPane).display
+    assert columns == ["Sel", "Star", "Owner", "Archived", "Stars", "Language"]
+    assert row == ["[ ]", "pradyumnac/repo", "pradyumnac", "no", "42", "Python"]
 
-    assert {"Membership", "License", "Owner", "Starred"} <= set(wide_columns)
-    assert "Membership" in compact_columns
-    assert not {"License", "Owner", "Starred"} & set(compact_columns)
-    assert narrow_columns == ["Sel", "Star", "Language", "Stars", "Lists"]
-    assert narrow_row[1:4] == ["pradyumnac/repo", "Python", "42"]
-    assert narrow_row[4] == "Lists: 0"
-    assert narrow_detail_visible is False
+
+async def test_preset_without_optional_columns_still_shows_sel_and_star(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text("[layouts.compact]\ncolumns = []\n")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        columns = [str(column.label) for column in _table(app).columns.values()]
+        row = [str(cell) for cell in _table(app).get_row_at(0)]
+
+    assert columns == ["Sel", "Star"]
+    assert row == ["[ ]", "pradyumnac/repo"]
+
+
+async def test_narrow_terminal_hides_no_column(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """ADR 0008 overrides ticket 28: the table keeps every configured
+    column and scrolls instead of hiding one."""
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/repo", language="Python")])
+    store.save_lists([])
+
+    async def _columns(width: int) -> list[str]:
+        app = TuiApp(client=FakeGitHubClient(), store=store)
+        async with app.run_test(size=(width, 24)) as pilot:
+            await pilot.pause()
+            return [str(column.label) for column in _table(app).columns.values()]
+
+    assert await _columns(80) == await _columns(200)
+    assert "Membership" in await _columns(80)
+
+
+async def test_detail_pane_visibility_ignores_terminal_width(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """The layout preset and the user's toggle control the pane. Terminal
+    width no longer hides it (ADR 0008)."""
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_lists([])
+    hidden_config = tmp_path / "hidden" / "tui.toml"
+    hidden_config.parent.mkdir()
+    hidden_config.write_text("[layouts.compact]\ndetail_pane_visible = false\n")
+
+    narrow = TuiApp(client=FakeGitHubClient(), store=store)
+    async with narrow.run_test(size=(60, 24)) as pilot:
+        await pilot.pause()
+        narrow_visible = narrow.query_one("#detail-pane", DetailPane).display
+
+    wide = TuiApp(client=FakeGitHubClient(), store=store, config_path=hidden_config)
+    async with wide.run_test(size=(200, 40)) as pilot:
+        await pilot.pause()
+        wide_visible = wide.query_one("#detail-pane", DetailPane).display
+
+    assert narrow_visible is True
+    assert wide_visible is False
+
+
+async def test_configured_date_format_applies_to_table_and_detail_pane(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text(
+        'date_format = "%Y-%m-%d"\n\n[layouts.compact]\ncolumns = ["Starred at"]\n'
+    )
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        cell = str(_table(app).get_row_at(0)[2])
+        detail = _detail_text(app)
+
+    assert cell == "2026-08-16"
+    assert "2026-08-16" in detail
+    assert "16-Aug-2026" not in detail
+
+
+async def test_configured_toast_timeout_applies_to_error_toasts(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text("toast_timeout = 3\n")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        app._show_sync_error("boom")
+        await pilot.pause()
+        timeouts = [n.timeout for n in app._notifications]
+
+    assert timeouts == [3]
+
+
+async def test_ascii_only_replaces_glyphs_with_text_markers(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text("ascii_only = true\n")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/repo", list_ids=["L1"])])
+    store.save_lists(
+        [List(id="L1", name="Current: Tool", slug="current-tool", is_private=True)]
+    )
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        title = str(app.query_one("#title-label", Static).render())
+        api_status = app._api_status
+        sync_status = app._sync_status
+        detail = _detail_text(app)
+
+    assert title == "* ghstars"
+    assert api_status.startswith("?")
+    assert sync_status == "o idle"
+    assert _visibility_label(True, ascii_only=True) in detail
+    assert "\U0001f512" not in detail
+
+
+async def test_show_clock_adds_a_clock_only_when_configured(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text("show_clock = true\n")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_lists([])
+
+    with_clock = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with with_clock.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        clock = str(with_clock.query_one("#clock", Static).render())
+
+    without_clock = TuiApp(client=FakeGitHubClient(), store=store)
+    async with without_clock.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        missing = without_clock.query("#clock")
+
+    assert re.fullmatch(r"\d{2}:\d{2}", clock)
+    assert not missing
+
+
+async def test_default_filter_applies_when_state_holds_no_filter(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """State's `filter` is `None` on a first launch and after the user
+    clears it; config's `default_filter` fills that gap either time."""
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text('default_filter = "unclassified"\n')
+    store = StateStore(tmp_path / "state")
+    store.save_stars(
+        [
+            make_star("pradyumnac/classified", list_ids=["L1"]),
+            make_star("pradyumnac/unclassified"),
+        ]
+    )
+    store.save_lists([List(id="L1", name="Explore: AI", slug="explore-ai")])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        names = [
+            str(_table(app).get_row_at(index)[1])
+            for index in range(_table(app).row_count)
+        ]
+        controls = str(app.query_one("#discovery-controls", Static).render())
+
+    assert names == ["pradyumnac/unclassified"]
+    assert "Filter: Unclassified (no List)" in controls
 
 
 async def test_unclassified_count_action_applies_quick_filter(

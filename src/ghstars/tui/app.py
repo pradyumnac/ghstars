@@ -23,12 +23,17 @@ This module never syncs automatically. The TUI starts a sync only when
 the user presses its explicit sync key; otherwise it reads and tags against
 the last local snapshot.
 
-Config (ticket 21, `ghstars.tui.config`): `config/tui.toml` overrides
-keybindings, header/row sizing, and the colour palette, applied in
-`__init__` before the first paint; this module never writes it (ADR
-0002). `state/tui-state.toml` remembers the last View Mode, sort key,
-and active Filter, read at launch and written on quit
-(`action_quit`).
+Config (`ghstars.tui.config`): `config/tui.toml` sets the keybindings,
+the header height, the presentation fields (date format, toast timeout,
+ASCII markers, clock, default Filter), and the layout presets. Each
+preset holds its own ordered column list and sizing. The file is read in
+`__init__`, before the first paint; this module never writes it (ADR
+0002). `state/tui-state.toml` remembers the active preset, View Mode,
+sort key, Filter, and detail-pane override, read at launch and written on
+quit (`action_quit`).
+
+Terminal width never drops a column and never hides the detail pane (ADR
+0008). The table scrolls horizontally instead.
 """
 
 import hashlib
@@ -50,6 +55,7 @@ from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.markup import escape
 from textual.screen import ModalScreen
+from textual.timer import Timer
 from textual.widgets import Button, Checkbox, DataTable, Input, Static
 
 from ghstars.core.github_client import GitHubClient
@@ -66,6 +72,8 @@ from ghstars.core.tagging import (
 from ghstars.core.unstar import unstar_star
 from ghstars.github import GitHubApiError
 from ghstars.tui.config import (
+    DEFAULT_DATE_FORMAT,
+    ColumnName,
     LayoutPreset,
     TuiConfig,
     TuiState,
@@ -76,6 +84,27 @@ from ghstars.tui.config import (
 
 _LOCK = "\U0001f512"
 _GLOBE = "\U0001f310"
+_ASCII_LOCK = "P"
+_ASCII_GLOBE = "G"
+
+
+@dataclass(frozen=True)
+class _StatusGlyphs:
+    """The title and status markers, in one Unicode set and one ASCII
+    set. `ascii_only` picks the set at launch, so a terminal without a
+    usable font still reads every state as distinct text."""
+
+    title: str
+    api: str
+    sync: str
+    done: str
+    failed: str
+
+
+_UNICODE_GLYPHS = _StatusGlyphs(
+    title="\u2726", api="\u25cc", sync="\u21bb", done="\u2713", failed="\u2715"
+)
+_ASCII_GLYPHS = _StatusGlyphs(title="*", api="?", sync="o", done="ok", failed="x")
 _CATEGORY_ROLES = (
     "text-primary",
     "text-secondary",
@@ -167,12 +196,19 @@ class TagChoice:
     is_private: bool
 
 
-def _visibility_label(is_private: bool) -> str:
-    return f"{_LOCK} Private" if is_private else f"{_GLOBE} Public"
+def _visibility_label(is_private: bool, *, ascii_only: bool = False) -> str:
+    lock, globe = (_ASCII_LOCK, _ASCII_GLOBE) if ascii_only else (_LOCK, _GLOBE)
+    return f"{lock} Private" if is_private else f"{globe} Public"
 
 
-def _format_date(value: datetime | None) -> str:
-    return "-" if value is None else value.strftime("%d-%b-%Y")
+def _format_date(value: datetime | None, date_format: str = DEFAULT_DATE_FORMAT) -> str:
+    return "-" if value is None else value.strftime(date_format)
+
+
+def _yes_no(value: bool) -> str:
+    """Word markers, not glyphs: a boolean column reads the same under
+    `ascii_only`."""
+    return "yes" if value else "no"
 
 
 def _format_count(value: int) -> str:
@@ -201,16 +237,26 @@ class DetailPane(Static):
         self,
         *,
         category_colours: Mapping[str, str] | None = None,
+        date_format: str = DEFAULT_DATE_FORMAT,
+        ascii_only: bool = False,
         id: str | None = None,
     ) -> None:
         super().__init__(id=id)
         self._category_colours = category_colours or {}
+        self._date_format = date_format
+        self._ascii_only = ascii_only
+
+    def _date(self, value: datetime | None) -> str:
+        return _format_date(value, self._date_format)
+
+    def _visibility(self, is_private: bool) -> str:
+        return _visibility_label(is_private, ascii_only=self._ascii_only)
 
     def show_star(self, star: Star, lists: dict[str, List]) -> None:
         member_lists = [lists[lid] for lid in star.list_ids if lid in lists]
         memberships = (
             ", ".join(
-                f"{lst.name} ({_visibility_label(lst.is_private)})"
+                f"{lst.name} ({self._visibility(lst.is_private)})"
                 for lst in member_lists
             )
             or "none"
@@ -231,11 +277,11 @@ class DetailPane(Static):
             f"Stars: {star.stargazer_count}",
             f"Fork: {star.fork}    Follow: {star.follow}",
             f"Archived: {star.archived}"
-            + (f" (at {_format_date(star.archived_at)})" if star.archived_at else ""),
+            + (f" (at {self._date(star.archived_at)})" if star.archived_at else ""),
             (
-                f"Starred: {_format_date(star.starred_at)}    "
-                f"First seen: {_format_date(star.first_seen)}    "
-                f"Last checked: {_format_date(star.last_checked)}"
+                f"Starred: {self._date(star.starred_at)}    "
+                f"First seen: {self._date(star.first_seen)}    "
+                f"Last checked: {self._date(star.last_checked)}"
             ),
             f"Lists: {memberships}",
             f"Pending list edit: {pending}",
@@ -253,7 +299,7 @@ class DetailPane(Static):
                         self._category_colours,
                     )
                 )
-                body.append(f" ({_visibility_label(lst.is_private)})")
+                body.append(f" ({self._visibility(lst.is_private)})")
         else:
             body.append("none")
         body.append(f"\nPending list edit: {pending}")
@@ -279,11 +325,13 @@ class ListPickerScreen(ModalScreen[TagChoice | None]):
         *,
         target_count: int,
         category_colours: Mapping[str, str] | None = None,
+        ascii_only: bool = False,
     ) -> None:
         super().__init__()
         self._lists = sorted(lists, key=lambda lst: lst.name)
         self._target_count = target_count
         self._category_colours = category_colours or {}
+        self._ascii_only = ascii_only
 
     def compose(self) -> ComposeResult:
         noun = "star" if self._target_count == 1 else "stars"
@@ -308,7 +356,7 @@ class ListPickerScreen(ModalScreen[TagChoice | None]):
                 _styled_list(lst, variables, self._category_colours),
                 lst.intent or "-",
                 _styled_category(lst.category, variables, self._category_colours),
-                _visibility_label(lst.is_private),
+                _visibility_label(lst.is_private, ascii_only=self._ascii_only),
                 key=lst.id,
             )
         self.query_one("#new-list-input", Input).focus()
@@ -642,10 +690,12 @@ class ListsOverviewScreen(ModalScreen[None]):
         lists: list[List],
         *,
         category_colours: Mapping[str, str] | None = None,
+        ascii_only: bool = False,
     ) -> None:
         super().__init__()
         self._lists = sorted(lists, key=lambda lst: lst.name)
         self._category_colours = category_colours or {}
+        self._ascii_only = ascii_only
 
     def compose(self) -> ComposeResult:
         with Vertical(id="lists-overview"):
@@ -661,7 +711,7 @@ class ListsOverviewScreen(ModalScreen[None]):
                 _styled_list(lst, variables, self._category_colours),
                 lst.intent or "-",
                 _styled_category(lst.category, variables, self._category_colours),
-                _visibility_label(lst.is_private),
+                _visibility_label(lst.is_private, ascii_only=self._ascii_only),
                 str(len(lst.items)),
                 key=lst.id,
             )
@@ -707,6 +757,11 @@ class TuiApp(App[None]):
     #bottom-status-row {
         align: left middle;
     }
+    #clock {
+        width: auto;
+        text-align: right;
+        padding-left: 2;
+    }
     #system-status, #collection-status {
         width: auto;
         text-align: right;
@@ -725,6 +780,7 @@ class TuiApp(App[None]):
         height: 1fr;
         margin: 1;
         border: round $primary;
+        overflow-x: auto;
     }
     DetailPane {
         height: 14;
@@ -776,10 +832,7 @@ class TuiApp(App[None]):
         self._picker_open = False
         self._filter_open = False
         self._unstar_confirm_open = False
-        self._narrow = False
-        self._api_status = "◌ checking"
         self._api_low = False
-        self._sync_status = "↻ idle"
 
         # Use explicit paths when provided; otherwise use the standard local paths.
         self._config_path = config_path or (
@@ -788,7 +841,13 @@ class TuiApp(App[None]):
         self._state_path = state_path or (store.base_dir / "tui-state.toml")
         self._config: TuiConfig = load_tui_config(self._config_path)
         self._state: TuiState = load_tui_state(self._state_path)
-        self._filter_key = self._state.filter
+        self._glyphs = _ASCII_GLYPHS if self._config.ascii_only else _UNICODE_GLYPHS
+        self._clock_timer: Timer | None = None
+        self._api_status = f"{self._glyphs.api} checking"
+        self._sync_status = f"{self._glyphs.sync} idle"
+        # No filter in state means no filter the user picked, so config's
+        # default applies -- on a first launch and after a clear alike.
+        self._filter_key = self._state.filter or self._config.default_filter
         self._layout = self._state.layout or self._config.layout
 
         # Restore a recognized sort mode; default to newest starred date.
@@ -815,8 +874,10 @@ class TuiApp(App[None]):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="title-row"):
-            yield Static("✦ ghstars", id="title-label")
+            yield Static(f"{self._glyphs.title} ghstars", id="title-label")
             yield Static(id="system-status")
+            if self._config.show_clock:
+                yield Static(id="clock")
         with Horizontal(id="discovery-row"):
             yield Static(id="collection-status")
         yield Input(placeholder="Search name/description...", id="search-input")
@@ -826,7 +887,10 @@ class TuiApp(App[None]):
             header_height=self._config.header_height,
         )
         yield DetailPane(
-            category_colours=self._config.category_colours, id="detail-pane"
+            category_colours=self._config.category_colours,
+            date_format=self._config.date_format,
+            ascii_only=self._config.ascii_only,
+            id="detail-pane",
         )
         with Horizontal(id="bottom-status-row"):
             yield Static(id="discovery-controls")
@@ -835,13 +899,12 @@ class TuiApp(App[None]):
     def on_mount(self) -> None:
         self.title = "ghstars"
         table = self.query_one("#stars-table", DataTable)
-        self._narrow = self.size.width < 90
         self._configure_table_columns(table)
         pane = self.query_one("#detail-pane", DetailPane)
         pane.styles.height = self._preset.detail_pane_height
-        pane.display = self._detail_pane_wanted() and not self._narrow
-        # The table fills the space when the detail pane is hidden.
+        pane.display = self._detail_pane_wanted()
         self._update_sort_binding_description()
+        self._refresh_clock()
         self._refresh_system_status()
         self._reload_local_state()
         self._refresh_table()
@@ -904,15 +967,25 @@ class TuiApp(App[None]):
                 )
 
     def _configure_table_columns(self, table: DataTable[object]) -> None:
-        """Apply the active density and terminal-width column set."""
+        """Build the column set from the active preset's ordered
+        `columns` list. Sel and Star always lead (ADR 0008). Terminal
+        width never drops a column -- the table scrolls instead."""
         table.clear(columns=True)
-        table.add_columns(("Sel", "sel"), "Star", "Language", "Stars")
-        if self._narrow:
-            table.add_column("Lists")
-        else:
-            table.add_column("Membership")
-            if self._layout == "balanced":
-                table.add_columns("License", "Owner", "Starred")
+        table.add_columns(("Sel", "sel"), "Star")
+        for name in self._preset.columns:
+            table.add_column(name)
+
+    def _refresh_clock(self) -> None:
+        """Paint the clock and keep it ticking. A first cut: ticket 24
+        rebuilds the header this widget sits in."""
+        if not self._config.show_clock:
+            return
+        # `astimezone()` on an aware UTC value is the local wall clock,
+        # which is what a header clock must show.
+        local = datetime.now(UTC).astimezone()
+        self.query_one("#clock", Static).update(local.strftime("%H:%M"))
+        if self._clock_timer is None:
+            self._clock_timer = self.set_interval(1, self._refresh_clock)
 
     def _refresh_system_status(self) -> None:
         """Render API and sync state in the title row."""
@@ -978,19 +1051,6 @@ class TuiApp(App[None]):
         counts.append(f"  [Pending: {pending}]")
         self.query_one("#collection-status", Static).update(counts)
 
-    def on_resize(self, event: events.Resize) -> None:
-        """Hide lower-priority columns when the terminal becomes narrow."""
-        narrow = event.size.width < 90
-        if narrow == self._narrow:
-            return
-        self._narrow = narrow
-        self.query_one("#detail-pane", DetailPane).display = (
-            self._detail_pane_wanted() and not narrow
-        )
-        table = self.query_one("#stars-table", DataTable)
-        self._configure_table_columns(table)
-        self._refresh_table()
-
     # -- local state, read from the last `ghstars sync` --------------------
 
     def _reload_local_state(self) -> bool:
@@ -1018,14 +1078,14 @@ class TuiApp(App[None]):
                 "could not load local state — another ghstars command may "
                 "be running. Try again once it finishes.",
                 severity="error",
-                timeout=8,
+                timeout=self._config.toast_timeout,
             )
             return False
         except (OSError, json.JSONDecodeError, ValidationError) as exc:
             self.notify(
                 f"could not load local state — {exc}",
                 severity="error",
-                timeout=8,
+                timeout=self._config.toast_timeout,
             )
             return False
         self._stars = stars
@@ -1112,6 +1172,42 @@ class TuiApp(App[None]):
             ]
         return stars
 
+    def _date(self, value: datetime | None) -> str:
+        return _format_date(value, self._config.date_format)
+
+    def _column_cell(
+        self, name: ColumnName, star: Star, member_lists: list[List]
+    ) -> object:
+        """Render one configured column's cell for a Star."""
+        if name == "Owner":
+            return star.full_name.split("/", 1)[0]
+        if name == "Language":
+            return star.language or "-"
+        if name == "License":
+            return star.license or "-"
+        if name == "Stars":
+            return _format_count(star.stargazer_count)
+        if name == "Starred at":
+            return self._date(star.starred_at)
+        if name == "First seen":
+            return self._date(star.first_seen)
+        if name == "Last checked":
+            return self._date(star.last_checked)
+        if name == "Archived at":
+            return self._date(star.archived_at)
+        if name == "Fork":
+            return _yes_no(star.fork)
+        if name == "Follow":
+            return _yes_no(star.follow)
+        if name == "Archived":
+            return _yes_no(star.archived)
+        # "Membership" is the only name left in `ColumnName`.
+        return _membership_chips(
+            member_lists,
+            self.get_css_variables(),
+            self._config.category_colours,
+        )
+
     def _refresh_table(self) -> None:
         table = self.query_one("#stars-table", DataTable)
         table.clear()
@@ -1121,30 +1217,11 @@ class TuiApp(App[None]):
         for star in visible_stars:
             mark = "[x]" if star.full_name in self._selected else "[ ]"
             member_lists = [by_id[lid] for lid in star.list_ids if lid in by_id]
-            row: list[object] = [
-                mark,
-                star.full_name,
-                star.language or "-",
-                _format_count(star.stargazer_count),
-            ]
-            if self._narrow:
-                row.append(f"Lists: {len(member_lists)}")
-            else:
-                row.append(
-                    _membership_chips(
-                        member_lists,
-                        self.get_css_variables(),
-                        self._config.category_colours,
-                    )
-                )
-                if self._layout == "balanced":
-                    row.extend(
-                        (
-                            star.license or "-",
-                            star.full_name.split("/", 1)[0],
-                            _format_date(star.starred_at),
-                        )
-                    )
+            row: list[object] = [mark, star.full_name]
+            row.extend(
+                self._column_cell(name, star, member_lists)
+                for name in self._preset.columns
+            )
             table.add_row(
                 *row,
                 height=self._preset.row_height,
@@ -1219,7 +1296,9 @@ class TuiApp(App[None]):
     def action_show_lists(self) -> None:
         self.push_screen(
             ListsOverviewScreen(
-                self._lists, category_colours=self._config.category_colours
+                self._lists,
+                category_colours=self._config.category_colours,
+                ascii_only=self._config.ascii_only,
             )
         )
 
@@ -1231,7 +1310,7 @@ class TuiApp(App[None]):
             self.notify("Sync already in progress.", severity="warning")
             return
         self._sync_in_progress = True
-        self._sync_status = "↻ starting"
+        self._sync_status = f"{self._glyphs.sync} starting"
         self._refresh_system_status()
         self._run_sync()
 
@@ -1250,22 +1329,28 @@ class TuiApp(App[None]):
         )
 
     def _show_sync_stage(self, stage: str) -> None:
-        self._sync_status = f"↻ {stage}"
+        self._sync_status = f"{self._glyphs.sync} {stage}"
         self._refresh_system_status()
 
     def _show_sync_done(self, star_count: int, list_count: int) -> None:
         self._sync_in_progress = False
         self._reload_local_state()
         self._refresh_table()
-        self._sync_status = f"✓ complete · {star_count} Stars · {list_count} Lists"
+        self._sync_status = (
+            f"{self._glyphs.done} complete · {star_count} Stars · {list_count} Lists"
+        )
         self._refresh_system_status()
         self.notify(f"Synced {star_count} star(s), {list_count} list(s).")
 
     def _show_sync_error(self, detail: str) -> None:
         self._sync_in_progress = False
-        self._sync_status = f"✕ failed: {detail}"
+        self._sync_status = f"{self._glyphs.failed} failed: {detail}"
         self._refresh_system_status()
-        self.notify(f"Sync failed: {detail}", severity="error", timeout=8)
+        self.notify(
+            f"Sync failed: {detail}",
+            severity="error",
+            timeout=self._config.toast_timeout,
+        )
 
     # Cycle through the supported sort modes with "s".
     _SORT_MODES: ClassVar[list[str]] = [
@@ -1322,7 +1407,7 @@ class TuiApp(App[None]):
         self._state.detail_pane_visible = None
         pane = self.query_one("#detail-pane", DetailPane)
         pane.styles.height = self._preset.detail_pane_height
-        pane.display = self._detail_pane_wanted() and not self._narrow
+        pane.display = self._detail_pane_wanted()
         table = self.query_one("#stars-table", DataTable)
         self._configure_table_columns(table)
         self._refresh_table()
@@ -1552,7 +1637,11 @@ class TuiApp(App[None]):
         self.notify(f"Unstarred {full_name}.")
 
     def _on_unstar_error(self, full_name: str, exc: Exception) -> None:
-        self.notify(f"{full_name}: unstar failed: {exc}", severity="error", timeout=8)
+        self.notify(
+            f"{full_name}: unstar failed: {exc}",
+            severity="error",
+            timeout=self._config.toast_timeout,
+        )
 
     # -- tagging / bulk-tagging / retagging ----------------------------------
 
@@ -1580,6 +1669,7 @@ class TuiApp(App[None]):
                     self._lists,
                     target_count=len(targets),
                     category_colours=self._config.category_colours,
+                    ascii_only=self._config.ascii_only,
                 )
             )
         finally:
@@ -1687,7 +1777,7 @@ class TuiApp(App[None]):
                 message += " (table may not reflect this yet — reload failed.)"
             self.notify(message)
         for error in errors:
-            self.notify(error, severity="error", timeout=8)
+            self.notify(error, severity="error", timeout=self._config.toast_timeout)
 
     # -- rate limit -----------------------------------------------------------
 
@@ -1703,12 +1793,14 @@ class TuiApp(App[None]):
 
     def _show_rate_limit(self, status: RateLimitStatus) -> None:
         marker = "LOW " if not status.ok else ""
-        self._api_status = f"◌ {marker}{status.remaining}/{status.limit}"
+        self._api_status = (
+            f"{self._glyphs.api} {marker}{status.remaining}/{status.limit}"
+        )
         self._api_low = not status.ok
         self._refresh_system_status()
 
     def _show_rate_limit_error(self, detail: str) -> None:
-        self._api_status = "◌ error"
+        self._api_status = f"{self._glyphs.api} error"
         self._api_low = True
         self._refresh_system_status()
         self.notify(f"Rate limit check failed: {escape(detail)}", severity="error")
