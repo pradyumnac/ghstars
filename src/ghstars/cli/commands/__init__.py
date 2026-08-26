@@ -16,6 +16,7 @@ from ghstars.cli.commands import (  # noqa: F401
     export,
     list_lists,
     retriage,
+    status,
     sync,
     tag,
     tui,

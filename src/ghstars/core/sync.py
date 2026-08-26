@@ -292,7 +292,7 @@ def apply_membership_diff(
     return result
 
 
-_EXPLORE_GENERAL = "Explore: General"
+EXPLORE_GENERAL = "Explore: General"
 
 
 def _apply_default_classification(
@@ -350,11 +350,11 @@ def _apply_default_classification(
     if not targets:
         return stars, lists, []
 
-    explore_general = next((lst for lst in lists if lst.name == _EXPLORE_GENERAL), None)
+    explore_general = next((lst for lst in lists if lst.name == EXPLORE_GENERAL), None)
     if explore_general is None:
         try:
             explore_general = classify_list(
-                client.create_list(_EXPLORE_GENERAL, is_private=False)
+                client.create_list(EXPLORE_GENERAL, is_private=False)
             )
         except Exception:  # noqa: BLE001 -- broad on purpose, see docstring
             return stars, lists, [star.full_name for star in targets]
