@@ -1067,6 +1067,56 @@ async def test_filters_by_category_intent_list_and_unclassified(
         assert table.get_row_at(0)[1] == "pradyumnac/current"
 
 
+async def test_filter_search_selects_best_match_and_all_is_explicit(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    ai = List(id="L1", name="Explore: AI", slug="explore-ai", category="AI")
+    tools = List(id="L2", name="Explore: Tools", slug="explore-tools", category="Tools")
+    store = StateStore(tmp_path)
+    store.save_stars(
+        [
+            make_star("pradyumnac/ai", list_ids=["L1"]),
+            make_star("pradyumnac/tools", list_ids=["L2"]),
+        ]
+    )
+    store.save_lists([ai, tools])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+        filter_table = app.screen.query_one("#filter-table", DataTable)
+        assert [
+            str(filter_table.get_row_at(i)[0]) for i in range(filter_table.row_count)
+        ] == [
+            "AI",
+            "Tools",
+        ]
+        query = app.screen.query_one("#filter-query", Input)
+        query.value = "to"
+        await pilot.pause()
+        assert str(filter_table.get_row_at(0)[0]) == "Tools"
+        await pilot.press("enter")
+        assert _table(app).row_count == 1
+        assert _table(app).get_row_at(0)[1] == "pradyumnac/tools"
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+        query = app.screen.query_one("#filter-query", Input)
+        query.value = "all"
+        await pilot.pause()
+        filter_table = app.screen.query_one("#filter-table", DataTable)
+        assert str(filter_table.get_row_at(0)[0]) == "All stars"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert _table(app).row_count == 2
+
+
 async def test_metadata_filters_support_owner_fork_and_followed(
     tmp_path: Path, make_star: StarFactory
 ) -> None:

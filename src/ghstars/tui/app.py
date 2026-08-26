@@ -474,23 +474,39 @@ class FilterScreen(ModalScreen[str | None]):
         self._title = title
         self._options = list(options)
         self._option_values = {value for value, _ in options}
+        self._selected_value: str | None = None
 
     def _visible_options(self) -> list[tuple[str, str | Text]]:
         query = self.query_one("#filter-query", Input).value.strip().lower()
-        if not query:
-            return self._options
-        return [
-            (value, label)
-            for value, label in self._options
-            if query in str(label).lower()
-        ]
+        options = list(self._options)
+        if query:
+            if "all" in query:
+                options.insert(0, ("", "All stars"))
+            options = [
+                (value, label)
+                for value, label in options
+                if query in str(label).lower()
+            ]
+            options.sort(
+                key=lambda option: (
+                    str(option[1]).lower() != query,
+                    not str(option[1]).lower().startswith(query),
+                    str(option[1]).lower(),
+                )
+            )
+        else:
+            options.sort(key=lambda option: str(option[1]).lower())
+        return options
 
     def _refresh_options(self) -> None:
         table = self.query_one("#filter-table", DataTable)
         table.clear()
-        table.add_row("All stars", key="")
-        for value, label in self._visible_options():
+        options = self._visible_options()
+        self._selected_value = options[0][0] if options else None
+        for value, label in options:
             table.add_row(label, key=value)
+        if options:
+            table.move_cursor(row=0)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "filter-query":
@@ -529,11 +545,8 @@ class FilterScreen(ModalScreen[str | None]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "filter-query":
             return
-        options = self._visible_options()
-        if len(options) == 1:
-            self.dismiss(options[0][0])
-        elif not options and self._options:
-            self.dismiss(None)
+        if self._selected_value is not None:
+            self.dismiss(self._selected_value)
 
     def _select_shortcut(self, value: str) -> None:
         if value in self._option_values:
