@@ -1,0 +1,120 @@
+.TH GHSTARS-TUI 1 "2026-08-26" "ghstars 0.1.0" "User Commands"
+.SH NAME
+ghstars-tui \- manage GitHub Stars in an interactive terminal
+.SH SYNOPSIS
+.B ghstars tui
+.SH DESCRIPTION
+The TUI reads the last local snapshot when it starts.
+It does not sync automatically.
+Press
+.B y
+to start an explicit sync.
+.PP
+The Star table keeps every configured column.
+Scroll horizontally when the columns do not fit.
+The active Layout controls the column order, row height, and Detail pane.
+.SH MAIN KEYS
+.TP
+.B t
+Tag or retag the current Star or selected Stars.
+.TP
+.B Space
+Select or clear the current Star.
+.TP
+.B a
+Select all Stars.
+.TP
+.B c
+Clear the selection.
+.TP
+.B d
+Show or hide the Detail pane.
+.TP
+.B l
+Show GitHub Lists.
+.TP
+.B f
+Open the Filter menu.
+.TP
+.B /
+Search Star names and descriptions.
+.TP
+.B x
+Clear Search and the active Filter on the main screen.
+.TP
+.B s
+Select the next sort order.
+.TP
+.B z
+Select the next Layout.
+.TP
+.B o
+Open the current Star in the default browser.
+.TP
+.B u
+Open the unstar confirmation screen.
+.TP
+.B r
+Refresh the GitHub API rate limit.
+.TP
+.B y
+Run a full explicit sync.
+.TP
+.B g
+Open the config editor.
+.TP
+.B q
+Save TUI session state and quit from the main screen.
+.TP
+.B Ctrl+P
+Open the command palette.
+Select
+.B Edit config
+or
+.B Show config path
+for config operations.
+.SH CONFIG EDITOR
+The config editor reads
+.I tui.toml
+from disk when it opens.
+The fixed header stays visible while the form body scrolls.
+The first field receives focus.
+Press Tab or Shift+Tab to move through fields.
+.PP
+Boolean settings use explicit Yes and No selectors.
+Initial Layout uses Compact and Balanced selectors.
+Keybindings are the last form section.
+.TP
+.B Escape
+Validate the form.
+Save changed valid values and close the editor.
+Keep an invalid form open and show an error notification.
+A saved change takes effect after restart.
+.TP
+.B x
+Discard all form edits and close the editor.
+.TP
+.B q
+Do not quit while the config editor is open.
+.SH FILTER MENU
+Press
+.B f
+to open the menu.
+Use the displayed keys to select Category, Intent, List, Language, License, Recency, Owner, Fork, Follow, or Unclassified filters.
+Search and Filter apply together.
+.SH SAFETY
+The TUI never syncs without the
+.B y
+key.
+Unstar requires a confirmation screen.
+Tag and unstar operations change GitHub immediately.
+.SH FILES
+.TP
+.I ~/.ghstars/config/tui.toml
+User-authored TUI settings.
+.TP
+.I ~/.ghstars/state/tui-state.toml
+Machine-owned session state.
+.SH SEE ALSO
+.BR ghstars (1),
+.BR ghstars-tui (5)

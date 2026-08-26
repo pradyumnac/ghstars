@@ -11,6 +11,7 @@ import json
 import logging
 from collections.abc import Iterator
 from pathlib import Path
+from types import TracebackType
 
 import pytest
 import yaml
@@ -49,7 +50,12 @@ class _TimeoutOnEnter:
     def __enter__(self) -> None:
         raise Timeout(self._lock_path)
 
-    def __exit__(self, *exc_info: object) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         return None
 
 
@@ -64,7 +70,7 @@ def test_retriage_json_lists_queue_contents(
 ) -> None:
     store = StateStore(tmp_path)
     entry = RetriageEntry(
-        star_full_name="pradyumnac/x",
+        star_full_name="example-owner/x",
         attempted_list_ids=["L_1"],
         conflict_detected_at=NOW,
     )
@@ -76,7 +82,7 @@ def test_retriage_json_lists_queue_contents(
     assert result.exit_code == 0
     assert json.loads(result.output) == [
         {
-            "star_full_name": "pradyumnac/x",
+            "star_full_name": "example-owner/x",
             "attempted_list_ids": ["L_1"],
             "conflict_detected_at": "2026-08-16T00:00:00Z",
             "resolved": False,
@@ -115,17 +121,17 @@ def test_tag_cmd_reports_removed_list_ids_in_plain_text(
         id="L_current",
         name="Current: Tool",
         slug="current-tool",
-        items=["pradyumnac/ghstars"],
+        items=["example-owner/ghstars"],
     )
     retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
-    star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
+    star = make_star("example-owner/ghstars", list_ids=["L_current"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([current, retired])
     _use_store(monkeypatch, store)
     _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[current, retired]))
 
-    result = runner.invoke(app, ["tag", "pradyumnac/ghstars", "Retired: Tool"])
+    result = runner.invoke(app, ["tag", "example-owner/ghstars", "Retired: Tool"])
 
     assert result.exit_code == 0
     assert "removed from 1 other List(s)" in result.output
@@ -138,10 +144,10 @@ def test_tag_cmd_reports_removed_list_ids_as_json(
         id="L_current",
         name="Current: Tool",
         slug="current-tool",
-        items=["pradyumnac/ghstars"],
+        items=["example-owner/ghstars"],
     )
     retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
-    star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
+    star = make_star("example-owner/ghstars", list_ids=["L_current"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([current, retired])
@@ -149,7 +155,7 @@ def test_tag_cmd_reports_removed_list_ids_as_json(
     _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[current, retired]))
 
     result = runner.invoke(
-        app, ["tag", "pradyumnac/ghstars", "Retired: Tool", "--json"]
+        app, ["tag", "example-owner/ghstars", "Retired: Tool", "--json"]
     )
 
     assert result.exit_code == 0
@@ -162,14 +168,14 @@ def test_tag_cmd_reports_no_removed_list_ids_when_nothing_stripped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
     tool = List(id="L_tool", name="Explore: Tool", slug="explore-tool")
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([tool])
     _use_store(monkeypatch, store)
     _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[tool]))
 
-    result = runner.invoke(app, ["tag", "pradyumnac/ghstars", "Explore: Tool"])
+    result = runner.invoke(app, ["tag", "example-owner/ghstars", "Explore: Tool"])
 
     assert result.exit_code == 0
     assert "removed from" not in result.output
@@ -197,9 +203,9 @@ def test_export_cmd_writes_configured_yaml_output(
         slug="current-tool",
         intent="Current",
         category="Tool",
-        items=["pradyumnac/ghstars"],
+        items=["example-owner/ghstars"],
     )
-    star = make_star("pradyumnac/ghstars", description="a tool")
+    star = make_star("example-owner/ghstars", description="a tool")
     store = StateStore(tmp_path / "state")
     store.save_stars([star])
     store.save_lists([tool])
@@ -228,7 +234,7 @@ format = "yaml"
     loaded = yaml.safe_load((output_dir / "tools.yaml").read_text())
     assert loaded == [
         {
-            "full_name": "pradyumnac/ghstars",
+            "full_name": "example-owner/ghstars",
             "html_url": star.html_url,
             "description": "a tool",
         }
@@ -244,9 +250,9 @@ def test_export_cmd_json_output(
         slug="current-tool",
         intent="Current",
         category="Tool",
-        items=["pradyumnac/ghstars"],
+        items=["example-owner/ghstars"],
     )
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path / "state")
     store.save_stars([star])
     store.save_lists([tool])
@@ -288,9 +294,9 @@ def test_export_cmd_warns_about_skipped_malformed_lists(
         name="explore- Tool",
         slug="explore-tool",
         malformed=True,
-        items=["pradyumnac/ghstars"],
+        items=["example-owner/ghstars"],
     )
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path / "state")
     store.save_stars([star])
     store.save_lists([malformed])
@@ -395,9 +401,9 @@ def test_category_drain_cmd_migrates_stars(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
     explore_old = List(
-        id="L_1", name="Explore: Old", slug="explore-old", items=["pradyumnac/x"]
+        id="L_1", name="Explore: Old", slug="explore-old", items=["example-owner/x"]
     )
-    star = make_star("pradyumnac/x", list_ids=["L_1"])
+    star = make_star("example-owner/x", list_ids=["L_1"])
     store = StateStore(tmp_path)
     store.save_lists([explore_old])
     store.save_stars([star])
@@ -414,9 +420,9 @@ def test_category_drain_cmd_creates_a_private_destination_when_requested(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
     explore_old = List(
-        id="L_1", name="Explore: Old", slug="explore-old", items=["pradyumnac/x"]
+        id="L_1", name="Explore: Old", slug="explore-old", items=["example-owner/x"]
     )
-    star = make_star("pradyumnac/x", list_ids=["L_1"])
+    star = make_star("example-owner/x", list_ids=["L_1"])
     store = StateStore(tmp_path)
     store.save_lists([explore_old])
     store.save_stars([star])
@@ -435,14 +441,14 @@ def test_category_drain_cmd_reports_skipped_as_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
     stale_local = List(
-        id="L_1", name="Explore: Old", slug="explore-old", items=["pradyumnac/x"]
+        id="L_1", name="Explore: Old", slug="explore-old", items=["example-owner/x"]
     )
     store = StateStore(tmp_path)
     store.save_lists([stale_local])
-    star = make_star("pradyumnac/x", list_ids=[])
+    star = make_star("example-owner/x", list_ids=[])
     store.save_stars([star])
     _use_store(monkeypatch, store)
-    # Live: pradyumnac/x already left the source List since the snapshot.
+    # Live: example-owner/x already left the source List since the snapshot.
     live = List(id="L_1", name="Explore: Old", slug="explore-old", items=[])
     _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[live]))
 
@@ -450,7 +456,7 @@ def test_category_drain_cmd_reports_skipped_as_json(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload == {"migrated": [], "skipped": ["pradyumnac/x"]}
+    assert payload == {"migrated": [], "skipped": ["example-owner/x"]}
 
 
 def test_category_drain_cmd_fails_when_category_not_found(
@@ -552,17 +558,17 @@ def test_sync_cmd_fails_gracefully_when_lock_is_held(
 def test_unstar_cmd_fails_gracefully_when_lock_is_held(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
-    star = make_star("pradyumnac/x", list_ids=[])
+    star = make_star("example-owner/x", list_ids=[])
     store = StateStore(tmp_path)
     store.save_stars([star])
     _make_lock_time_out(store)
     _use_store(monkeypatch, store)
     _use_client(monkeypatch, FakeGitHubClient(stars=[star]))
 
-    result = runner.invoke(app, ["unstar", "pradyumnac/x"])
+    result = runner.invoke(app, ["unstar", "example-owner/x"])
 
     assert result.exit_code == 1
-    assert "unstarred pradyumnac/x on GitHub" in result.output
+    assert "unstarred example-owner/x on GitHub" in result.output
     assert "could not acquire the local state lock" in result.output
 
 

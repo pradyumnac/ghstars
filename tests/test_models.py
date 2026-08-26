@@ -9,8 +9,8 @@ def _now() -> datetime:
 
 def test_star_requires_no_optional_fields_beyond_defaults() -> None:
     star = Star(
-        full_name="pradyumnac/ghstars",
-        html_url="https://github.com/pradyumnac/ghstars",
+        full_name="example-owner/ghstars",
+        html_url="https://github.com/example-owner/ghstars",
         starred_at=_now(),
         first_seen=_now(),
         last_checked=_now(),
@@ -27,8 +27,8 @@ def test_star_requires_no_optional_fields_beyond_defaults() -> None:
 
 def test_star_carries_full_field_set() -> None:
     star = Star(
-        full_name="pradyumnac/ghstars",
-        html_url="https://github.com/pradyumnac/ghstars",
+        full_name="example-owner/ghstars",
+        html_url="https://github.com/example-owner/ghstars",
         description="Classify GitHub stars",
         starred_at=_now(),
         first_seen=_now(),
@@ -68,7 +68,7 @@ def test_list_general_has_no_intent() -> None:
 
 def test_retriage_entry_defaults_unresolved() -> None:
     entry = RetriageEntry(
-        star_full_name="pradyumnac/ghstars",
+        star_full_name="example-owner/ghstars",
         attempted_list_ids=["L_1"],
         conflict_detected_at=_now(),
     )

@@ -65,22 +65,24 @@ def test_status_json_counts_mixed_classified_unclassified_and_retriage(
     current_tool = List(id="L_tool", name="Current: Tool", slug="current-tool")
     later = datetime(2026, 8, 20, tzinfo=UTC)
     classified = make_star(
-        "pradyumnac/classified", list_ids=["L_tool"], last_checked=NOW
+        "example-owner/classified", list_ids=["L_tool"], last_checked=NOW
     )
-    unclassified = make_star("pradyumnac/unclassified", list_ids=[], last_checked=later)
+    unclassified = make_star(
+        "example-owner/unclassified", list_ids=[], last_checked=later
+    )
     store = StateStore(tmp_path)
     store.save_lists([current_tool])
     store.save_stars([classified, unclassified])
     store.save_retriage(
         [
             RetriageEntry(
-                star_full_name="pradyumnac/classified",
+                star_full_name="example-owner/classified",
                 attempted_list_ids=["L_tool"],
                 conflict_detected_at=NOW,
                 resolved=False,
             ),
             RetriageEntry(
-                star_full_name="pradyumnac/resolved",
+                star_full_name="example-owner/resolved",
                 attempted_list_ids=["L_tool"],
                 conflict_detected_at=NOW,
                 resolved=True,
@@ -103,7 +105,7 @@ def test_status_json_counts_mixed_classified_unclassified_and_retriage(
 def test_status_verify_fails_on_dangling_list_id_reference(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
-    star = make_star("pradyumnac/x", list_ids=["L_missing"])
+    star = make_star("example-owner/x", list_ids=["L_missing"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     _use_store(monkeypatch, store)
@@ -120,7 +122,7 @@ def test_status_verify_fails_on_dangling_list_id_reference(
 def test_status_plain_text_reports_verify_failures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
-    star = make_star("pradyumnac/x", list_ids=["L_missing"])
+    star = make_star("example-owner/x", list_ids=["L_missing"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     _use_store(monkeypatch, store)
@@ -133,7 +135,7 @@ def test_status_plain_text_reports_verify_failures(
 
 
 def test_verify_state_flags_duplicate_full_names() -> None:
-    star = _star("pradyumnac/x")
+    star = _star("example-owner/x")
     problems = verify_state([star, star], [])
 
     assert any("duplicate Star.full_name" in p for p in problems)
@@ -148,7 +150,7 @@ def test_verify_state_flags_duplicate_list_ids() -> None:
 
 def test_verify_state_passes_on_clean_state() -> None:
     lst = List(id="L_1", name="Explore: Tool", slug="explore-tool")
-    star = _star("pradyumnac/x", list_ids=["L_1"])
+    star = _star("example-owner/x", list_ids=["L_1"])
 
     assert verify_state([star], [lst]) == []
 

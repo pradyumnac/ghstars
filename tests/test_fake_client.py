@@ -50,7 +50,7 @@ def test_delete_list_clears_membership_from_stars(
 ) -> None:
     client = FakeGitHubClient(stars=[make_star()])
     lst = client.create_list("Explore: General")
-    client.update_list_membership_for_item("pradyumnac/ghstars", [lst.id])
+    client.update_list_membership_for_item("example-owner/ghstars", [lst.id])
 
     client.delete_list(lst.id)
 
@@ -63,8 +63,8 @@ def test_update_list_membership_for_item_replaces_full_set(
     client = FakeGitHubClient(stars=[make_star()])
     list_a = client.create_list("Explore: A")
     list_b = client.create_list("Explore: B")
-    client.update_list_membership_for_item("pradyumnac/ghstars", [list_a.id])
-    client.update_list_membership_for_item("pradyumnac/ghstars", [list_b.id])
+    client.update_list_membership_for_item("example-owner/ghstars", [list_a.id])
+    client.update_list_membership_for_item("example-owner/ghstars", [list_b.id])
     star = client.fetch_stars()[0]
     assert star.list_ids == [list_b.id]
 
@@ -76,22 +76,22 @@ def test_update_list_membership_for_item_updates_list_items(
     list_a = client.create_list("Explore: A")
     list_b = client.create_list("Explore: B")
 
-    client.update_list_membership_for_item("pradyumnac/ghstars", [list_a.id])
+    client.update_list_membership_for_item("example-owner/ghstars", [list_a.id])
     lists_by_id = {lst.id: lst for lst in client.fetch_lists()}
-    assert lists_by_id[list_a.id].items == ["pradyumnac/ghstars"]
+    assert lists_by_id[list_a.id].items == ["example-owner/ghstars"]
     assert lists_by_id[list_b.id].items == []
 
-    client.update_list_membership_for_item("pradyumnac/ghstars", [list_b.id])
+    client.update_list_membership_for_item("example-owner/ghstars", [list_b.id])
     lists_by_id = {lst.id: lst for lst in client.fetch_lists()}
     assert lists_by_id[list_a.id].items == []
-    assert lists_by_id[list_b.id].items == ["pradyumnac/ghstars"]
+    assert lists_by_id[list_b.id].items == ["example-owner/ghstars"]
 
 
 def test_remove_star_drops_it_from_fetch_stars(
     make_star: StarFactory,
 ) -> None:
     client = FakeGitHubClient(stars=[make_star()])
-    client.remove_star("pradyumnac/ghstars")
+    client.remove_star("example-owner/ghstars")
     assert client.fetch_stars() == []
 
 
@@ -100,9 +100,9 @@ def test_remove_star_clears_it_from_list_items(
 ) -> None:
     client = FakeGitHubClient(stars=[make_star()])
     lst = client.create_list("Explore: General")
-    client.update_list_membership_for_item("pradyumnac/ghstars", [lst.id])
+    client.update_list_membership_for_item("example-owner/ghstars", [lst.id])
 
-    client.remove_star("pradyumnac/ghstars")
+    client.remove_star("example-owner/ghstars")
 
     assert client.fetch_lists()[0].items == []
 

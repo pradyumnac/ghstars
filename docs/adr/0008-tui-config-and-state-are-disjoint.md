@@ -91,13 +91,14 @@ these fields in the config editor.
 
 The user can rebind the 17 actions that `TuiApp.BINDINGS` declares.
 
-The user cannot rebind `ctrl+q`, `ctrl+c`, or `ctrl+p`. `ctrl+c` is a
-terminal convention. `ctrl+q` is the force-quit path. `ctrl+p` is the
-only route to the config editor, so a bad rebind locks the user out of
-the tool that repairs the config. A config file that names one of these
-keys fails validation.
+The user cannot rebind `ctrl+q`, `ctrl+c`, `ctrl+p`, or `g`. `ctrl+c` is
+a terminal convention. `ctrl+q` is the force-quit path. `ctrl+p` opens
+the command palette. `g` opens the config editor directly. A config file
+that names one of these keys fails validation.
 
-The user cannot rebind a modal screen key. Modal screens keep `escape`
+The user cannot rebind a modal screen key. In the config editor, Esc
+validates and saves a changed form. The `x` key discards the form. The
+`q` key quits only from the main screen. Other modal screens keep Escape
 and their own navigation keys.
 
 ### Config changes need a restart

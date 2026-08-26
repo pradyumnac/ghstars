@@ -157,8 +157,8 @@ cross-reference reason.
 
 **Configuration**
 
- 1. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use. ghstars reserves `ctrl+q`, `ctrl+c`, and `ctrl+p`, because rebinding `ctrl+p` locks me out of the config editor itself (ADR 0008).
- 2. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting. A saved change takes effect on the next launch (ADR 0008).
+ 1. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use. ghstars reserves `ctrl+q`, `ctrl+c`, `ctrl+p`, and `g`. The `g` key opens the config editor directly (ADR 0008).
+ 2. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting. Press `g` or use the Ctrl+P command palette to open the editor. Press Esc to validate and save changes. Press `x` to discard changes. The form stays open when validation fails. The `q` key quits only from the main screen. A saved change takes effect on the next launch (ADR 0008).
  3. As a developer, I want ghstars to remember my last layout, View Mode, sort, Filter, and Detail pane visibility between sessions, so that the TUI opens where I left it.
 
 **Responsiveness**
@@ -221,10 +221,13 @@ Three-way merge per Star, per sync: base (last-synced snapshot) vs. current GitH
 73-76, ADR 0002, ADR 0008)
 
 `config/tui.toml` holds settings the user authors. ghstars reads it on
-launch. ghstars writes it only when the user saves an edit from the TUI
-(story 70), and uses a style-preserving TOML writer so user comments and
-key order survive the write. `config/` is stow-managed dotfiles, so an
-unasked-for rewrite would show up as churn in the user's dotfiles repo.
+launch. Press `g` or use Ctrl+P to open the editor. The form body scrolls
+under fixed Esc Save and `x` Discard help. Boolean values use explicit Yes
+and No selectors. Initial Layout uses Compact and Balanced selectors.
+Keybindings appear last. Esc writes a changed form only after validation.
+The style-preserving TOML writer keeps user comments and key order.
+`config/` is stow-managed dotfiles, so an unasked-for rewrite would show up
+as churn in the user's dotfiles repo.
 
 `state/tui-state.toml` holds session state ghstars writes on its own
 (story 71). It lives under `state/`, which is already untracked, so

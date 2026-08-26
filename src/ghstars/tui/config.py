@@ -34,14 +34,14 @@ DEFAULT_TOAST_TIMEOUT = 8
 DEFAULT_DETAIL_PANE_HEIGHT = 14
 DEFAULT_GRID_CARD_TRUNCATION = 120
 
-# ADR 0008: three App-level keys stay fixed. `ctrl+c` is a terminal
-# convention, `ctrl+q` is the force-quit path, and `ctrl+p` is the only
-# route to the config editor -- a bad rebind of it would lock the user
-# out of the tool that repairs the config.
+# ADR 0008: four App-level keys stay fixed. `ctrl+c` is a terminal
+# convention, `ctrl+q` is the force-quit path, and `ctrl+p` opens the
+# command palette. `g` opens the config editor directly.
 RESERVED_KEYS: dict[str, str] = {
     "ctrl+c": "the terminal's own interrupt convention",
     "ctrl+q": "the force-quit path",
-    "ctrl+p": "the only route to the config editor",
+    "ctrl+p": "the command palette path to the config editor",
+    "g": "the direct config editor shortcut",
 }
 
 # Every key name Textual normalizes a single printable character to

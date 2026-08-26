@@ -158,7 +158,7 @@ def test_user_list_items_node_response_parses_items() -> None:
         "node": {
             "items": {
                 "pageInfo": {"hasNextPage": False, "endCursor": None},
-                "nodes": [{"nameWithOwner": "pradyumnac/ghstars"}],
+                "nodes": [{"nameWithOwner": "example-owner/ghstars"}],
             }
         }
     }
@@ -167,7 +167,7 @@ def test_user_list_items_node_response_parses_items() -> None:
     assert parsed.node is not None
     item = parsed.node.items.nodes[0]
     assert item is not None
-    assert item.name_with_owner == "pradyumnac/ghstars"
+    assert item.name_with_owner == "example-owner/ghstars"
 
 
 def test_user_list_items_node_response_handles_deleted_list() -> None:

@@ -30,7 +30,7 @@ def test_save_and_load_lists_roundtrip(tmp_path: Path) -> None:
 def test_save_and_load_retriage_roundtrip(tmp_path: Path) -> None:
     store = StateStore(tmp_path)
     entry = RetriageEntry(
-        star_full_name="pradyumnac/x",
+        star_full_name="example-owner/x",
         attempted_list_ids=["L_1"],
         conflict_detected_at=NOW,
     )

@@ -37,7 +37,7 @@ The arrangement ghstars uses to put Stars on screen — a flat Star list, a grid
 _Avoid_: Display, Screen. Do not use Layout for this concept; a Layout is a different thing (see below).
 
 **Layout**:
-A named density preset for the Star table, holding a column list, a row height, a detail-pane height, and whether the detail pane shows. ghstars ships two: `compact` and `balanced`. `config/tui.toml` defines what each preset contains; `state/tui-state.toml` records which one is active (ADR 0008). A Layout is not a View Mode: a View Mode picks the arrangement (list, grid, Folder), and a Layout tunes how dense the flat table inside it is.
+A named density preset for the Star table, holding columns, row height, detail-pane height, and pane visibility. ghstars ships `compact` and `balanced`. `config/tui.toml` defines presets; `state/tui-state.toml` records the active preset (ADR 0008). A Layout is not a View Mode: a View Mode picks the arrangement, and a Layout tunes the flat table.
 _Avoid_: View Mode, Density, Theme.
 
 **Folder**:
@@ -45,8 +45,13 @@ A View Mode that shows each List as a container, and the Stars of one List as th
 _Avoid_: Directory, Tree, Group, Bucket.
 
 **Filter**:
-A rule that limits which Stars the user sees, by Category, by Intent, or by List. A Filter works on a different axis from a Folder: a Folder sets the container the user is inside, and a Filter narrows the Stars shown within it.
+A rule that limits which Stars the user sees by Category, Intent, or List. A Filter narrows the current View Mode.
 _Avoid_: Query, Search (Search matches free text, and is a separate action).
+
+**TUI configuration editor**:
+A form for `config/tui.toml`. Press `g` to open it, or select Edit config
+from Ctrl+P. Esc validates and saves. `x` discards. `q` quits only from the
+main screen. The form body scrolls under fixed key help.
 
 **Retriage Queue**:
 A local-only holding area for a Star whose pending List-membership change conflicted with a concurrent change on GitHub since the last sync. Never synced to GitHub — conflict handling is ghstars' responsibility, not GitHub's.

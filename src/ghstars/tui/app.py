@@ -27,8 +27,9 @@ Config (`ghstars.tui.config`): `config/tui.toml` sets the keybindings,
 the header height, the presentation fields (date format, toast timeout,
 ASCII markers, clock, default Filter), and the layout presets. Each
 preset holds its own ordered column list and sizing. The file is read in
-`__init__`, before the first paint; this module never writes it (ADR
-0002). `state/tui-state.toml` remembers the active preset, View Mode,
+`__init__`, before the first paint. The config editor writes it only when
+Esc validates a changed form (ADR 0002). `state/tui-state.toml` remembers
+the active preset, View Mode,
 sort key, Filter, and detail-pane override, read at launch and written on
 quit (`action_quit`).
 
@@ -39,24 +40,26 @@ Terminal width never drops a column and never hides the detail pane (ADR
 import hashlib
 import json
 import webbrowser
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import ClassVar
 
+import tomlkit
 from filelock import Timeout
 from pydantic import ValidationError
 from rich.style import Style
 from rich.text import Text
 from textual import events, work
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.markup import escape
-from textual.screen import ModalScreen
+from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
-from textual.widgets import Button, Checkbox, DataTable, Input, Static
+from textual.widgets import Button, Checkbox, DataTable, Input, Label, Select, Static
+from tomlkit.exceptions import TOMLKitError
 
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
@@ -774,6 +777,303 @@ class ListsOverviewScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class ConfigInput(Input):
+    """An editor input where `x` discards the form."""
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "x":
+            event.stop()
+            event.prevent_default()
+            self.screen.dismiss(False)
+            return
+        await super()._on_key(event)
+
+
+class ConfigSelect(Select[object]):
+    """An editor selector where `x` discards the form."""
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "x":
+            event.stop()
+            event.prevent_default()
+            self.screen.dismiss(False)
+            return
+        await super()._on_key(event)
+
+
+class ConfigEditorScreen(ModalScreen[bool]):
+    """Edit `tui.toml` from a new disk snapshot.
+
+    The running app keeps its launch snapshot until restart.
+    """
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape", "save", "Save", priority=True),
+        Binding("x", "cancel", "Discard", priority=True),
+    ]
+
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self.path = path
+        self.config = load_tui_config(path)
+        self._original = self.config.model_dump(mode="json")
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="config-editor"):
+            with Horizontal(id="config-header"):
+                yield Static(f"Config: {self.path}", id="config-title")
+                yield Static("Esc Save  •  x Discard", id="config-help")
+            with VerticalScroll(id="config-scroll"):
+                with Vertical(classes="config-section"):
+                    yield Static("General", classes="config-section-title")
+                    for key, label, value in (
+                        ("header_height", "Header height", self.config.header_height),
+                        ("date_format", "Date format", self.config.date_format),
+                        ("toast_timeout", "Toast timeout", self.config.toast_timeout),
+                        (
+                            "grid_card_truncation",
+                            "Grid card truncation",
+                            self.config.grid_card_truncation,
+                        ),
+                        (
+                            "default_filter",
+                            "Default Filter",
+                            self.config.default_filter or "",
+                        ),
+                    ):
+                        with Horizontal(classes="config-row"):
+                            yield Label(label, classes="config-label")
+                            yield ConfigInput(
+                                str(value),
+                                id=f"config-{key}",
+                                classes="config-input",
+                            )
+                    with Horizontal(classes="config-row"):
+                        yield Label("Initial Layout", classes="config-label")
+                        yield ConfigSelect(
+                            [("Compact", "compact"), ("Balanced", "balanced")],
+                            value=self.config.layout,
+                            id="config-layout",
+                            classes="config-boolean-input",
+                        )
+                    for key, label, value in (
+                        ("show_clock", "Show clock", self.config.show_clock),
+                        ("ascii_only", "ASCII only", self.config.ascii_only),
+                    ):
+                        with Horizontal(classes="config-row"):
+                            yield Label(label, classes="config-label")
+                            yield ConfigSelect(
+                                [("Yes", True), ("No", False)],
+                                value=value,
+                                id=f"config-{key}",
+                                classes="config-boolean-input",
+                            )
+
+                with Vertical(classes="config-section"):
+                    yield Static("Category colours", classes="config-section-title")
+                    for category, colour in self.config.category_colours.items():
+                        with Horizontal(classes="config-row"):
+                            yield Label("Category", classes="config-label")
+                            yield ConfigInput(
+                                category,
+                                id=f"category-name-{category}",
+                                classes="config-category-input",
+                            )
+                            yield ConfigSelect(
+                                [(name, name) for name in _CATEGORY_COLOUR_NAMES],
+                                value=colour,
+                                id=f"category-colour-{category}",
+                                classes="config-key-input",
+                            )
+                    with Horizontal(classes="config-row"):
+                        yield Label("Add category", classes="config-label")
+                        yield ConfigInput(
+                            "",
+                            placeholder="Category name",
+                            id="category-name-new",
+                            classes="config-category-input",
+                        )
+                        yield ConfigSelect(
+                            [(name, name) for name in _CATEGORY_COLOUR_NAMES],
+                            id="category-colour-new",
+                            classes="config-key-input",
+                        )
+
+                for name, preset in self.config.layouts.items():
+                    with Vertical(classes="config-section"):
+                        yield Static(
+                            f"{name.title()} Layout", classes="config-section-title"
+                        )
+                        with Horizontal(classes="config-row"):
+                            yield Label("Columns", classes="config-label")
+                            yield ConfigInput(
+                                ", ".join(preset.columns),
+                                id=f"layout-columns-{name}",
+                                classes="config-columns-input",
+                            )
+                        with Horizontal(classes="config-row"):
+                            yield Label("Detail pane visible", classes="config-label")
+                            yield ConfigSelect(
+                                [("Yes", True), ("No", False)],
+                                value=preset.detail_pane_visible,
+                                id=f"layout-visible-{name}",
+                                classes="config-boolean-input",
+                            )
+                        with Horizontal(classes="config-row"):
+                            yield Label("Row height", classes="config-label")
+                            yield ConfigInput(
+                                str(preset.row_height),
+                                id=f"layout-row-height-{name}",
+                                classes="config-key-input",
+                            )
+                        with Horizontal(classes="config-row"):
+                            yield Label("Detail pane height", classes="config-label")
+                            yield ConfigInput(
+                                str(preset.detail_pane_height),
+                                id=f"layout-pane-height-{name}",
+                                classes="config-key-input",
+                            )
+
+                with Vertical(classes="config-section"):
+                    yield Static("Keybindings", classes="config-section-title")
+                    for action in DEFAULT_KEYBINDINGS:
+                        with Horizontal(classes="config-row"):
+                            yield Label(
+                                action.replace("_", " ").title(),
+                                classes="config-label",
+                            )
+                            yield ConfigInput(
+                                self.config.keybindings.get(
+                                    action, DEFAULT_KEYBINDINGS[action]
+                                ),
+                                id=f"binding-{action}",
+                                classes="config-key-input",
+                            )
+
+    def on_mount(self) -> None:
+        self.query_one("#config-header_height", Input).focus()
+
+    def _values(self) -> dict[str, object]:
+        def text(key: str) -> str:
+            return self.query_one(f"#config-{key}", Input).value
+
+        def integer(key: str) -> int:
+            try:
+                return int(text(key))
+            except ValueError as exc:
+                raise ValueError(f"{key} must be an integer") from exc
+
+        values: dict[str, object] = {
+            "header_height": integer("header_height"),
+            "date_format": text("date_format"),
+            "toast_timeout": integer("toast_timeout"),
+            "grid_card_truncation": integer("grid_card_truncation"),
+            "default_filter": text("default_filter") or None,
+            "show_clock": self.query_one("#config-show_clock", Select).value,
+            "ascii_only": self.query_one("#config-ascii_only", Select).value,
+            "layout": self.query_one("#config-layout", Select).value,
+            "keybindings": {},
+            "category_colours": {},
+            "layouts": {},
+        }
+        values["keybindings"] = {
+            action: self.query_one(f"#binding-{action}", Input).value
+            for action in DEFAULT_KEYBINDINGS
+            if self.query_one(f"#binding-{action}", Input).value
+            != DEFAULT_KEYBINDINGS[action]
+        }
+        colours: dict[str, str] = {}
+        for category in self.config.category_colours:
+            name = self.query_one(f"#category-name-{category}", Input).value.strip()
+            colour = str(
+                self.query_one(f"#category-colour-{category}", Select).value or ""
+            ).strip()
+            if name and colour:
+                colours[name] = colour
+        new_name = self.query_one("#category-name-new", Input).value.strip()
+        new_colour = str(
+            self.query_one("#category-colour-new", Select).value or ""
+        ).strip()
+        if new_name and new_colour:
+            colours[new_name] = new_colour
+        values["category_colours"] = colours
+        values["layouts"] = {
+            name: {
+                "columns": [
+                    column.strip()
+                    for column in self.query_one(
+                        f"#layout-columns-{name}", Input
+                    ).value.split(",")
+                    if column.strip()
+                ],
+                "detail_pane_visible": self.query_one(
+                    f"#layout-visible-{name}", Select
+                ).value,
+                "row_height": self._integer_input(
+                    f"#layout-row-height-{name}", "row height"
+                ),
+                "detail_pane_height": self._integer_input(
+                    f"#layout-pane-height-{name}", "detail pane height"
+                ),
+            }
+            for name in self.config.layouts
+        }
+        return values
+
+    def _integer_input(self, selector: str, label: str) -> int:
+        try:
+            return int(self.query_one(selector, Input).value)
+        except ValueError as exc:
+            raise ValueError(f"{label} must be an integer") from exc
+
+    def action_save(self) -> None:
+        try:
+            values = self._values()
+            validated = TuiConfig.model_validate(values)
+        except (ValueError, TypeError, TOMLKitError) as exc:
+            self.notify(f"Invalid configuration: {exc}", severity="error")
+            return
+        document = (
+            tomlkit.parse(self.path.read_text())
+            if self.path.exists()
+            else tomlkit.document()
+        )
+        changed = validated.model_dump(mode="json") != self._original
+        if not changed:
+            self.dismiss(False)
+            return
+        current = validated.model_dump(mode="json")
+        original = self._original
+        for key in (
+            "header_height",
+            "date_format",
+            "toast_timeout",
+            "ascii_only",
+            "grid_card_truncation",
+            "default_filter",
+            "show_clock",
+            "layout",
+        ):
+            if current[key] != original[key]:
+                document[key] = current[key]
+        if current["keybindings"] != original["keybindings"]:
+            document["keybindings"] = current["keybindings"]
+        if current["category_colours"] != original["category_colours"]:
+            document["category_colours"] = current["category_colours"]
+        if current["layouts"] != original["layouts"]:
+            document["layouts"] = current["layouts"]
+        for key, value in current.items():
+            if key not in document and value == original[key] and key != "layout":
+                document.add(tomlkit.comment(f"{key} = {value!r} (default)"))
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(tomlkit.dumps(document))
+        self.app.notify("Config saved. Restart ghstars to apply changes.")
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class TuiApp(App[None]):
     """Interactive triage: tag, bulk-tag, and retag Stars (ticket 09)."""
 
@@ -792,6 +1092,71 @@ class TuiApp(App[None]):
     }
     #picker-buttons Button {
         margin-left: 1;
+    }
+    ConfigEditorScreen {
+        align: center middle;
+    }
+    #config-editor {
+        width: 80%;
+        height: 85%;
+        max-width: 100;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #config-scroll {
+        width: 1fr;
+        height: 1fr;
+        padding: 1 2;
+        scrollbar-size-vertical: 1;
+    }
+    #config-header {
+        height: 2;
+        padding: 0 1;
+    }
+    #config-title {
+        width: 1fr;
+        text-style: bold;
+    }
+    #config-help {
+        width: auto;
+        color: $text-muted;
+        text-align: right;
+    }
+    .config-section {
+        width: 1fr;
+        height: auto;
+        margin: 0 0 1 0;
+        padding: 1 2;
+        background: $panel;
+    }
+    .config-section-title {
+        text-style: bold;
+        color: $text-accent;
+        margin-bottom: 1;
+    }
+    .config-row {
+        width: 1fr;
+        height: 3;
+        align: left middle;
+    }
+    .config-label {
+        width: 24;
+        padding-right: 2;
+    }
+    .config-input {
+        width: 1fr;
+        max-width: 54;
+    }
+    .config-key-input, .config-boolean-input {
+        width: 20;
+    }
+    .config-category-input {
+        width: 1fr;
+        max-width: 32;
+    }
+    .config-columns-input {
+        width: 1fr;
     }
     #title-row, #discovery-row, #bottom-status-row {
         height: 1;
@@ -868,6 +1233,7 @@ class TuiApp(App[None]):
         _default_binding("close_search", "Close search", show=False),
         _default_binding("refresh_rate_limit", "Refresh rate limit"),
         _default_binding("sync", f"Sync{_FOOTER_SEP}"),
+        Binding("g", "edit_config", f"Config{_FOOTER_SEP}"),
     ]
 
     def __init__(
@@ -919,7 +1285,9 @@ class TuiApp(App[None]):
     def _preset(self) -> LayoutPreset:
         """Sizing and columns for the active layout. State picks the
         preset; config defines it (ADR 0008)."""
-        return self._config.layouts[self._layout]
+        return self._config.layouts[
+            "balanced" if self._layout == "balanced" else "compact"
+        ]
 
     def _detail_pane_wanted(self) -> bool:
         """The preset's value, unless this session overrode it. `z`
@@ -968,6 +1336,28 @@ class TuiApp(App[None]):
         # Focus the table instead of the hidden search input on startup.
         table.focus()
 
+    def get_system_commands(self, screen: Screen[object]) -> Iterator[SystemCommand]:
+        """Add the two config commands to Ctrl+P's command palette."""
+        commands = tuple(super().get_system_commands(screen))
+        return iter(
+            commands
+            + (
+                SystemCommand("Edit config", "Edit tui.toml", self.action_edit_config),
+                SystemCommand(
+                    "Show config path",
+                    "Print the tui.toml path",
+                    self.action_show_config_path,
+                ),
+            )
+        )
+
+    def action_edit_config(self) -> None:
+        self.push_screen(ConfigEditorScreen(self._config_path))
+
+    def action_show_config_path(self) -> None:
+        print(self._config_path)
+        self.notify(str(self._config_path))
+
     async def action_quit(self) -> None:
         """Persist `state/tui-state.toml` before exiting (spec story 71).
 
@@ -976,6 +1366,8 @@ class TuiApp(App[None]):
         `on_unmount`, so the write happens deterministically before
         Textual starts tearing the app down, not racing it.
         """
+        if isinstance(self.screen, ConfigEditorScreen):
+            return
         save_tui_state(self._state_path, self._state)
         await super().action_quit()
 
@@ -1065,6 +1457,7 @@ class TuiApp(App[None]):
             ("o", "Open"),
             ("u", "Unstar"),
             ("y", "Sync"),
+            ("g", "Config"),
             ("q", "Quit"),
         ):
             if action_controls:

@@ -1,10 +1,9 @@
-# Written by pradyumnac-python-bootstrap. Records what this project chose.
-# Skills read this file to check the project against its own intent.
+# Records the selected project methodology for compliance checks.
 
 [project]
 type = "app"
 python_floor = "3.14"
-python_floor_reason = "Latest stable Python; single-developer tool installed via uv tool install/mise which bundles its own interpreter, so there is no compatibility-floor cost to picking latest."
+python_floor_reason = "Latest stable Python; the installation tools provide the interpreter."
 
 [tooling]
 task_runner = "mise"
@@ -25,9 +24,7 @@ bootstrapped = "2026-08-16"
 skill_version = "1"
 
 [files]
-# Every file this skill created, with the UTC timestamp of creation.
-# The script appends here; it never rewrites an entry. A path absent from
-# this table was written by hand, and compliance checks leave it alone.
+# Files created by the bootstrap tool, with creation timestamps.
 ".gitignore" = "2026-08-16T07:10:19Z"
 ".gitattributes" = "2026-08-16T07:10:19Z"
 ".editorconfig" = "2026-08-16T07:10:19Z"

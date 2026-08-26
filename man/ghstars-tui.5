@@ -1,0 +1,194 @@
+.TH GHSTARS-TUI 5 "2026-08-26" "ghstars 0.1.0" "File Formats"
+.SH NAME
+ghstars-tui \- TUI configuration file
+.SH SYNOPSIS
+.I ~/.ghstars/config/tui.toml
+.SH DESCRIPTION
+The file uses TOML syntax.
+A missing file selects every default.
+A present invalid file stops TUI startup with an error.
+.PP
+Press
+.B g
+in the TUI to edit this file.
+The editor preserves existing comments and key order.
+It writes changed settings only after Escape validates the form.
+Restart ghstars after a save.
+.SH TOP-LEVEL FIELDS
+.TP
+.B layout
+Initial Layout name.
+Valid values are
+.B compact
+and
+.BR balanced .
+The default is
+.BR compact .
+.TP
+.B header_height
+Positive integer table header height.
+The default is 1.
+.TP
+.B show_clock
+Boolean that controls the title clock.
+The default is false.
+.TP
+.B date_format
+Date format passed to Python
+.BR strftime (3).
+The default is
+.BR %d-%b-%Y .
+.TP
+.B toast_timeout
+Positive integer notification duration in seconds.
+The default is 8.
+.TP
+.B ascii_only
+Boolean that replaces status glyphs with text markers.
+The default is false.
+.TP
+.B grid_card_truncation
+Positive integer character limit for grid cards.
+The default is 120.
+.TP
+.B default_filter
+Optional Filter key that applies when TUI state has no Filter.
+The default is unset.
+.SH KEYBINDINGS
+The
+.B [keybindings]
+table maps an action name to one Textual key string.
+The editor shows one row for each action.
+.PP
+The 17 action names are:
+.BR quit ,
+.BR tag_selected ,
+.BR toggle_detail_pane ,
+.BR toggle_select ,
+.BR select_all ,
+.BR clear_selection ,
+.BR show_lists ,
+.BR open_filter ,
+.BR clear_discovery ,
+.BR cycle_layout ,
+.BR open_in_browser ,
+.BR unstar_selected ,
+.BR cycle_sort ,
+.BR open_search ,
+.BR close_search ,
+.BR refresh_rate_limit ,
+and
+.BR sync .
+.PP
+The default keys are
+.BR q ,
+.BR t ,
+.BR d ,
+.BR space ,
+.BR a ,
+.BR c ,
+.BR l ,
+.BR f ,
+.BR x ,
+.BR z ,
+.BR o ,
+.BR u ,
+.BR s ,
+.BR slash ,
+.BR escape ,
+.BR r ,
+and
+.BR y
+in the same order.
+.PP
+Keys must be parseable and unique after defaults and overrides merge.
+The fixed keys
+.BR ctrl+c ,
+.BR ctrl+q ,
+.BR ctrl+p ,
+and
+.B g
+cannot be used.
+.SH CATEGORY COLOURS
+The
+.B [category_colours]
+table maps a Category name to one fixed colour name.
+Valid names are
+.BR red ,
+.BR orange ,
+.BR yellow ,
+.BR green ,
+.BR cyan ,
+.BR blue ,
+.BR magenta ,
+and
+.BR violet .
+.PP
+Example:
+.nf
+[category_colours]
+AI = "magenta"
+DevOps = "cyan"
+.fi
+.SH LAYOUTS
+The file can define
+.B [layouts.compact]
+and
+.BR [layouts.balanced] .
+A missing preset uses its shipped default.
+Each preset supports these fields:
+.TP
+.B columns
+Ordered array of optional table column names.
+The Sel and Star columns always appear first.
+Valid names are Owner, Language, License, Stars, Starred at, First seen, Membership, Fork, Follow, Archived, Archived at, and Last checked.
+.TP
+.B detail_pane_visible
+Boolean that controls the preset's Detail pane default.
+The default is true.
+.TP
+.B row_height
+Positive integer Star row height.
+The default is 1.
+.TP
+.B detail_pane_height
+Positive integer Detail pane height.
+The default is 14.
+.PP
+The shipped compact columns are Language, Stars, and Membership.
+The shipped balanced columns are Language, Stars, Membership, License, Owner, and Starred at.
+.SH EXAMPLE
+.nf
+layout = "compact"
+header_height = 1
+show_clock = false
+date_format = "%d-%b-%Y"
+toast_timeout = 8
+ascii_only = false
+grid_card_truncation = 120
+
+[keybindings]
+tag_selected = "shift+t"
+
+[category_colours]
+AI = "magenta"
+
+[layouts.compact]
+columns = ["Language", "Stars", "Membership"]
+detail_pane_visible = true
+row_height = 1
+detail_pane_height = 14
+.fi
+.SH REMOVED FIELDS
+The old
+.B [colours]
+table is invalid.
+The TUI uses the active Textual theme.
+.SH STATE FILE
+Do not put session state in this file.
+The machine-owned
+.I ~/.ghstars/state/tui-state.toml
+stores the active Layout, sort, Filter, Detail pane override, and View Mode.
+.SH SEE ALSO
+.BR ghstars (1),
+.BR ghstars-tui (1)

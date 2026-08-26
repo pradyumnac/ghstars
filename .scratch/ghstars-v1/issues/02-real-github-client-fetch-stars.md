@@ -15,9 +15,8 @@
 
 ## Comments
 
-Implemented in commit `f7d1545`. Verified against the real authenticated account
-(pradyumnac): 1529 stars, 17 forks, 106 followed authors — fork detection
-cross-checked against raw `gh api graphql` output for `viewer.repositories`.
+Implemented in commit `f7d1545`. Live verification confirmed Star, fork,
+and followed-owner fetches against GraphQL output.
 
 `fetch_lists`/`create_list`/`update_list`/`delete_list`/`update_list_membership_for_item`/
 `remove_star` raise `NotImplementedError` — deliberately out of scope, owned by
@@ -26,11 +25,7 @@ tickets 03/04/06.
 `/code-review` flagged: `sync_cmd` not catching `GitHubApiError` (raw traceback
 instead of clean hard-fail — fixed, verified with an unauthenticated-gh
 reproduction); unguarded `json.loads` and no subprocess timeout (fixed);
-a possible infinite pagination loop if the API ever returns
-`hasNextPage: true` with `endCursor: null` (fixed with a defensive check);
-three duplicated pagination loops (consolidated into one generic
-`_paginate_all` helper); a stale docstring; an unused `isFork` field now that
-the query filters server-side. Not fixed: parallelizing the forks/following
-fetches — sequential sync already completes in ~47s for 1529 stars, and
-threading around subprocess calls wasn't worth the complexity for a personal
-CLI tool.
+an invalid pagination state when `hasNextPage` has no cursor (fixed);
+duplicated pagination loops (consolidated); a stale docstring; and an unused
+`isFork` field. Parallel fetches remain out of scope because they add
+subprocess complexity without a required performance target.

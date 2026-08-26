@@ -202,8 +202,8 @@ def test_load_tui_config_invalid_schema_raises(tmp_path: Path) -> None:
 
 
 def test_load_tui_config_rejects_a_reserved_key(tmp_path: Path) -> None:
-    """ADR 0008: `ctrl+q`, `ctrl+c`, and `ctrl+p` are never rebindable."""
-    for key in ("ctrl+q", "ctrl+c", "ctrl+p"):
+    """Fixed application and terminal keys are never rebindable."""
+    for key in ("ctrl+q", "ctrl+c", "ctrl+p", "g"):
         path = tmp_path / "tui.toml"
         path.write_text(f'[keybindings]\ntag_selected = "{key}"\n')
 
@@ -237,6 +237,7 @@ def test_default_keybindings_match_tui_app_bindings() -> None:
         for binding in Binding.make_bindings(TuiApp.BINDINGS)
     }
 
+    assert declared.pop("edit_config") == "g"
     assert declared == {
         action: normalize_key(key) for action, key in DEFAULT_KEYBINDINGS.items()
     }
@@ -291,7 +292,7 @@ def test_load_tui_config_accepts_a_non_conflicting_rebind(tmp_path: Path) -> Non
     """A swap frees the old key, so both halves of it stay valid."""
     path = tmp_path / "tui.toml"
     path.write_text(
-        '[keybindings]\ntag_selected = "y"\nsync = "t"\nopen_search = "g"\n'
+        '[keybindings]\ntag_selected = "y"\nsync = "t"\nopen_search = "h"\n'
     )
 
     config = load_tui_config(path)
@@ -299,7 +300,7 @@ def test_load_tui_config_accepts_a_non_conflicting_rebind(tmp_path: Path) -> Non
     assert config.keybindings == {
         "tag_selected": "y",
         "sync": "t",
-        "open_search": "g",
+        "open_search": "h",
     }
 
 
@@ -375,7 +376,7 @@ async def test_tui_app_with_no_config_file_uses_defaults(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(
@@ -400,7 +401,7 @@ async def test_tui_app_applies_keybinding_override(
     config_path.write_text('[keybindings]\ntag_selected = "shift+t"\n')
 
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(
@@ -440,7 +441,7 @@ async def test_keybinding_override_preserves_inherited_app_bindings(
     config_path.write_text('[keybindings]\ntag_selected = "shift+t"\n')
 
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(
@@ -464,7 +465,7 @@ async def test_tui_app_applies_row_and_header_height(
     config_path.write_text("header_height = 3\n\n[layouts.compact]\nrow_height = 2\n")
 
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(
@@ -478,7 +479,7 @@ async def test_tui_app_applies_row_and_header_height(
         table = _table(app)
 
     assert table.header_height == 3
-    assert table.get_row_height(RowKey("pradyumnac/ghstars")) == 2
+    assert table.get_row_height(RowKey("example-owner/ghstars")) == 2
 
 
 async def test_tui_app_never_writes_tui_config(
@@ -489,7 +490,7 @@ async def test_tui_app_never_writes_tui_config(
     untouched -- missing stays missing."""
     config_path = tmp_path / "config" / "tui.toml"
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(
@@ -513,7 +514,7 @@ async def test_tui_app_persists_last_layout_over_config_default(
     config_path.write_text('layout = "compact"\n')
     state_path = tmp_path / "state" / "tui-state.toml"
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app1 = TuiApp(
@@ -552,7 +553,7 @@ async def test_tui_app_restores_view_mode_across_relaunch(
     round trip already works end to end."""
     state_path = tmp_path / "state" / "tui-state.toml"
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app1 = TuiApp(
@@ -587,7 +588,7 @@ async def test_tui_app_restores_sort_key_across_relaunch(
     round trip as view_mode above."""
     state_path = tmp_path / "state" / "tui-state.toml"
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app1 = TuiApp(
@@ -627,7 +628,7 @@ async def test_tui_app_ignores_unrecognized_saved_sort_key(
     state_path = tmp_path / "state" / "tui-state.toml"
     save_tui_state(state_path, TuiState(sort_key="some_future_key"))
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(

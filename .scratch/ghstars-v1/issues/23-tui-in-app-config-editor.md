@@ -84,7 +84,7 @@ This scope overrides ticket 28. Read ADR 0008 first.
 ## Scope 4 — Keybindings
 
 - [ ] The user can rebind the 17 actions in `TuiApp.BINDINGS`.
-- [ ] A config that names `ctrl+q`, `ctrl+c`, or `ctrl+p` fails
+- [ ] A config that names `ctrl+q`, `ctrl+c`, `ctrl+p`, or `g` fails
       validation with a clear error.
 - [ ] An unknown action name fails validation. Ticket 21 made it a silent
       no-op.
@@ -95,24 +95,29 @@ This scope overrides ticket 28. Read ADR 0008 first.
 
 ## Scope 5 — The editor
 
-- [ ] A Ctrl+P "Edit config" entry opens a modal that lists every field
-      in Scope 1.
+- [ ] The `g` key opens a modal that lists every field in Scope 1.
+- [ ] A Ctrl+P "Edit config" entry opens the same modal.
 - [ ] The modal reads the values on disk, not the values in memory.
-- [ ] Keybindings show as one row per action with a text field for the
-      key.
+- [ ] Keybindings show as the last section, with one text field per
+      action.
 - [ ] Category colours show as add and remove rows with a colour picker.
 - [ ] Columns show as an ordered add and remove list, one list per
       layout preset.
-- [ ] Save blocks on any validation error and marks the field. The editor
-      never writes a file that fails to load.
+- [ ] Esc validates a changed form. A validation error keeps the editor
+      open, shows a notification, and prevents the write.
 - [ ] Save writes `tui.toml` through `tomlkit`. A round trip that changes
       nothing reproduces the same comments and key order.
 - [ ] Save writes only `config/tui.toml`. It never writes
       `state/tui-state.toml`.
 - [ ] Save writes only the fields the user changed. Every other field
       appears as a comment that names its default.
-- [ ] Save shows a toast that tells the user to restart.
-- [ ] Cancel discards the edits and leaves the file unchanged.
+- [ ] A save shows a toast that tells the user to restart.
+- [ ] The `x` key discards edits and leaves the file unchanged.
+- [ ] The `q` key quits only from the main screen.
+- [ ] The form body scrolls while the Esc Save and `x` Discard help stays
+      visible.
+- [ ] Boolean fields use Yes and No selectors. Initial Layout uses a
+      Compact and Balanced selector.
 - [ ] A Ctrl+P "Show config path" entry prints the path.
 
 ## Out of scope

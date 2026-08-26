@@ -37,9 +37,14 @@ definitions land with a later ticket. Export mappings go in
 [`docs/how-to/export.md`](docs/how-to/export.md).
 
 TUI settings go in `~/.ghstars/config/tui.toml`: keybindings, Category
-colours, the table columns, and the layout presets. A missing file means
-every default applies. `ghstars` writes this file only when you save an
-edit from the TUI. A saved change takes effect on the next launch.
+colours, presentation settings, table columns, and Layout presets. A
+missing file means every default applies.
+
+Press `g` in the TUI to open the config editor. You can also select
+**Edit config** from the Ctrl+P command palette. The form keeps its key
+help visible while the fields scroll. Press Esc to validate and save a
+changed form. Press `x` to discard all edits. An invalid form stays open
+and shows an error. Restart `ghstars` after a save to apply the changes.
 
 `~/.ghstars/state/tui-state.toml` holds what the TUI remembers between
 sessions: the active layout, sort, Filter, and detail-pane visibility.
@@ -47,6 +52,14 @@ sessions: the active layout, sort, Filter, and detail-pane visibility.
 
 Both directories hold plain text, so you can stow `config/` into a
 dotfiles repository. `ghstars` never runs `git` against either one.
+
+## Manuals
+
+Unix manual sources are in [`man/`](man/):
+
+- `ghstars(1)` documents all commands.
+- `ghstars-tui(1)` documents TUI controls.
+- `ghstars-tui(5)` documents `tui.toml`.
 
 ## Develop
 

@@ -14,7 +14,7 @@ class StarFactory(Protocol):
 
 @pytest.fixture
 def make_star() -> StarFactory:
-    def _make(full_name: str = "pradyumnac/ghstars", **overrides: object) -> Star:
+    def _make(full_name: str = "example-owner/ghstars", **overrides: object) -> Star:
         defaults = {
             "full_name": full_name,
             "html_url": f"https://github.com/{full_name}",

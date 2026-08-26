@@ -1,0 +1,129 @@
+.TH GHSTARS 1 "2026-08-26" "ghstars 0.1.0" "User Commands"
+.SH NAME
+ghstars \- classify GitHub starred repositories with GitHub Lists
+.SH SYNOPSIS
+.B ghstars
+.RI [ options ]
+.I command
+.RI [ arguments ]
+.SH DESCRIPTION
+.B ghstars
+is a terminal tool for managing GitHub starred repositories.
+GitHub Lists are the source of truth for classification and membership.
+The program stores a local snapshot under
+.IR ~/.ghstars/state/ .
+It stores user configuration under
+.IR ~/.ghstars/config/ .
+.PP
+Run
+.B ghstars sync
+before commands that use the local snapshot.
+.SH COMMANDS
+.TP
+.B sync
+Fetch Stars and Lists from GitHub.
+Use
+.B --json
+for structured output.
+Use
+.B --debug
+for fetch and pagination details.
+.TP
+.B list
+List locally synced Stars.
+Use
+.B --json
+for structured output.
+Use
+.BI --fields " names"
+to select comma-separated fields.
+.TP
+.B lists
+List locally synced GitHub Lists with parsed Intent and Category values.
+The command supports
+.B --json
+and
+.BR --fields .
+.TP
+.B status
+Report the last sync time, Retriage Queue count, Unclassified count, and offline verification result.
+The command never calls GitHub.
+.TP
+.B retriage
+List local edits that lost a GitHub membership conflict.
+The command supports
+.B --json
+and
+.BR --fields .
+.TP
+.BI tag " OWNER/REPO LIST"
+Add a Star to a List and push the change to GitHub.
+Use
+.B --private
+when ghstars must create a private List.
+New Lists are public by default.
+.TP
+.BI unstar " OWNER/REPO"
+Unstar a repository on GitHub and mark its local record Archived.
+This command changes the GitHub account.
+.TP
+.B category rename
+Rename one Category across its Explore, Current, and Retired Lists.
+.TP
+.B category drain
+Move all Stars from one Category to another while retaining each Intent.
+Use
+.B --private
+for new destination Lists.
+.TP
+.B export
+Write configured exports from the local snapshot.
+The command reads
+.IR ~/.ghstars/config/export.toml .
+.TP
+.B diff
+Show changes through the user's Git history under
+.IR state/ .
+Use
+.B --log
+for patch history instead of the working-tree diff.
+Extra arguments pass to Git.
+.TP
+.B tui
+Open the interactive Textual interface.
+See
+.BR ghstars-tui (1).
+.SH GLOBAL OPTIONS
+.TP
+.B --help
+Show command help.
+.TP
+.B --install-completion
+Install shell completion.
+.TP
+.B --show-completion
+Print shell completion.
+.SH FILES
+.TP
+.I ~/.ghstars/config/tui.toml
+TUI configuration.
+See
+.BR ghstars-tui (5).
+.TP
+.I ~/.ghstars/config/export.toml
+Export mappings.
+.TP
+.I ~/.ghstars/state/
+Local Star, List, Retriage Queue, and TUI state.
+.SH ENVIRONMENT
+.TP
+.B GHSTARS_DEBUG=1
+Enable sync debug output.
+.SH EXIT STATUS
+The command returns zero after success.
+It returns nonzero after validation, storage, authentication, or GitHub errors.
+.SH SEE ALSO
+.BR ghstars-tui (1),
+.BR ghstars-tui (5),
+.BR gh (1),
+.BR git (1)

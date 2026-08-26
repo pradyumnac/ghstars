@@ -18,13 +18,14 @@ from conftest import StarFactory
 from filelock import Timeout
 from rich.style import Style
 from rich.text import Text
-from textual.widgets import DataTable, Input, Static
+from textual.widgets import DataTable, Input, Label, Static
 
 from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
 from ghstars.github.schema import RateLimitResponse
 from ghstars.tui.app import (
+    ConfigEditorScreen,
     ConfirmUnstarScreen,
     DetailPane,
     FilterScreen,
@@ -37,6 +38,7 @@ from ghstars.tui.app import (
 from ghstars.tui.config import (
     CATEGORY_COLOURS_DARK,
     CATEGORY_COLOURS_LIGHT,
+    load_tui_config,
     load_tui_state,
 )
 
@@ -78,7 +80,7 @@ async def test_category_colour_is_stable_across_app_instances(
         category="AI",
     )
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars", list_ids=["L1"])])
+    store.save_stars([make_star("example-owner/ghstars", list_ids=["L1"])])
     store.save_lists([category_list])
 
     styles: list[list[str]] = []
@@ -99,7 +101,7 @@ async def test_stars_table_shows_membership_with_visibility(
     private_list = List(
         id="L1", name="Current: Tool", slug="current-tool", is_private=True
     )
-    star = make_star("pradyumnac/ghstars", list_ids=["L1"])
+    star = make_star("example-owner/ghstars", list_ids=["L1"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([private_list])
@@ -109,7 +111,7 @@ async def test_stars_table_shows_membership_with_visibility(
         await pilot.pause()
         row = _table(app).get_row_at(0)
 
-    assert row[1] == "pradyumnac/ghstars"
+    assert row[1] == "example-owner/ghstars"
     membership = str(row[4])
     assert "Current: Tool" in membership
     assert "🔒" in membership
@@ -127,7 +129,7 @@ async def test_category_override_colours_membership_without_hiding_text(
         category="AI",
     )
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars", list_ids=["L1"])])
+    store.save_stars([make_star("example-owner/ghstars", list_ids=["L1"])])
     store.save_lists([category_list])
     config_path = tmp_path / "config" / "tui.toml"
     config_path.parent.mkdir()
@@ -160,7 +162,7 @@ async def test_category_colour_follows_the_active_theme_polarity(
         category="AI",
     )
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/ghstars", list_ids=["L1"])])
+    store.save_stars([make_star("example-owner/ghstars", list_ids=["L1"])])
     store.save_lists([category_list])
     config_path = tmp_path / "config" / "tui.toml"
     config_path.parent.mkdir()
@@ -189,7 +191,7 @@ async def test_general_list_membership_renders_muted_with_its_name(
     the theme's muted foreground, not a hashed colour."""
     general_list = List(id="L1", name="Tools", slug="tools")
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars", list_ids=["L1"])])
+    store.save_stars([make_star("example-owner/ghstars", list_ids=["L1"])])
     store.save_lists([general_list])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
@@ -212,7 +214,7 @@ async def test_stale_pending_list_ids_is_ignored_by_the_table(
     the old "[pending sync]" display; the table only ever shows
     `list_ids`, which is already live."""
     public_list = List(id="L2", name="Explore: Tool", slug="explore-tool")
-    star = make_star("pradyumnac/ghstars", pending_list_ids=["L2"])
+    star = make_star("example-owner/ghstars", pending_list_ids=["L2"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([public_list])
@@ -230,7 +232,7 @@ async def test_rate_limit_bar_shows_remaining_after_mount(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     client = FakeGitHubClient(
         rate_limit=RateLimitStatus(remaining=42, limit=5000, ok=True)
     )
@@ -249,7 +251,7 @@ async def test_rate_limit_bar_flags_when_not_ok(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     client = FakeGitHubClient(
         rate_limit=RateLimitStatus(remaining=10, limit=5000, ok=False)
     )
@@ -269,7 +271,7 @@ async def test_rate_limit_bar_shows_checking_state_before_first_fetch_resolves(
 ) -> None:
     """The title row must not be blank while the first API call runs."""
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     release = Event()
 
     class BlockingRateLimitClient(FakeGitHubClient):
@@ -296,7 +298,7 @@ async def test_rate_limit_bar_shows_error_when_model_validate_raises(
     `GitHubApiError`) must not leave the bar blank forever with no
     notification -- it must show an explicit error state."""
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
 
     class RaisingRateLimitClient(FakeGitHubClient):
         def check_rate_limit(self) -> RateLimitStatus:
@@ -323,7 +325,7 @@ async def test_tui_launches_and_notifies_when_state_lock_is_held(
     lock must not crash the TUI on mount -- it opens empty, with an
     error notification, instead of a raw `filelock.Timeout` traceback."""
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
 
     def _raise_timeout(*args: object, **kwargs: object) -> list[Star]:
         raise Timeout(str(store.base_dir / ".lock"))
@@ -341,7 +343,7 @@ async def test_tui_launches_and_notifies_when_state_lock_is_held(
 async def test_single_item_tag_pushes_immediately(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([])
@@ -360,7 +362,9 @@ async def test_single_item_tag_pushes_immediately(
         await pilot.pause()
         counts = str(app.query_one("#collection-status", Static).render())
 
-    updated = next(s for s in store.load_stars() if s.full_name == "pradyumnac/ghstars")
+    updated = next(
+        s for s in store.load_stars() if s.full_name == "example-owner/ghstars"
+    )
     new_list = next(lst for lst in store.load_lists() if lst.name == "Explore: Foo")
     assert updated.list_ids == [new_list.id]
     assert updated.pending_list_ids is None
@@ -374,8 +378,8 @@ async def test_bulk_tag_applies_to_every_selected_star(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     target = List(id="L_target", name="Explore: Foo", slug="explore-foo")
-    star_a = make_star("pradyumnac/a")
-    star_b = make_star("pradyumnac/b")
+    star_a = make_star("example-owner/a")
+    star_b = make_star("example-owner/b")
     store = StateStore(tmp_path)
     store.save_stars([star_a, star_b])
     store.save_lists([target])
@@ -386,10 +390,10 @@ async def test_bulk_tag_applies_to_every_selected_star(
         await pilot.pause()
         table = _table(app)
         table.focus()
-        # Both rows are sorted by full_name: pradyumnac/a, pradyumnac/b.
-        await pilot.press("space")  # select row 0 (pradyumnac/a)
+        # Both rows are sorted by full_name: example-owner/a, example-owner/b.
+        await pilot.press("space")  # select row 0 (example-owner/a)
         await pilot.press("down")
-        await pilot.press("space")  # select row 1 (pradyumnac/b)
+        await pilot.press("space")  # select row 1 (example-owner/b)
         await pilot.press("t")
         await pilot.pause()
         assert isinstance(app.screen, ListPickerScreen)
@@ -400,8 +404,8 @@ async def test_bulk_tag_applies_to_every_selected_star(
         await pilot.pause()
 
     stars = {s.full_name: s for s in store.load_stars()}
-    assert stars["pradyumnac/a"].list_ids == ["L_target"]
-    assert stars["pradyumnac/b"].list_ids == ["L_target"]
+    assert stars["example-owner/a"].list_ids == ["L_target"]
+    assert stars["example-owner/b"].list_ids == ["L_target"]
 
 
 async def test_bulk_tag_batches_node_id_lookups_but_single_tag_does_not(
@@ -421,8 +425,8 @@ async def test_bulk_tag_batches_node_id_lookups_but_single_tag_does_not(
             return super().resolve_repository_node_ids(full_names)
 
     target = List(id="L_target", name="Explore: Foo", slug="explore-foo")
-    star_a = make_star("pradyumnac/a")
-    star_b = make_star("pradyumnac/b")
+    star_a = make_star("example-owner/a")
+    star_b = make_star("example-owner/b")
     store = StateStore(tmp_path)
     store.save_stars([star_a, star_b])
     store.save_lists([target])
@@ -433,9 +437,9 @@ async def test_bulk_tag_batches_node_id_lookups_but_single_tag_does_not(
         await pilot.pause()
         table = _table(app)
         table.focus()
-        await pilot.press("space")  # select row 0 (pradyumnac/a)
+        await pilot.press("space")  # select row 0 (example-owner/a)
         await pilot.press("down")
-        await pilot.press("space")  # select row 1 (pradyumnac/b)
+        await pilot.press("space")  # select row 1 (example-owner/b)
         await pilot.press("t")
         await pilot.pause()
         picker_table = app.screen.query_one("#picker-table", DataTable)
@@ -445,7 +449,10 @@ async def test_bulk_tag_batches_node_id_lookups_but_single_tag_does_not(
         await pilot.pause()
 
     assert len(client.batch_lookup_calls) == 1
-    assert sorted(client.batch_lookup_calls[0]) == ["pradyumnac/a", "pradyumnac/b"]
+    assert sorted(client.batch_lookup_calls[0]) == [
+        "example-owner/a",
+        "example-owner/b",
+    ]
 
     client.batch_lookup_calls.clear()
     app2 = TuiApp(client=client, store=store)
@@ -471,7 +478,7 @@ async def test_toggle_select_preserves_cursor_position(
     to row 0), or a "move down, select, move down, select" bulk
     selection silently lands on the wrong rows after the first toggle.
     """
-    stars = [make_star(f"pradyumnac/{name}") for name in ("a", "b", "c", "d")]
+    stars = [make_star(f"example-owner/{name}") for name in ("a", "b", "c", "d")]
     store = StateStore(tmp_path)
     store.save_stars(stars)
     store.save_lists([])
@@ -491,7 +498,7 @@ async def test_toggle_select_preserves_cursor_position(
         await pilot.press("space")  # select d
         selected = set(app._selected)
 
-    assert selected == {"pradyumnac/c", "pradyumnac/d"}
+    assert selected == {"example-owner/c", "example-owner/d"}
 
 
 async def test_retag_moves_star_between_intents_in_same_category(
@@ -501,10 +508,10 @@ async def test_retag_moves_star_between_intents_in_same_category(
         id="L_current",
         name="Current: Tool",
         slug="current-tool",
-        items=["pradyumnac/ghstars"],
+        items=["example-owner/ghstars"],
     )
     retired = List(id="L_retired", name="Retired: Tool", slug="retired-tool")
-    star = make_star("pradyumnac/ghstars", list_ids=["L_current"])
+    star = make_star("example-owner/ghstars", list_ids=["L_current"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([current, retired])
@@ -524,7 +531,9 @@ async def test_retag_moves_star_between_intents_in_same_category(
         await app.workers.wait_for_complete()
         await pilot.pause()
 
-    updated = next(s for s in store.load_stars() if s.full_name == "pradyumnac/ghstars")
+    updated = next(
+        s for s in store.load_stars() if s.full_name == "example-owner/ghstars"
+    )
     assert updated.list_ids == ["L_retired"]
 
 
@@ -535,7 +544,7 @@ async def test_double_tag_press_does_not_stack_two_pickers(
     both dispatched before the first `_open_picker` worker reaches
     `push_screen_wait`, must not schedule two picker screens.
     """
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([])
@@ -560,7 +569,7 @@ async def test_lists_overview_shows_public_and_private_explicitly(
         id="L_priv", name="Current: Secret", slug="current-secret", is_private=True
     )
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([public_list, private_list])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
@@ -602,7 +611,7 @@ async def test_detail_pane_shows_full_record_of_star_under_cursor(
     shows, appears in the detail pane for the highlighted row."""
     lst = List(id="L1", name="Current: Tool", slug="current-tool", is_private=True)
     star = make_star(
-        "pradyumnac/ghstars",
+        "example-owner/ghstars",
         description="A star-tracking tool",
         language="Python",
         license="MIT",
@@ -640,8 +649,8 @@ async def test_detail_pane_shows_full_record_of_star_under_cursor(
 async def test_detail_pane_updates_when_cursor_moves_to_a_different_star(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    star_a = make_star("pradyumnac/a", description="First star")
-    star_b = make_star("pradyumnac/b", description="Second star")
+    star_a = make_star("example-owner/a", description="First star")
+    star_b = make_star("example-owner/b", description="Second star")
     store = StateStore(tmp_path)
     store.save_stars([star_a, star_b])
     store.save_lists([])
@@ -664,7 +673,7 @@ async def test_detail_pane_renders_before_rate_limit_worker_completes(
     """The detail pane must never block the initial paint on a live
     GitHub call -- it renders purely from already-loaded local state."""
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars", description="Local only")])
+    store.save_stars([make_star("example-owner/ghstars", description="Local only")])
     store.save_lists([])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
@@ -685,7 +694,7 @@ async def test_detail_pane_updates_after_tagging_star_with_cursor_on_first_row(
     that star must still refresh the detail pane -- not rely on an
     event that `_refresh_table()`'s `table.clear()` won't fire here.
     """
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([])
@@ -727,7 +736,7 @@ async def test_detail_pane_visible_by_default_and_toggles_with_d(
     """The detail pane is visible by default; "d"
     (action_toggle_detail_pane) hides/shows it on demand."""
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
@@ -746,7 +755,7 @@ async def test_detail_pane_toggle_persists_across_quit(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
     state_path = tmp_path / "tui-state.toml"
 
@@ -762,8 +771,8 @@ async def test_detail_pane_toggle_persists_across_quit(
 async def test_sync_runs_only_after_explicit_key_and_reports_completion(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    stale = make_star("pradyumnac/stale")
-    fresh = make_star("pradyumnac/fresh")
+    stale = make_star("example-owner/stale")
+    fresh = make_star("example-owner/fresh")
     store = StateStore(tmp_path)
     store.save_stars([stale])
     store.save_lists([])
@@ -784,14 +793,14 @@ async def test_sync_runs_only_after_explicit_key_and_reports_completion(
     assert "complete" in status
     assert "Stars: 1/1" in counts
     saved = {star.full_name: star for star in store.load_stars()}
-    assert "pradyumnac/fresh" in saved
-    assert saved["pradyumnac/stale"].archived is True
+    assert "example-owner/fresh" in saved
+    assert saved["example-owner/stale"].archived is True
 
 
 async def test_unstar_confirm_calls_remove_star_and_archives_locally(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([])
@@ -812,15 +821,15 @@ async def test_unstar_confirm_calls_remove_star_and_archives_locally(
         counts = str(app.query_one("#collection-status", Static).render())
 
     assert "Stars: 0/0" in counts
-    assert "pradyumnac/ghstars" not in {s.full_name for s in client.fetch_stars()}
+    assert "example-owner/ghstars" not in {s.full_name for s in client.fetch_stars()}
     saved = {s.full_name: s for s in store.load_stars()}
-    assert saved["pradyumnac/ghstars"].archived is True
+    assert saved["example-owner/ghstars"].archived is True
 
 
 async def test_unstar_cancel_leaves_star_untouched(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([])
@@ -836,15 +845,15 @@ async def test_unstar_cancel_leaves_star_untouched(
         await pilot.click("#cancel")
         await pilot.pause()
 
-    assert "pradyumnac/ghstars" in {s.full_name for s in client.fetch_stars()}
+    assert "example-owner/ghstars" in {s.full_name for s in client.fetch_stars()}
     saved = {s.full_name: s for s in store.load_stars()}
-    assert saved["pradyumnac/ghstars"].archived is False
+    assert saved["example-owner/ghstars"].archived is False
 
 
 async def test_open_in_browser_launches_html_url(
     tmp_path: Path, make_star: StarFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    star = make_star("pradyumnac/ghstars")
+    star = make_star("example-owner/ghstars")
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([])
@@ -870,10 +879,10 @@ async def test_sort_defaults_to_star_date_descending_and_s_toggles_to_name(
     later-alphabetical repo was starred earlier) so a passing
     assertion actually proves which key is active, not a coincidence."""
     star_b_older = make_star(
-        "pradyumnac/b", starred_at=datetime(2026, 1, 1, tzinfo=UTC)
+        "example-owner/b", starred_at=datetime(2026, 1, 1, tzinfo=UTC)
     )
     star_a_newer = make_star(
-        "pradyumnac/a", starred_at=datetime(2026, 6, 1, tzinfo=UTC)
+        "example-owner/a", starred_at=datetime(2026, 6, 1, tzinfo=UTC)
     )
     store = StateStore(tmp_path)
     store.save_stars([star_b_older, star_a_newer])
@@ -884,18 +893,18 @@ async def test_sort_defaults_to_star_date_descending_and_s_toggles_to_name(
         await pilot.pause()
         table = _table(app)
         # Newest starred date sorts first by default.
-        assert table.get_row_at(0)[1] == "pradyumnac/a"
-        assert table.get_row_at(1)[1] == "pradyumnac/b"
+        assert table.get_row_at(0)[1] == "example-owner/a"
+        assert table.get_row_at(1)[1] == "example-owner/b"
 
         await pilot.press("s")  # -> name (alphabetical ascending)
-        assert table.get_row_at(0)[1] == "pradyumnac/a"
-        assert table.get_row_at(1)[1] == "pradyumnac/b"
+        assert table.get_row_at(0)[1] == "example-owner/a"
+        assert table.get_row_at(1)[1] == "example-owner/b"
 
         # Five more presses complete the sort cycle.
         for _ in range(5):
             await pilot.press("s")
-        assert table.get_row_at(0)[1] == "pradyumnac/a"
-        assert table.get_row_at(1)[1] == "pradyumnac/b"
+        assert table.get_row_at(0)[1] == "example-owner/a"
+        assert table.get_row_at(1)[1] == "example-owner/b"
 
 
 async def test_sort_by_stargazer_count_language_and_list_count(
@@ -903,10 +912,10 @@ async def test_sort_by_stargazer_count_language_and_list_count(
 ) -> None:
     lst = List(id="L1", name="Explore: Tool", slug="explore-tool")
     star_low = make_star(
-        "pradyumnac/low", stargazer_count=5, language="Zig", list_ids=[]
+        "example-owner/low", stargazer_count=5, language="Zig", list_ids=[]
     )
     star_high = make_star(
-        "pradyumnac/high", stargazer_count=500, language="Ada", list_ids=["L1"]
+        "example-owner/high", stargazer_count=500, language="Ada", list_ids=["L1"]
     )
     store = StateStore(tmp_path)
     store.save_stars([star_low, star_high])
@@ -918,16 +927,16 @@ async def test_sort_by_stargazer_count_language_and_list_count(
         table = _table(app)
         await pilot.press("s")  # -> name
         await pilot.press("s")  # -> stargazer_desc
-        assert table.get_row_at(0)[1] == "pradyumnac/high"
-        assert table.get_row_at(1)[1] == "pradyumnac/low"
+        assert table.get_row_at(0)[1] == "example-owner/high"
+        assert table.get_row_at(1)[1] == "example-owner/low"
 
         await pilot.press("s")  # -> language (alphabetical: Ada, Zig)
-        assert table.get_row_at(0)[1] == "pradyumnac/high"
-        assert table.get_row_at(1)[1] == "pradyumnac/low"
+        assert table.get_row_at(0)[1] == "example-owner/high"
+        assert table.get_row_at(1)[1] == "example-owner/low"
 
         await pilot.press("s")  # -> list_count_desc
-        assert table.get_row_at(0)[1] == "pradyumnac/high"
-        assert table.get_row_at(1)[1] == "pradyumnac/low"
+        assert table.get_row_at(0)[1] == "example-owner/high"
+        assert table.get_row_at(1)[1] == "example-owner/low"
 
 
 async def test_bottom_status_sort_label_shows_active_mode_and_toggles(
@@ -935,7 +944,7 @@ async def test_bottom_status_sort_label_shows_active_mode_and_toggles(
 ) -> None:
     """The bottom status bar tracks the active sort mode."""
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
@@ -947,11 +956,114 @@ async def test_bottom_status_sort_label_shows_active_mode_and_toggles(
         assert "Sort: Name" in str(controls.render())
 
 
+async def test_g_opens_a_labeled_config_form(tmp_path: Path) -> None:
+    store = StateStore(tmp_path / "state")
+    store.save_stars([])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test(size=(120, 50)) as pilot:
+        await pilot.press("g")
+        await pilot.pause()
+
+        config_screen = app.screen
+        assert isinstance(config_screen, ConfigEditorScreen)
+        labels = {str(label.render()) for label in config_screen.walk_children(Label)}
+        assert {"Header height", "Date format", "Toast timeout", "Columns"} <= labels
+        assert config_screen.query_one("#config-header_height", Input).has_class(
+            "config-input"
+        )
+        config_scroll = config_screen.query_one("#config-scroll")
+        config_help = config_screen.query_one("#config-help")
+        assert config_scroll not in config_help.ancestors
+        config_scroll.scroll_end(animate=False)
+        await pilot.pause()
+        assert config_help.visible
+        assert "Esc Save" in str(config_help.render())
+        assert "x Discard" in str(config_help.render())
+        assert app.focused is not None
+        assert app.focused.id == "config-header_height"
+        await pilot.press("tab")
+        assert app.focused is not None
+        assert app.focused.id == "config-date_format"
+
+
+async def test_config_x_discards_and_q_does_not_quit(tmp_path: Path) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    original = "# keep this comment\nheader_height = 1\n"
+    config_path.write_text(original)
+    store = StateStore(tmp_path / "state")
+    store.save_stars([])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test() as pilot:
+        await pilot.press("g")
+        await pilot.press("q")
+        config_screen = app.screen
+        assert isinstance(config_screen, ConfigEditorScreen)
+        config_screen.query_one("#config-header_height", Input).value = "3"
+        await pilot.press("x")
+        await pilot.pause()
+
+        assert app.screen is not config_screen
+        assert config_path.read_text() == original
+
+
+async def test_config_escape_saves_valid_changes(tmp_path: Path) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text("# keep this comment\nheader_height = 1\n")
+    store = StateStore(tmp_path / "state")
+    store.save_stars([])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test() as pilot:
+        await pilot.press("g")
+        app.screen.query_one("#config-header_height", Input).value = "3"
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, ConfigEditorScreen)
+        assert load_tui_config(config_path).header_height == 3
+        assert "# keep this comment" in config_path.read_text()
+        assert any(
+            "Restart ghstars" in notification.message
+            for notification in app._notifications
+        )
+
+
+async def test_config_escape_keeps_invalid_form_open(tmp_path: Path) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    original = "header_height = 1\n"
+    config_path.write_text(original)
+    store = StateStore(tmp_path / "state")
+    store.save_stars([])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test() as pilot:
+        await pilot.press("g")
+        app.screen.query_one("#config-header_height", Input).value = "0"
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ConfigEditorScreen)
+        assert config_path.read_text() == original
+        assert any(
+            "Invalid configuration" in notification.message
+            for notification in app._notifications
+        )
+
+
 async def test_bottom_status_shows_compact_action_keys(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_stars([make_star("example-owner/ghstars")])
     store.save_lists([])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
@@ -961,7 +1073,13 @@ async def test_bottom_status_shows_compact_action_keys(
 
     assert all(
         label in actions
-        for label in ("[t] Tag", "[d] Detail", "[spc] Select", "[q] Quit")
+        for label in (
+            "[t] Tag",
+            "[d] Detail",
+            "[spc] Select",
+            "[g] Config",
+            "[q] Quit",
+        )
     )
 
 
@@ -975,8 +1093,8 @@ async def test_discovery_rows_show_controls_counts_and_clickable_membership(
         intent="Explore",
         category="AI",
     )
-    classified = make_star("pradyumnac/classified", list_ids=["L_ai"])
-    unclassified = make_star("pradyumnac/unclassified", list_ids=[])
+    classified = make_star("example-owner/classified", list_ids=["L_ai"])
+    unclassified = make_star("example-owner/unclassified", list_ids=[])
     store = StateStore(tmp_path)
     store.save_stars([classified, unclassified])
     store.save_lists([ai])
@@ -1010,7 +1128,7 @@ async def test_discovery_rows_show_controls_counts_and_clickable_membership(
         if isinstance(span.style, Style)
     )
     assert handled is True
-    assert filtered_names == ["pradyumnac/classified"]
+    assert filtered_names == ["example-owner/classified"]
 
 
 async def test_table_renders_the_active_preset_columns_in_order(
@@ -1025,7 +1143,7 @@ async def test_table_renders_the_active_preset_columns_in_order(
     )
     store = StateStore(tmp_path / "state")
     store.save_stars(
-        [make_star("pradyumnac/repo", language="Python", stargazer_count=42)]
+        [make_star("example-owner/repo", language="Python", stargazer_count=42)]
     )
     store.save_lists([])
 
@@ -1036,7 +1154,7 @@ async def test_table_renders_the_active_preset_columns_in_order(
         row = [str(cell) for cell in _table(app).get_row_at(0)]
 
     assert columns == ["Sel", "Star", "Owner", "Archived", "Stars", "Language"]
-    assert row == ["[ ]", "pradyumnac/repo", "pradyumnac", "no", "42", "Python"]
+    assert row == ["[ ]", "example-owner/repo", "example-owner", "no", "42", "Python"]
 
 
 async def test_preset_without_optional_columns_still_shows_sel_and_star(
@@ -1046,7 +1164,7 @@ async def test_preset_without_optional_columns_still_shows_sel_and_star(
     config_path.parent.mkdir()
     config_path.write_text("[layouts.compact]\ncolumns = []\n")
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_stars([make_star("example-owner/repo")])
     store.save_lists([])
 
     app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
@@ -1056,7 +1174,7 @@ async def test_preset_without_optional_columns_still_shows_sel_and_star(
         row = [str(cell) for cell in _table(app).get_row_at(0)]
 
     assert columns == ["Sel", "Star"]
-    assert row == ["[ ]", "pradyumnac/repo"]
+    assert row == ["[ ]", "example-owner/repo"]
 
 
 async def test_narrow_terminal_hides_no_column(
@@ -1065,7 +1183,7 @@ async def test_narrow_terminal_hides_no_column(
     """ADR 0008 overrides ticket 28: the table keeps every configured
     column and scrolls instead of hiding one."""
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/repo", language="Python")])
+    store.save_stars([make_star("example-owner/repo", language="Python")])
     store.save_lists([])
 
     async def _columns(width: int) -> list[str]:
@@ -1084,7 +1202,7 @@ async def test_detail_pane_visibility_ignores_terminal_width(
     """The layout preset and the user's toggle control the pane. Terminal
     width no longer hides it (ADR 0008)."""
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_stars([make_star("example-owner/repo")])
     store.save_lists([])
     hidden_config = tmp_path / "hidden" / "tui.toml"
     hidden_config.parent.mkdir()
@@ -1113,7 +1231,7 @@ async def test_configured_date_format_applies_to_table_and_detail_pane(
         'date_format = "%Y-%m-%d"\n\n[layouts.compact]\ncolumns = ["Starred at"]\n'
     )
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_stars([make_star("example-owner/repo")])
     store.save_lists([])
 
     app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
@@ -1134,7 +1252,7 @@ async def test_configured_toast_timeout_applies_to_error_toasts(
     config_path.parent.mkdir()
     config_path.write_text("toast_timeout = 3\n")
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_stars([make_star("example-owner/repo")])
     store.save_lists([])
 
     app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
@@ -1154,7 +1272,7 @@ async def test_ascii_only_replaces_glyphs_with_text_markers(
     config_path.parent.mkdir()
     config_path.write_text("ascii_only = true\n")
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/repo", list_ids=["L1"])])
+    store.save_stars([make_star("example-owner/repo", list_ids=["L1"])])
     store.save_lists(
         [List(id="L1", name="Current: Tool", slug="current-tool", is_private=True)]
     )
@@ -1184,7 +1302,7 @@ async def test_ascii_only_replaces_membership_chip_glyphs(
     config_path.parent.mkdir()
     config_path.write_text("ascii_only = true\n")
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/repo", list_ids=["L1"])])
+    store.save_stars([make_star("example-owner/repo", list_ids=["L1"])])
     store.save_lists(
         [List(id="L1", name="Current: Tool", slug="current-tool", is_private=True)]
     )
@@ -1206,7 +1324,7 @@ async def test_show_clock_adds_a_clock_only_when_configured(
     config_path.parent.mkdir()
     config_path.write_text("show_clock = true\n")
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("pradyumnac/repo")])
+    store.save_stars([make_star("example-owner/repo")])
     store.save_lists([])
 
     with_clock = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
@@ -1234,8 +1352,8 @@ async def test_default_filter_applies_when_state_holds_no_filter(
     store = StateStore(tmp_path / "state")
     store.save_stars(
         [
-            make_star("pradyumnac/classified", list_ids=["L1"]),
-            make_star("pradyumnac/unclassified"),
+            make_star("example-owner/classified", list_ids=["L1"]),
+            make_star("example-owner/unclassified"),
         ]
     )
     store.save_lists([List(id="L1", name="Explore: AI", slug="explore-ai")])
@@ -1249,7 +1367,7 @@ async def test_default_filter_applies_when_state_holds_no_filter(
         ]
         controls = str(app.query_one("#discovery-controls", Static).render())
 
-    assert names == ["pradyumnac/unclassified"]
+    assert names == ["example-owner/unclassified"]
     assert "Filter: Unclassified (no List)" in controls
 
 
@@ -1259,8 +1377,8 @@ async def test_unclassified_count_action_applies_quick_filter(
     store = StateStore(tmp_path)
     store.save_stars(
         [
-            make_star("pradyumnac/classified", list_ids=["L1"]),
-            make_star("pradyumnac/unclassified"),
+            make_star("example-owner/classified", list_ids=["L1"]),
+            make_star("example-owner/unclassified"),
         ]
     )
     store.save_lists([List(id="L1", name="Explore: AI", slug="explore-ai")])
@@ -1276,7 +1394,7 @@ async def test_unclassified_count_action_applies_quick_filter(
         ]
 
     assert handled is True
-    assert names == ["pradyumnac/unclassified"]
+    assert names == ["example-owner/unclassified"]
 
 
 async def test_filters_by_category_intent_list_and_unclassified(
@@ -1292,9 +1410,11 @@ async def test_filters_by_category_intent_list_and_unclassified(
         category="Tools",
         intent="Current",
     )
-    star_explore = make_star("pradyumnac/explore", list_ids=["L1"], language="Python")
-    star_current = make_star("pradyumnac/current", list_ids=["L2"], language="Go")
-    star_none = make_star("pradyumnac/none", list_ids=[])
+    star_explore = make_star(
+        "example-owner/explore", list_ids=["L1"], language="Python"
+    )
+    star_current = make_star("example-owner/current", list_ids=["L2"], language="Go")
+    star_none = make_star("example-owner/none", list_ids=[])
     store = StateStore(tmp_path)
     store.save_stars([star_explore, star_current, star_none])
     store.save_lists([explore, current])
@@ -1311,7 +1431,7 @@ async def test_filters_by_category_intent_list_and_unclassified(
         assert isinstance(app.screen, FilterScreen)
         await pilot.press("a", "i", "enter")  # Search for AI
         assert table.row_count == 1
-        assert table.get_row_at(0)[1] == "pradyumnac/explore"
+        assert table.get_row_at(0)[1] == "example-owner/explore"
 
         await pilot.press("/")
         search = app.query_one("#search-input", Input)
@@ -1326,7 +1446,7 @@ async def test_filters_by_category_intent_list_and_unclassified(
         await pilot.pause()
         await pilot.press("c", "u", "r", "r", "e", "n", "t", "enter")
         assert table.row_count == 1
-        assert table.get_row_at(0)[1] == "pradyumnac/current"
+        assert table.get_row_at(0)[1] == "example-owner/current"
 
         await pilot.press("f")
         await pilot.pause()
@@ -1334,14 +1454,14 @@ async def test_filters_by_category_intent_list_and_unclassified(
         await pilot.pause()
         await pilot.press("c", "u", "r", "r", "e", "n", "t", "enter")
         assert table.row_count == 1
-        assert table.get_row_at(0)[1] == "pradyumnac/current"
+        assert table.get_row_at(0)[1] == "example-owner/current"
 
         await pilot.press("f")
         await pilot.pause()
         await pilot.press("u")
         await pilot.pause()
         assert table.row_count == 1
-        assert table.get_row_at(0)[1] == "pradyumnac/none"
+        assert table.get_row_at(0)[1] == "example-owner/none"
         assert app._state.filter == "unclassified"
 
         await pilot.press("f")
@@ -1356,7 +1476,7 @@ async def test_filters_by_category_intent_list_and_unclassified(
         await pilot.pause()
         await pilot.press("g", "o", "enter")  # Search for Go
         assert table.row_count == 1
-        assert table.get_row_at(0)[1] == "pradyumnac/current"
+        assert table.get_row_at(0)[1] == "example-owner/current"
 
 
 async def test_filter_search_selects_best_match_and_all_is_explicit(
@@ -1367,8 +1487,8 @@ async def test_filter_search_selects_best_match_and_all_is_explicit(
     store = StateStore(tmp_path)
     store.save_stars(
         [
-            make_star("pradyumnac/ai", list_ids=["L1"]),
-            make_star("pradyumnac/tools", list_ids=["L2"]),
+            make_star("example-owner/ai", list_ids=["L1"]),
+            make_star("example-owner/tools", list_ids=["L2"]),
         ]
     )
     store.save_lists([ai, tools])
@@ -1396,7 +1516,7 @@ async def test_filter_search_selects_best_match_and_all_is_explicit(
         assert str(filter_table.get_row_at(0)[0]) == "Tools"
         await pilot.press("enter")
         assert _table(app).row_count == 1
-        assert _table(app).get_row_at(0)[1] == "pradyumnac/tools"
+        assert _table(app).get_row_at(0)[1] == "example-owner/tools"
 
         await pilot.press("f")
         await pilot.pause()
@@ -1422,7 +1542,7 @@ async def test_filter_search_ranks_exact_before_prefix_before_substring(
         List(id="L3", name="Explore: Django", slug="explore-django", category="Django"),
     ]
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/a", list_ids=["L1"])])
+    store.save_stars([make_star("example-owner/a", list_ids=["L1"])])
     store.save_lists(lists)
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
@@ -1461,8 +1581,8 @@ async def test_filter_search_handles_multiple_zero_and_empty_queries(
     store = StateStore(tmp_path)
     store.save_stars(
         [
-            make_star("pradyumnac/tools", list_ids=["L1"]),
-            make_star("pradyumnac/toys", list_ids=["L2"]),
+            make_star("example-owner/tools", list_ids=["L1"]),
+            make_star("example-owner/toys", list_ids=["L2"]),
         ]
     )
     store.save_lists(lists)
@@ -1495,7 +1615,7 @@ async def test_filter_search_handles_multiple_zero_and_empty_queries(
         await pilot.press("enter")
         await pilot.pause()
         assert _table(app).row_count == 1
-        assert _table(app).get_row_at(0)[1] == "pradyumnac/tools"
+        assert _table(app).get_row_at(0)[1] == "example-owner/tools"
 
 
 async def test_metadata_filters_support_owner_fork_and_followed(
@@ -1553,8 +1673,8 @@ async def test_recency_filter_supports_recent_and_older_ranges(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     now = datetime.now(UTC)
-    recent = make_star("pradyumnac/recent", starred_at=now - timedelta(hours=12))
-    old = make_star("pradyumnac/old", starred_at=now - timedelta(days=400))
+    recent = make_star("example-owner/recent", starred_at=now - timedelta(hours=12))
+    old = make_star("example-owner/old", starred_at=now - timedelta(days=400))
     store = StateStore(tmp_path)
     store.save_stars([recent, old])
     store.save_lists([])
@@ -1568,7 +1688,7 @@ async def test_recency_filter_supports_recent_and_older_ranges(
         await pilot.pause()
         await pilot.press("d")  # Recency shortcut: last 1 day
         assert _table(app).row_count == 1
-        assert _table(app).get_row_at(0)[1] == "pradyumnac/recent"
+        assert _table(app).get_row_at(0)[1] == "example-owner/recent"
 
         await pilot.press("f")
         await pilot.pause()
@@ -1576,14 +1696,14 @@ async def test_recency_filter_supports_recent_and_older_ranges(
         await pilot.pause()
         await pilot.press("o")  # Recency shortcut: older than 1 year
         assert _table(app).row_count == 1
-        assert _table(app).get_row_at(0)[1] == "pradyumnac/old"
+        assert _table(app).get_row_at(0)[1] == "example-owner/old"
 
 
 async def test_search_matches_name_and_description_as_you_type(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    named = make_star("pradyumnac/needle", description="A useful widget")
-    described = make_star("pradyumnac/other", description="Contains the needle")
+    named = make_star("example-owner/needle", description="A useful widget")
+    described = make_star("example-owner/other", description="Contains the needle")
     store = StateStore(tmp_path)
     store.save_stars([named, described])
     store.save_lists([])
@@ -1601,13 +1721,13 @@ async def test_search_matches_name_and_description_as_you_type(
         controls = str(app.query_one("#discovery-controls", Static).render())
         assert "Search: widget" in controls
         assert _table(app).row_count == 1
-        assert _table(app).get_row_at(0)[1] == "pradyumnac/needle"
+        assert _table(app).get_row_at(0)[1] == "example-owner/needle"
 
 
 async def test_filter_persists_in_tui_state(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    star = make_star("pradyumnac/none", list_ids=[])
+    star = make_star("example-owner/none", list_ids=[])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([])
@@ -1630,9 +1750,9 @@ async def test_sort_by_list_name_ascending_no_lists_last(
 ) -> None:
     list_b = List(id="LB", name="Explore: Bravo", slug="explore-bravo")
     list_a = List(id="LA", name="Explore: Alpha", slug="explore-alpha")
-    star_in_b = make_star("pradyumnac/in-b", list_ids=["LB"])
-    star_in_a = make_star("pradyumnac/in-a", list_ids=["LA"])
-    star_unclassified = make_star("pradyumnac/none", list_ids=[])
+    star_in_b = make_star("example-owner/in-b", list_ids=["LB"])
+    star_in_a = make_star("example-owner/in-a", list_ids=["LA"])
+    star_unclassified = make_star("example-owner/none", list_ids=[])
     store = StateStore(tmp_path)
     store.save_stars([star_in_b, star_in_a, star_unclassified])
     store.save_lists([list_a, list_b])
@@ -1644,6 +1764,6 @@ async def test_sort_by_list_name_ascending_no_lists_last(
         for _ in range(5):  # starred_desc -> ... -> list_name
             await pilot.press("s")
         assert app._sort_mode == "list_name"
-        assert table.get_row_at(0)[1] == "pradyumnac/in-a"
-        assert table.get_row_at(1)[1] == "pradyumnac/in-b"
-        assert table.get_row_at(2)[1] == "pradyumnac/none"
+        assert table.get_row_at(0)[1] == "example-owner/in-a"
+        assert table.get_row_at(1)[1] == "example-owner/in-b"
+        assert table.get_row_at(2)[1] == "example-owner/none"

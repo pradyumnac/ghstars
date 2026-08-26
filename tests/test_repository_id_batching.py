@@ -25,9 +25,9 @@ def test_resolve_repository_node_ids_makes_exactly_one_call(
     monkeypatch.setattr(gh_client, "_graphql", _fake)
     client = RealGitHubClient()
 
-    result = client.resolve_repository_node_ids(["pradyumnac/a", "pradyumnac/b"])
+    result = client.resolve_repository_node_ids(["example-owner/a", "example-owner/b"])
 
-    assert result == {"pradyumnac/a": "R_a", "pradyumnac/b": "R_b"}
+    assert result == {"example-owner/a": "R_a", "example-owner/b": "R_b"}
     assert len(calls) == 1
     assert "r0: repository(owner:" in calls[0]
     assert "r1: repository(owner:" in calls[0]
@@ -44,10 +44,12 @@ def test_resolve_repository_node_ids_omits_a_repo_github_could_not_find(
     monkeypatch.setattr(gh_client, "_graphql", _fake)
     client = RealGitHubClient()
 
-    result = client.resolve_repository_node_ids(["pradyumnac/a", "pradyumnac/renamed"])
+    result = client.resolve_repository_node_ids(
+        ["example-owner/a", "example-owner/renamed"]
+    )
 
-    assert result == {"pradyumnac/a": "R_a"}
-    assert "pradyumnac/renamed" not in result
+    assert result == {"example-owner/a": "R_a"}
+    assert "example-owner/renamed" not in result
 
 
 def test_resolve_repository_node_ids_of_an_empty_list_makes_no_call(

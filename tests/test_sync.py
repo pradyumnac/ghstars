@@ -48,9 +48,9 @@ def test_sync_raises_before_writing_when_rate_limited(
 def test_sync_marks_a_repo_missing_from_fetch_as_archived(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    keep = make_star("pradyumnac/keep")
+    keep = make_star("example-owner/keep")
     gone = make_star(
-        "pradyumnac/gone", language="Python", description="unstarred later"
+        "example-owner/gone", language="Python", description="unstarred later"
     )
     store = StateStore(tmp_path)
     sync(FakeGitHubClient(stars=[keep, gone]), store)
@@ -60,8 +60,8 @@ def test_sync_marks_a_repo_missing_from_fetch_as_archived(
 
     stars_by_name = {s.full_name: s for s in store.load_stars()}
     assert result.star_count == 2
-    assert stars_by_name["pradyumnac/keep"].archived is False
-    archived = stars_by_name["pradyumnac/gone"]
+    assert stars_by_name["example-owner/keep"].archived is False
+    archived = stars_by_name["example-owner/gone"]
     assert archived.archived is True
     assert archived.archived_at is not None
     assert archived.language == "Python"
@@ -72,7 +72,7 @@ def test_sync_marks_a_repo_missing_from_fetch_as_archived(
 def test_sync_does_not_refresh_archived_at_on_a_repeated_sync(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    gone = make_star("pradyumnac/gone")
+    gone = make_star("example-owner/gone")
     store = StateStore(tmp_path)
     sync(FakeGitHubClient(stars=[gone]), store)
     sync(FakeGitHubClient(stars=[]), store)
@@ -87,7 +87,7 @@ def test_sync_does_not_refresh_archived_at_on_a_repeated_sync(
 def test_sync_unarchives_a_restarred_repo(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    star = make_star("pradyumnac/back")
+    star = make_star("example-owner/back")
     store = StateStore(tmp_path)
     sync(FakeGitHubClient(stars=[star]), store)
     sync(FakeGitHubClient(stars=[]), store)
@@ -151,7 +151,7 @@ def test_sync_pushes_a_pending_edit_when_only_local_changed(
     before (ticket 04's order), so this asserts the end result, not the
     old before-pull timing."""
     lst = List(id="L_1", name="Explore: Tool", slug="explore-tool")
-    star = make_star("pradyumnac/ghstars", pending_list_ids=["L_1"])
+    star = make_star("example-owner/ghstars", pending_list_ids=["L_1"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([lst])
@@ -164,7 +164,7 @@ def test_sync_pushes_a_pending_edit_when_only_local_changed(
     assert saved.list_ids == ["L_1"]
     assert saved.pending_list_ids is None
     # lists.json reflects the push too, without a second fetch round trip.
-    assert store.load_lists()[0].items == ["pradyumnac/ghstars"]
+    assert store.load_lists()[0].items == ["example-owner/ghstars"]
     assert store.load_retriage() == []
 
 
@@ -176,15 +176,15 @@ def test_sync_leaves_remote_alone_when_local_pending_edit_matches_base(
     sync stands untouched; nothing is pushed."""
     a = List(id="L_1", name="Explore: A", slug="a")
     b = List(id="L_2", name="Explore: B", slug="b")
-    star = make_star("pradyumnac/x", list_ids=["L_1"], pending_list_ids=["L_1"])
+    star = make_star("example-owner/x", list_ids=["L_1"], pending_list_ids=["L_1"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([a, b])
 
     # Remote changed since: also added to L_2 on github.com.
     remote_star = star.model_copy(update={"pending_list_ids": None})
-    a_remote = a.model_copy(update={"items": ["pradyumnac/x"]})
-    b_remote = b.model_copy(update={"items": ["pradyumnac/x"]})
+    a_remote = a.model_copy(update={"items": ["example-owner/x"]})
+    b_remote = b.model_copy(update={"items": ["example-owner/x"]})
     client = FakeGitHubClient(stars=[remote_star], lists=[a_remote, b_remote])
 
     result = sync(client, store)
@@ -202,13 +202,13 @@ def test_sync_noops_when_local_and_remote_converge_on_the_same_result(
     on the same result -- already effectively applied, so nothing is
     pushed again."""
     lst = List(id="L_1", name="Explore: Tool", slug="explore-tool")
-    star = make_star("pradyumnac/x", pending_list_ids=["L_1"])  # base == []
+    star = make_star("example-owner/x", pending_list_ids=["L_1"])  # base == []
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([lst])
 
     # Remote already shows the same membership the local edit wants.
-    remote_lst = lst.model_copy(update={"items": ["pradyumnac/x"]})
+    remote_lst = lst.model_copy(update={"items": ["example-owner/x"]})
     client = FakeGitHubClient(stars=[star], lists=[remote_lst])
     calls: list[tuple[str, list[str]]] = []
     original_push = client.update_list_membership_for_item
@@ -237,11 +237,13 @@ def test_sync_routes_a_conflicting_edit_to_the_retriage_queue_and_github_wins(
     never pushed and never silently applied; it lands in the local-only
     Retriage Queue for the user to revisit."""
     base_lst = List(
-        id="L_base", name="Explore: Base", slug="base", items=["pradyumnac/x"]
+        id="L_base", name="Explore: Base", slug="base", items=["example-owner/x"]
     )
     other_lst = List(id="L_other", name="Explore: Other", slug="other")
     remote_lst = List(id="L_remote", name="Explore: Remote", slug="remote")
-    star = make_star("pradyumnac/x", list_ids=["L_base"], pending_list_ids=["L_other"])
+    star = make_star(
+        "example-owner/x", list_ids=["L_base"], pending_list_ids=["L_other"]
+    )
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([base_lst, other_lst, remote_lst])
@@ -249,7 +251,7 @@ def test_sync_routes_a_conflicting_edit_to_the_retriage_queue_and_github_wins(
     # Remote moved the star to a different List.
     remote_star = star.model_copy(update={"pending_list_ids": None})
     base_remote = base_lst.model_copy(update={"items": []})
-    remote_remote = remote_lst.model_copy(update={"items": ["pradyumnac/x"]})
+    remote_remote = remote_lst.model_copy(update={"items": ["example-owner/x"]})
     client = FakeGitHubClient(
         stars=[remote_star], lists=[base_remote, other_lst, remote_remote]
     )
@@ -263,7 +265,7 @@ def test_sync_routes_a_conflicting_edit_to_the_retriage_queue_and_github_wins(
 
     queue = store.load_retriage()
     assert len(queue) == 1
-    assert queue[0].star_full_name == "pradyumnac/x"
+    assert queue[0].star_full_name == "example-owner/x"
     assert queue[0].attempted_list_ids == ["L_other"]
     assert queue[0].resolved is False
 
@@ -282,18 +284,20 @@ def test_sync_persists_the_retriage_queue_before_stars_and_lists(
     must not be the one that's missing -- ticket 05 requires it is
     "never discarded." """
     base_lst = List(
-        id="L_base", name="Explore: Base", slug="base", items=["pradyumnac/x"]
+        id="L_base", name="Explore: Base", slug="base", items=["example-owner/x"]
     )
     other_lst = List(id="L_other", name="Explore: Other", slug="other")
     remote_lst = List(id="L_remote", name="Explore: Remote", slug="remote")
-    star = make_star("pradyumnac/x", list_ids=["L_base"], pending_list_ids=["L_other"])
+    star = make_star(
+        "example-owner/x", list_ids=["L_base"], pending_list_ids=["L_other"]
+    )
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([base_lst, other_lst, remote_lst])
 
     remote_star = star.model_copy(update={"pending_list_ids": None})
     base_remote = base_lst.model_copy(update={"items": []})
-    remote_remote = remote_lst.model_copy(update={"items": ["pradyumnac/x"]})
+    remote_remote = remote_lst.model_copy(update={"items": ["example-owner/x"]})
     client = FakeGitHubClient(
         stars=[remote_star], lists=[base_remote, other_lst, remote_remote]
     )
@@ -312,7 +316,7 @@ def test_sync_persists_the_retriage_queue_before_stars_and_lists(
     # Read through a fresh store because the test replaced `save_stars`.
     queue = StateStore(tmp_path).load_retriage()
     assert len(queue) == 1
-    assert queue[0].star_full_name == "pradyumnac/x"
+    assert queue[0].star_full_name == "example-owner/x"
 
 
 def test_sync_appends_new_conflicts_to_an_existing_retriage_queue(
@@ -323,7 +327,7 @@ def test_sync_appends_new_conflicts_to_an_existing_retriage_queue(
     finds nothing new to add."""
     store = StateStore(tmp_path)
     existing = RetriageEntry(
-        star_full_name="pradyumnac/old-conflict",
+        star_full_name="example-owner/old-conflict",
         attempted_list_ids=["L_x"],
         conflict_detected_at=NOW,
     )
@@ -343,23 +347,23 @@ def test_sync_drops_a_moot_pending_edit_when_the_star_was_unstarred_first(
     stale edit is silently moot, not a failure and not a conflict: there
     is nothing left to arbitrate for a repo that's no longer starred."""
     keep_lst = List(id="L_1", name="Explore: Keep", slug="keep")
-    kept = make_star("pradyumnac/kept", pending_list_ids=["L_1"])
-    gone = make_star("pradyumnac/gone", pending_list_ids=["L_1"])
+    kept = make_star("example-owner/kept", pending_list_ids=["L_1"])
+    gone = make_star("example-owner/gone", pending_list_ids=["L_1"])
     store = StateStore(tmp_path)
     store.save_stars([kept, gone])
     store.save_lists([keep_lst])
     client = FakeGitHubClient(stars=[kept, gone], lists=[keep_lst])
-    client.remove_star("pradyumnac/gone")  # unstarred since it was tagged
+    client.remove_star("example-owner/gone")  # unstarred since it was tagged
 
     result = sync(client, store)  # must not raise
 
     assert result.failed_tag_pushes == []
     by_name = {s.full_name: s for s in store.load_stars()}
-    assert by_name["pradyumnac/kept"].list_ids == ["L_1"]
-    assert by_name["pradyumnac/kept"].pending_list_ids is None
-    assert by_name["pradyumnac/gone"].pending_list_ids is None
-    assert by_name["pradyumnac/gone"].archived is True
-    assert by_name["pradyumnac/gone"].list_ids == []
+    assert by_name["example-owner/kept"].list_ids == ["L_1"]
+    assert by_name["example-owner/kept"].pending_list_ids is None
+    assert by_name["example-owner/gone"].pending_list_ids is None
+    assert by_name["example-owner/gone"].archived is True
+    assert by_name["example-owner/gone"].list_ids == []
     assert store.load_retriage() == []
 
 
@@ -372,8 +376,8 @@ def test_sync_reports_a_genuine_push_failure_and_keeps_going(
     to push) -- the client raises, and that one star's failure must not
     abort the sync or the merge for anything else."""
     keep_lst = List(id="L_1", name="Explore: Keep", slug="keep")
-    kept = make_star("pradyumnac/kept", pending_list_ids=["L_1"])
-    broken = make_star("pradyumnac/broken", pending_list_ids=["L_deleted"])
+    kept = make_star("example-owner/kept", pending_list_ids=["L_1"])
+    broken = make_star("example-owner/broken", pending_list_ids=["L_deleted"])
     store = StateStore(tmp_path)
     store.save_stars([kept, broken])
     store.save_lists([keep_lst])
@@ -382,28 +386,28 @@ def test_sync_reports_a_genuine_push_failure_and_keeps_going(
 
     result = sync(client, store)  # must not raise
 
-    assert result.failed_tag_pushes == ["pradyumnac/broken"]
+    assert result.failed_tag_pushes == ["example-owner/broken"]
     by_name = {s.full_name: s for s in store.load_stars()}
-    assert by_name["pradyumnac/kept"].list_ids == ["L_1"]
-    assert by_name["pradyumnac/broken"].pending_list_ids is None
+    assert by_name["example-owner/kept"].list_ids == ["L_1"]
+    assert by_name["example-owner/broken"].pending_list_ids is None
     # A failed push does not auto-tag the star.
-    assert by_name["pradyumnac/broken"].list_ids == []
+    assert by_name["example-owner/broken"].list_ids == []
     assert store.load_retriage() == []
 
 
 def test_sync_populates_list_ids_from_list_membership(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    shared = make_star("pradyumnac/shared")
-    solo = make_star("pradyumnac/solo")
-    unlisted = make_star("pradyumnac/unlisted")
+    shared = make_star("example-owner/shared")
+    solo = make_star("example-owner/solo")
+    unlisted = make_star("example-owner/unlisted")
     lists = [
-        List(id="L_1", name="Explore: A", slug="a", items=["pradyumnac/shared"]),
+        List(id="L_1", name="Explore: A", slug="a", items=["example-owner/shared"]),
         List(
             id="L_2",
             name="Explore: B",
             slug="b",
-            items=["pradyumnac/shared", "pradyumnac/solo"],
+            items=["example-owner/shared", "example-owner/solo"],
         ),
     ]
     client = FakeGitHubClient(stars=[shared, solo, unlisted], lists=lists)
@@ -412,10 +416,10 @@ def test_sync_populates_list_ids_from_list_membership(
     sync(client, store)
 
     by_name = {s.full_name: s for s in store.load_stars()}
-    assert sorted(by_name["pradyumnac/shared"].list_ids) == ["L_1", "L_2"]
-    assert by_name["pradyumnac/solo"].list_ids == ["L_2"]
+    assert sorted(by_name["example-owner/shared"].list_ids) == ["L_1", "L_2"]
+    assert by_name["example-owner/solo"].list_ids == ["L_2"]
     # Reconciliation does not create a default List.
-    assert by_name["pradyumnac/unlisted"].list_ids == []
+    assert by_name["example-owner/unlisted"].list_ids == []
     assert not any(lst.name == "Explore: General" for lst in store.load_lists())
 
 
@@ -425,9 +429,9 @@ def test_reconcile_list_membership_never_relists_an_archived_star(
     """A stale/racy List.items entry for an already-archived star must not
     override archive_star()'s empty list_ids (CONTEXT.md: Archived carries
     no List membership going forward)."""
-    archived = archive_star(make_star("pradyumnac/gone"), now=NOW)
+    archived = archive_star(make_star("example-owner/gone"), now=NOW)
     lists = [
-        List(id="L_1", name="Explore: A", slug="a", items=["pradyumnac/gone"]),
+        List(id="L_1", name="Explore: A", slug="a", items=["example-owner/gone"]),
     ]
 
     reconciled = reconcile_list_membership([archived], lists)
@@ -442,13 +446,13 @@ def test_reconcile_list_membership_skips_a_list_item_with_no_matching_star(
     """The two fetches are not one atomic snapshot (see
     docs/explanation/known-limitations.md) -- an unmatched item must not
     raise, only be skipped."""
-    known = make_star("pradyumnac/known")
+    known = make_star("example-owner/known")
     lists = [
         List(
             id="L_1",
             name="Explore: A",
             slug="a",
-            items=["pradyumnac/known", "pradyumnac/not-yet-fetched"],
+            items=["example-owner/known", "example-owner/not-yet-fetched"],
         ),
     ]
 
@@ -479,7 +483,7 @@ def test_sync_never_auto_tags_a_never_classified_star(
     classification is left alone on GitHub -- no List is created or
     pushed to on its behalf, and its local record keeps empty
     `list_ids`. "Untagged" is a derived local view, not a real List."""
-    stars = [make_star(f"pradyumnac/star-{i}") for i in range(3)]
+    stars = [make_star(f"example-owner/star-{i}") for i in range(3)]
     client = FakeGitHubClient(stars=stars)
     store = StateStore(tmp_path)
 
@@ -501,13 +505,13 @@ def test_sync_does_not_touch_a_star_that_just_lost_a_merge_conflict(
     other_lst = List(id="L_other", name="Explore: Other", slug="other")
     remote_lst = List(id="L_remote", name="Explore: Remote", slug="remote")
     # Local and remote changed from base to different memberships.
-    star = make_star("pradyumnac/x", pending_list_ids=["L_other"])
+    star = make_star("example-owner/x", pending_list_ids=["L_other"])
     store = StateStore(tmp_path)
     store.save_stars([star])
     store.save_lists([other_lst, remote_lst])
 
     remote_star = star.model_copy(update={"pending_list_ids": None})
-    remote_remote = remote_lst.model_copy(update={"items": ["pradyumnac/x"]})
+    remote_remote = remote_lst.model_copy(update={"items": ["example-owner/x"]})
     client = FakeGitHubClient(stars=[remote_star], lists=[other_lst, remote_remote])
 
     sync(client, store)
@@ -517,4 +521,4 @@ def test_sync_does_not_touch_a_star_that_just_lost_a_merge_conflict(
     assert saved.list_ids == ["L_remote"]
     queue = store.load_retriage()
     assert len(queue) == 1
-    assert queue[0].star_full_name == "pradyumnac/x"
+    assert queue[0].star_full_name == "example-owner/x"
