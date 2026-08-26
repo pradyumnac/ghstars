@@ -13,6 +13,7 @@ class Star(BaseModel):
     starred_at: datetime
     first_seen: datetime
     language: str | None = None
+    license: str | None = None
     stargazer_count: int = 0
     fork: bool = False
     follow: bool = False

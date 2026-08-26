@@ -36,6 +36,7 @@ def test_starred_response_parses_aliases_and_language() -> None:
                             "url": "https://github.com/gloom-sh/gloomberb",
                             "description": "Finance terminal, in your terminal.",
                             "primaryLanguage": {"name": "TypeScript"},
+                            "licenseInfo": {"spdxId": "MIT", "name": "MIT License"},
                             "stargazerCount": 1763,
                         },
                     }
@@ -52,6 +53,8 @@ def test_starred_response_parses_aliases_and_language() -> None:
     assert node.name_with_owner == "gloom-sh/gloomberb"
     assert node.primary_language is not None
     assert node.primary_language.name == "TypeScript"
+    assert node.license_info is not None
+    assert node.license_info.spdx_id == "MIT"
     assert node.stargazer_count == 1763
 
 

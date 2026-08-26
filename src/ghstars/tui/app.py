@@ -35,7 +35,7 @@ and active Filter, read at launch and written on quit
 import json
 import webbrowser
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import ClassVar
 
@@ -139,6 +139,7 @@ class DetailPane(Static):
             star.description or "(no description)",
             "",
             f"Language: {star.language or '-'}",
+            f"License: {star.license or '-'}",
             f"Stars: {star.stargazer_count}",
             f"Fork: {star.fork}    Follow: {star.follow}",
             f"Archived: {star.archived}"
@@ -278,6 +279,160 @@ class ConfirmUnstarScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class FilterMenuScreen(ModalScreen[str | None]):
+    """Choose a filter type or clear the active filter."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("c", "category", "Category"),
+        Binding("i", "intent", "Intent"),
+        Binding("l", "list", "List"),
+        Binding("g", "language", "Language"),
+        Binding("v", "license", "License"),
+        Binding("r", "recency", "Recency"),
+        Binding("o", "owner", "Owner"),
+        Binding("k", "forks", "Forks"),
+        Binding("w", "followed", "Followed"),
+        Binding("u", "unclassified", "Unclassified"),
+        Binding("x", "clear", "Clear"),
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="filter-body"):
+            yield Static("Filter")
+            yield DataTable(id="filter-menu-table", cursor_type="row")
+            yield Static(
+                "Shortcuts: c Category  i Intent  l List  g Language  v License  r Recency  o Owner  k Forks  w Followed  u Unclassified  x Clear"
+            )
+            yield Button("Cancel", id="cancel")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#filter-menu-table", DataTable)
+        table.add_column("Action")
+        for key, label in (
+            ("category", "Category"),
+            ("intent", "Intent"),
+            ("list", "List"),
+            ("language", "Language"),
+            ("license", "License"),
+            ("recency", "Recency"),
+            ("owner", "Owner"),
+            ("forks", "Forks only"),
+            ("followed", "Followed owners only"),
+            ("unclassified", "Unclassified (no List)"),
+            ("clear", "Clear active filter"),
+        ):
+            table.add_row(label, key=key)
+        table.focus()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.dismiss(event.row_key.value)
+
+    def action_category(self) -> None:
+        self.dismiss("category")
+
+    def action_intent(self) -> None:
+        self.dismiss("intent")
+
+    def action_list(self) -> None:
+        self.dismiss("list")
+
+    def action_language(self) -> None:
+        self.dismiss("language")
+
+    def action_license(self) -> None:
+        self.dismiss("license")
+
+    def action_recency(self) -> None:
+        self.dismiss("recency")
+
+    def action_owner(self) -> None:
+        self.dismiss("owner")
+
+    def action_forks(self) -> None:
+        self.dismiss("forks")
+
+    def action_followed(self) -> None:
+        self.dismiss("followed")
+
+    def action_unclassified(self) -> None:
+        self.dismiss("unclassified")
+
+    def action_clear(self) -> None:
+        self.dismiss("clear")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class FilterScreen(ModalScreen[str | None]):
+    """Choose one value for a filter."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("d", "recent_day", "", show=False),
+        Binding("w", "recent_week", "", show=False),
+        Binding("m", "recent_month", "", show=False),
+        Binding("3", "recent_three_months", "", show=False),
+        Binding("y", "recent_year", "", show=False),
+        Binding("o", "recent_older", "", show=False),
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, title: str, options: list[tuple[str, str]]) -> None:
+        super().__init__()
+        self._title = title
+        self._options = options
+        self._option_values = {value for value, _ in options}
+
+    def _select_shortcut(self, value: str) -> None:
+        if value in self._option_values:
+            self.dismiss(value)
+
+    def action_recent_day(self) -> None:
+        self._select_shortcut("recent:1d")
+
+    def action_recent_week(self) -> None:
+        self._select_shortcut("recent:1w")
+
+    def action_recent_month(self) -> None:
+        self._select_shortcut("recent:1m")
+
+    def action_recent_three_months(self) -> None:
+        self._select_shortcut("recent:3m")
+
+    def action_recent_year(self) -> None:
+        self._select_shortcut("recent:1y")
+
+    def action_recent_older(self) -> None:
+        self._select_shortcut("recent:older_1y")
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="filter-body"):
+            yield Static(self._title)
+            yield DataTable(id="filter-table", cursor_type="row")
+            yield Button("Cancel", id="cancel")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#filter-table", DataTable)
+        table.add_column("Filter")
+        table.add_row("All stars", key="")
+        for value, label in self._options:
+            table.add_row(label, key=value)
+        table.focus()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.dismiss(event.row_key.value)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class ListsOverviewScreen(ModalScreen[None]):
     """Read-only view of every locally synced List, visibility shown."""
 
@@ -313,7 +468,7 @@ class TuiApp(App[None]):
     """Interactive triage: tag, bulk-tag, and retag Stars (ticket 09)."""
 
     CSS = """
-    #picker-body, #lists-overview, #confirm-body {
+    #picker-body, #lists-overview, #confirm-body, #filter-body {
         width: 80%;
         height: auto;
         max-height: 80%;
@@ -340,6 +495,10 @@ class TuiApp(App[None]):
     #search-input {
         display: none;
     }
+    #result-status {
+        height: 1;
+        padding: 0 1;
+    }
     #stars-table {
         height: 1fr;
     }
@@ -361,6 +520,7 @@ class TuiApp(App[None]):
         Binding("a", "select_all", f"Select all{_FOOTER_SEP}"),
         Binding("c", "clear_selection", f"Clear selection{_FOOTER_SEP}"),
         Binding("l", "show_lists", f"Lists{_FOOTER_SEP}"),
+        Binding("f", "open_filter", f"Filter{_FOOTER_SEP}"),
         Binding("o", "open_in_browser", f"Open{_FOOTER_SEP}"),
         Binding("u", "unstar_selected", f"Unstar{_FOOTER_SEP}"),
         # Keep the sort label synchronized with the active mode.
@@ -387,6 +547,7 @@ class TuiApp(App[None]):
         self._selected: set[str] = set()
         self._search_query = ""
         self._picker_open = False
+        self._filter_open = False
         self._unstar_confirm_open = False
 
         # Use explicit paths when provided; otherwise use the standard local paths.
@@ -396,6 +557,7 @@ class TuiApp(App[None]):
         self._state_path = state_path or (store.base_dir / "tui-state.toml")
         self._config: TuiConfig = load_tui_config(self._config_path)
         self._state: TuiState = load_tui_state(self._state_path)
+        self._filter_key = self._state.filter
 
         # Restore a recognized sort mode; default to newest starred date.
         saved_sort_key = self._state.sort_key
@@ -411,6 +573,7 @@ class TuiApp(App[None]):
         yield Header(show_clock=True)
         yield RateLimitBar(id="rate-limit-bar")
         yield Input(placeholder="Search name/description...", id="search-input")
+        yield Static(id="result-status")
         yield DataTable(
             id="stars-table",
             cursor_type="row",
@@ -576,25 +739,73 @@ class TuiApp(App[None]):
         return sorted(self._stars, key=lambda s: s.starred_at, reverse=True)
 
     def _visible_stars(self) -> list[Star]:
-        """`_sorted_stars()` narrowed by the search-as-you-type query
-        (spec story 56), case-insensitive substring match on name and
-        description. No active query returns every sorted Star."""
+        """Apply the active List filter and search query to sorted Stars."""
         stars = self._sorted_stars()
+        filter_key = self._filter_key or ""
+        if filter_key == "unclassified":
+            stars = [star for star in stars if not star.list_ids]
+        elif filter_key.startswith("category:"):
+            category = filter_key.removeprefix("category:")
+            ids = {lst.id for lst in self._lists if lst.category == category}
+            stars = [star for star in stars if set(star.list_ids) & ids]
+        elif filter_key.startswith("intent:"):
+            intent = filter_key.removeprefix("intent:")
+            ids = {lst.id for lst in self._lists if lst.intent == intent}
+            stars = [star for star in stars if set(star.list_ids) & ids]
+        elif filter_key.startswith("list:"):
+            list_id = filter_key.removeprefix("list:")
+            stars = [star for star in stars if list_id in star.list_ids]
+        elif filter_key.startswith("language:"):
+            language = filter_key.removeprefix("language:")
+            stars = [star for star in stars if star.language == language]
+        elif filter_key.startswith("license:"):
+            license_name = filter_key.removeprefix("license:")
+            stars = [star for star in stars if star.license == license_name]
+        elif filter_key.startswith("owner:"):
+            owner = filter_key.removeprefix("owner:")
+            stars = [star for star in stars if star.full_name.split("/", 1)[0] == owner]
+        elif filter_key == "forks":
+            stars = [star for star in stars if star.fork]
+        elif filter_key == "followed":
+            stars = [star for star in stars if star.follow]
+        elif filter_key.startswith("recent:"):
+            cutoff = datetime.now(UTC) - {
+                "1d": timedelta(days=1),
+                "1w": timedelta(weeks=1),
+                "1m": timedelta(days=30),
+                "3m": timedelta(days=90),
+                "1y": timedelta(days=365),
+            }.get(filter_key.removeprefix("recent:"), timedelta(0))
+            if filter_key == "recent:older_1y":
+                cutoff = datetime.now(UTC) - timedelta(days=365)
+                stars = [star for star in stars if star.starred_at < cutoff]
+            else:
+                stars = [star for star in stars if star.starred_at >= cutoff]
+
         query = self._search_query.strip().lower()
-        if not query:
-            return stars
-        return [
-            star
-            for star in stars
-            if query in star.full_name.lower()
-            or (star.description is not None and query in star.description.lower())
-        ]
+        if query:
+            stars = [
+                star
+                for star in stars
+                if query in star.full_name.lower()
+                or (star.description is not None and query in star.description.lower())
+            ]
+        return stars
 
     def _refresh_table(self) -> None:
         table = self.query_one("#stars-table", DataTable)
         table.clear()
+        visible_stars = self._visible_stars()
+        status = self.query_one("#result-status", Static)
+        noun = "star" if len(visible_stars) == 1 else "stars"
+        details = [f"{len(visible_stars)} {noun}"]
+        if self._search_query.strip():
+            details.append(f"Search: {escape(self._search_query.strip())}")
+        if self._filter_key:
+            details.append(f"Filter: {escape(self._filter_label())}")
+        status.update(" • ".join(details))
         by_id = self._lists_by_id()
-        for star in self._visible_stars():
+        for star in visible_stars:
             mark = "[x]" if star.full_name in self._selected else "[ ]"
             memberships = ", ".join(
                 f"{by_id[lid].name} ({_visibility_label(by_id[lid].is_private)})"
@@ -735,6 +946,94 @@ class TuiApp(App[None]):
         self._refresh_table()
         self._update_sort_binding_description()
         self.notify(f"Sorted by {self._SORT_NOTIFY_LABELS[self._sort_mode]}.")
+
+    # -- filters --------------------------------------------------------------
+
+    def _set_filter(self, value: str | None) -> None:
+        self._filter_key = value or None
+        self._state.filter = self._filter_key
+        self._refresh_table()
+        self.notify(
+            "Filter cleared." if not value else f"Filtered by {self._filter_label()}."
+        )
+
+    def _filter_label(self) -> str:
+        key = self._filter_key or ""
+        if key == "unclassified":
+            return "Unclassified (no List)"
+        if ":" in key:
+            kind, value = key.split(":", 1)
+            if kind == "list":
+                return next((lst.name for lst in self._lists if lst.id == value), value)
+            return f"{kind.title()}: {value}"
+        return key
+
+    @work
+    async def _open_filter(self) -> None:
+        if self._filter_open:
+            return
+        self._filter_open = True
+        try:
+            kind = await self.push_screen_wait(FilterMenuScreen())
+            if kind in {"clear", "unclassified"}:
+                self._set_filter(None if kind == "clear" else kind)
+                return
+            if kind == "category":
+                values = sorted({lst.category for lst in self._lists if lst.category})
+                options = [(f"category:{value}", value) for value in values]
+                title = "Filter by Category"
+            elif kind == "intent":
+                values = sorted({lst.intent for lst in self._lists if lst.intent})
+                options = [(f"intent:{value}", value) for value in values]
+                title = "Filter by Intent"
+            elif kind == "list":
+                options = [
+                    (f"list:{lst.id}", lst.name)
+                    for lst in sorted(self._lists, key=lambda item: item.name)
+                ]
+                title = "Filter by List"
+            elif kind == "language":
+                values = sorted(
+                    {star.language for star in self._stars if star.language}
+                )
+                options = [(f"language:{value}", value) for value in values]
+                title = "Filter by Language"
+            elif kind == "license":
+                values = sorted({star.license for star in self._stars if star.license})
+                options = [(f"license:{value}", value) for value in values]
+                title = "Filter by License"
+            elif kind == "owner":
+                values = sorted(
+                    {star.full_name.split("/", 1)[0] for star in self._stars}
+                )
+                options = [(f"owner:{value}", value) for value in values]
+                title = "Filter by Owner"
+            elif kind == "forks":
+                options = [("forks", "Forks only")]
+                title = "Filter Forks"
+            elif kind == "followed":
+                options = [("followed", "Followed owners only")]
+                title = "Filter Followed"
+            elif kind == "recency":
+                options = [
+                    ("recent:1d", "Starred in the last 1 day"),
+                    ("recent:1w", "Starred in the last 1 week"),
+                    ("recent:1m", "Starred in the last 1 month"),
+                    ("recent:3m", "Starred in the last 3 months"),
+                    ("recent:1y", "Starred in the last 1 year"),
+                    ("recent:older_1y", "Starred more than 1 year ago"),
+                ]
+                title = "Filter by Recency (d/w/m/3/y/o)"
+            else:
+                return
+            value = await self.push_screen_wait(FilterScreen(title, options))
+            if value is not None:
+                self._set_filter(value)
+        finally:
+            self._filter_open = False
+
+    def action_open_filter(self) -> None:
+        self._open_filter()
 
     # -- search ---------------------------------------------------------------
 

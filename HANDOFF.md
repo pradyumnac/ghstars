@@ -55,11 +55,19 @@ not that it's unblocked — check the Blocked-by column.
 | 24 | Chrome, live state, and an explicit sync key            | ready-for-agent — unblocked                 | none                          |
 | 25 | View mode switcher and Folder view                      | ready-for-agent — unblocked                 | none                          |
 | 26 | Grid view mode                                          | ready-for-agent — blocked                   | 25                            |
-| 27 | Finding and ordering Stars: filters, search, sort       | ready-for-agent — partial sort done; blocked | 25                            |
+| 27 | Finding and ordering Stars: filters, search, sort       | partial — Folder integration blocked | 25                            |
 | 28 | Colour system for Lists and Categories                  | ready-for-agent — unblocked                 | none                          |
 
-**Unblocked frontier:** 12, 23, 24, 25, 28. Ticket 27 has partial sort work,
-but ticket 25 still blocks its remaining Filter work.
+**Unblocked frontier:** 12, 23, 24, 25, 28. Ticket 27 has implemented
+flat-view filters, search, sorting, and persistence. Ticket 25 still blocks
+Folder integration.
+
+### Follow-ups queued by the user
+
+- Add License to the Star DetailPane and Filter. The local snapshot did not
+  store License before ticket 27 work; the sync model now fetches it.
+- Add an explicit TUI sync key after ticket 27. The key must never start sync
+  automatically. Show progress, completion, and error states in the TUI.
 
 ### New TUI defect to ticket (queued by user, 2026-08-26)
 

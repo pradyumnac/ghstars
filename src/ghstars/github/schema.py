@@ -24,6 +24,11 @@ class Language(_GraphQLModel):
     name: str
 
 
+class LicenseInfo(_GraphQLModel):
+    spdx_id: str | None = None
+    name: str | None = None
+
+
 class RepoParent(_GraphQLModel):
     name_with_owner: str
 
@@ -33,6 +38,7 @@ class StarredRepoNode(_GraphQLModel):
     url: str
     description: str | None = None
     primary_language: Language | None = None
+    license_info: LicenseInfo | None = None
     stargazer_count: int
 
 

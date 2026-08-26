@@ -51,6 +51,7 @@ query($cursor: String) {{
           url
           description
           primaryLanguage {{ name }}
+          licenseInfo {{ spdxId name }}
           stargazerCount
         }}
       }}
@@ -363,6 +364,11 @@ class RealGitHubClient:
                     first_seen=now,
                     language=(
                         node.primary_language.name if node.primary_language else None
+                    ),
+                    license=(
+                        node.license_info.spdx_id or node.license_info.name
+                        if node.license_info
+                        else None
                     ),
                     stargazer_count=node.stargazer_count,
                     fork=node.name_with_owner in forked_parents,

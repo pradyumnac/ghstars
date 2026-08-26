@@ -8,7 +8,7 @@ runs in a `@work(thread=True)` worker, so tests await
 `app.workers.wait_for_complete()` after triggering it.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -23,12 +23,14 @@ from ghstars.github.schema import RateLimitResponse
 from ghstars.tui.app import (
     ConfirmUnstarScreen,
     DetailPane,
+    FilterScreen,
     ListPickerScreen,
     RateLimitBar,
     TuiApp,
     _format_date,
     _visibility_label,
 )
+from ghstars.tui.config import load_tui_state
 
 
 def _table(app: TuiApp) -> DataTable[str]:
@@ -452,6 +454,7 @@ async def test_detail_pane_shows_full_record_of_star_under_cursor(
         "pradyumnac/ghstars",
         description="A star-tracking tool",
         language="Python",
+        license="MIT",
         stargazer_count=7,
         fork=True,
         follow=True,
@@ -472,6 +475,7 @@ async def test_detail_pane_shows_full_record_of_star_under_cursor(
     assert star.description is not None
     assert star.description in text
     assert "Python" in text
+    assert "MIT" in text
     assert "7" in text
     assert "True" in text  # fork / follow
     assert _format_date(star.starred_at) in text
@@ -783,6 +787,211 @@ async def test_footer_keybindings_are_separated_with_a_bullet(
 
     assert descriptions
     assert all(d.endswith(" •") for d in descriptions)
+
+
+async def test_filters_by_category_intent_list_and_unclassified(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    explore = List(
+        id="L1", name="Explore: AI", slug="explore-ai", category="AI", intent="Explore"
+    )
+    current = List(
+        id="L2",
+        name="Current: Tools",
+        slug="current-tools",
+        category="Tools",
+        intent="Current",
+    )
+    star_explore = make_star("pradyumnac/explore", list_ids=["L1"], language="Python")
+    star_current = make_star("pradyumnac/current", list_ids=["L2"], language="Go")
+    star_none = make_star("pradyumnac/none", list_ids=[])
+    store = StateStore(tmp_path)
+    store.save_stars([star_explore, star_current, star_none])
+    store.save_lists([explore, current])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+        assert isinstance(app.screen, FilterScreen)
+        await pilot.press("down", "enter")  # All stars -> AI
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "pradyumnac/explore"
+
+        await pilot.press("/")
+        search = app.query_one("#search-input", Input)
+        search.value = "current"
+        await pilot.pause()
+        assert table.row_count == 0
+        await pilot.press("escape")
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("i")
+        await pilot.pause()
+        await pilot.press("down", "enter")  # All stars -> Current
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "pradyumnac/current"
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("l")
+        await pilot.pause()
+        await pilot.press("down", "enter")  # All stars -> Current: Tools
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "pradyumnac/current"
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("u")
+        await pilot.pause()
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "pradyumnac/none"
+        assert app._state.filter == "unclassified"
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        assert table.row_count == 3
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("g")
+        await pilot.pause()
+        await pilot.press("down", "enter")  # All stars -> Go
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "pradyumnac/current"
+
+
+async def test_metadata_filters_support_owner_fork_and_followed(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    owned = make_star("alice/tool", fork=True, follow=True, license="MIT")
+    other = make_star("bob/library", license="Apache-2.0")
+    store = StateStore(tmp_path)
+    store.save_stars([owned, other])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("k")
+        await pilot.pause()
+        await pilot.press("down", "enter")
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "alice/tool"
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("w")
+        await pilot.pause()
+        await pilot.press("down", "enter")
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "alice/tool"
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("o")
+        await pilot.pause()
+        await pilot.press("down", "enter")
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "alice/tool"
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("v")
+        await pilot.pause()
+        await pilot.press("down", "down", "enter")  # All stars -> MIT
+        assert table.row_count == 1
+        assert table.get_row_at(0)[1] == "alice/tool"
+
+
+async def test_recency_filter_supports_recent_and_older_ranges(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    now = datetime.now(UTC)
+    recent = make_star("pradyumnac/recent", starred_at=now - timedelta(hours=12))
+    old = make_star("pradyumnac/old", starred_at=now - timedelta(days=400))
+    store = StateStore(tmp_path)
+    store.save_stars([recent, old])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("d")  # Recency shortcut: last 1 day
+        assert _table(app).row_count == 1
+        assert _table(app).get_row_at(0)[1] == "pradyumnac/recent"
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("o")  # Recency shortcut: older than 1 year
+        assert _table(app).row_count == 1
+        assert _table(app).get_row_at(0)[1] == "pradyumnac/old"
+
+
+async def test_search_matches_name_and_description_as_you_type(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    named = make_star("pradyumnac/needle", description="A useful widget")
+    described = make_star("pradyumnac/other", description="Contains the needle")
+    store = StateStore(tmp_path)
+    store.save_stars([named, described])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("/")
+        search = app.query_one("#search-input", Input)
+        search.value = "NEEDLE"
+        await pilot.pause()
+        assert _table(app).row_count == 2
+        search.value = "widget"
+        await pilot.pause()
+        assert _table(app).row_count == 1
+        assert _table(app).get_row_at(0)[1] == "pradyumnac/needle"
+
+
+async def test_filter_persists_in_tui_state(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("pradyumnac/none", list_ids=[])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+    state_path = tmp_path / "tui-state.toml"
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, state_path=state_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("u")
+        await pilot.pause()
+        await pilot.press("q")
+
+    assert load_tui_state(state_path).filter == "unclassified"
 
 
 async def test_sort_by_list_name_ascending_no_lists_last(
