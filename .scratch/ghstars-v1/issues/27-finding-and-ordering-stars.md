@@ -69,18 +69,31 @@ until this note, so the ticket was stale, not the code. The ranking puts
 an exact match first, then a prefix match, then any other substring
 match, then alphabetical order.
 
-"All stars" was a regression. The parent commit added it to every value
-screen. Commit 99e4174 added it only when the query held the letters
-"all", so an empty query hid the clear-filter option and a query such as
-"fall" inserted it and then filtered it out again. `_visible_options`
-now holds it in the option set at all times, and ranks and filters it
-like every other option.
+The clear-filter option was a regression. The parent commit added it,
+labelled "All stars", to every value screen unconditionally. Commit
+99e4174 added it only when the query held the letters "all", so an
+empty query hid it and a query such as "fall" inserted it and then
+filtered it out again.
+
+The first fix put it back as an ordinary ranked option. That created a
+second bug on a single-option screen (Forks, Followed): the clear
+option could sort ahead of the only real option, so Enter on a fresh
+screen cleared the filter instead of applying it. The clear option now
+always ranks last, so it never steals Enter, and it always shows
+without a search.
+
+The label is no longer a generic "All stars". The TUI holds one filter
+key, not one per axis, so every clear option clears the whole filter —
+`_CLEAR_FILTER_LABELS` names each screen's version of that ("All
+categories", "All owners", "Any star date", ...) so the wording matches
+the screen the user is on without implying per-axis filtering that
+does not exist.
 
 `_match_rank` is now a named helper with its own docstring. The three
 boolean sort keys had no explanation, so a later change could reverse
 the exact, prefix, and substring precedence without anyone noticing.
 
 - [x] Enter selects the best-ranked match; the ticket text now matches the code
-- [x] "All stars" appears in every value screen, including on an empty query
+- [x] The clear-filter option appears in every value screen without a search, and never outranks a real option
 - [x] The ranking order is a named helper, not three unexplained sort keys
-- [ ] Tests cover an exact match, a prefix match, multiple matches, zero matches, and an empty query
+- [x] Tests cover an exact match, a prefix match, multiple matches, zero matches, and an empty query

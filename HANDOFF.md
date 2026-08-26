@@ -18,6 +18,18 @@ Read these before you write code:
 | `docs/agents/issue-tracker.md` | How tickets and triage labels work here. |
 | `docs/explanation/known-limitations.md` | Accepted limitations. Do not re-report them as bugs. |
 
+## Session baseline
+
+Working tree is clean at `7fe2dd5`. `git log` holds what each commit
+did; this file only holds what is not yet in a commit, a ticket, or an
+ADR.
+
+No task below has started. The prior session's work was documentation
+(ADR 0008, ticket 23's rewrite) and two code-review fixes unrelated to
+ticket 23 (`FilterScreen`'s clear-filter option, and two `except A, B:`
+sites) — see ticket 27's Comments and `git log` for those, not this
+file.
+
 ## Task rail
 
 The harness Task list is authoritative during a session. Load this rail
