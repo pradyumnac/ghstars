@@ -567,12 +567,11 @@ async def test_detail_pane_shows_placeholder_when_table_is_empty(
     assert "No star selected" in text
 
 
-async def test_detail_pane_starts_hidden_and_toggles_with_d(
+async def test_detail_pane_visible_by_default_and_toggles_with_d(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    """The detail pane is a view-details toggle ("d"), not an
-    always-visible panel -- it starts hidden so the star table gets the
-    full screen by default."""
+    """The detail pane is visible by default; "d"
+    (action_toggle_detail_pane) hides/shows it on demand."""
     store = StateStore(tmp_path)
     store.save_stars([make_star("pradyumnac/ghstars")])
     store.save_lists([])
@@ -581,10 +580,10 @@ async def test_detail_pane_starts_hidden_and_toggles_with_d(
     async with app.run_test() as pilot:
         await pilot.pause()
         pane = app.query_one("#detail-pane", DetailPane)
-        assert pane.display is False
-
-        await pilot.press("d")
         assert pane.display is True
 
         await pilot.press("d")
         assert pane.display is False
+
+        await pilot.press("d")
+        assert pane.display is True

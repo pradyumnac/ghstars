@@ -94,6 +94,19 @@ def _format_date(value: datetime | None) -> str:
     return "-" if value is None else value.strftime("%d-%b-%Y")
 
 
+def _format_count(value: int) -> str:
+    """Compact star-count display for the table's narrow "Stars" column
+    (e.g. 12345 -> "12.3K", 2_000_000 -> "2M"). The detail pane still
+    shows the exact figure -- this is a glanceability shorthand, not
+    the only place the real number appears."""
+    for threshold, suffix in ((1_000_000, "M"), (1_000, "K")):
+        if abs(value) >= threshold:
+            scaled = value / threshold
+            text = f"{scaled:.1f}".removesuffix(".0")
+            return f"{text}{suffix}"
+    return str(value)
+
+
 class DetailPane(Static):
     """Shows every field the last `ghstars sync` stored for the Star
     under the cursor (spec story 59), including `description` and
@@ -132,9 +145,11 @@ class DetailPane(Static):
                 if star.archived_at
                 else ""
             ),
-            f"Starred at: {_format_date(star.starred_at)}",
-            f"First seen: {_format_date(star.first_seen)}",
-            f"Last checked: {_format_date(star.last_checked)}",
+            (
+                f"Starred: {_format_date(star.starred_at)}    "
+                f"First seen: {_format_date(star.first_seen)}    "
+                f"Last checked: {_format_date(star.last_checked)}"
+            ),
             f"Lists: {memberships}",
             f"Pending list edit: {pending}",
         ]
@@ -304,11 +319,10 @@ class TuiApp(App[None]):
         height: 1fr;
     }
     DetailPane {
-        height: 12;
-        padding: 1;
-        margin-bottom: 1;
+        height: 14;
+        padding: 1 2;
         background: $panel;
-        border-top: solid $primary;
+        border: round $primary;
     }
     """
 
@@ -374,11 +388,9 @@ class TuiApp(App[None]):
         self.title = "ghstars"
         table = self.query_one("#stars-table", DataTable)
         table.add_columns(("Sel", "sel"), "Star", "Language", "Stars", "Lists")
-        # Detail pane starts hidden -- it's a view-details toggle ("d"),
-        # not an always-on panel, so the table gets the full screen by
-        # default. `#stars-table { height: 1fr }` picks up the freed
-        # space automatically when it's hidden.
-        self.query_one("#detail-pane", DetailPane).display = False
+        # Detail pane is visible by default; "d" (action_toggle_detail_pane)
+        # hides/shows it on demand. `#stars-table { height: 1fr }` picks
+        # up the freed space automatically whenever it's hidden.
         self._reload_local_state()
         self._refresh_table()
         self._fetch_rate_limit()
@@ -522,7 +534,7 @@ class TuiApp(App[None]):
                 mark,
                 star.full_name,
                 star.language or "-",
-                f"{star.stargazer_count:,}",
+                _format_count(star.stargazer_count),
                 memberships or "-",
                 height=self._config.row_height,
                 key=star.full_name,
