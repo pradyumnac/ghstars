@@ -24,27 +24,11 @@ if resuming with new tasks in flight.
 
 ### Done
 
-- Issue 01 — core scaffolding, fake client, state store: complete.
-- Issue 02 — real GitHub client, fetch stars: complete.
-- Issue 03 — fetch Lists, parse taxonomy: complete.
-- Issue 04 — local tagging, two-way sync push: complete.
-- Issue 05 — three-way merge, Retriage Queue: complete.
-- Issue 06 — unstar detection, archived state: complete.
-- Issue 07 — category rename/drain: complete.
-- Issue 09 — TUI tagging, bulk tagging, retagging: complete.
-- Issue 10 — export engine: complete.
-- Issue 11 — state diff: complete.
-- Issue 16 — lightweight push (immediate tag push): complete.
-- Issue 17 — audit findings, mid-term fixes: complete.
-- Issue 19 — architecture cleanup, post-layer: complete.
-- Issue 08 — agent-mode status command & verify: complete.
-- Issue 20 — fix TUI rate-limit-bar defects: complete.
-- Issue 21 — TUI config foundation: tui.toml and tui-state.toml: complete.
-- Issue 22 — TUI detail pane: complete.
-- Issue 29 — Open in browser, and unstar with confirmation: complete.
-
-See each ticket file's own `Status:`/`## Comments` for implementation
-detail. Reconciled against the ticket files directly on 2026-08-26.
+Tickets 01–11, 16, 17, 19, 20, 21, 22, 29. Each ticket file's own
+`Status: done` / `## Comments` is the source of truth for what shipped
+and how — not duplicated here, per this file's own rule above (delete
+once it lands elsewhere; ticket files already are "elsewhere").
+Reconciled against the ticket files directly on 2026-08-26.
 
 ### Gaps to fix (last updated 2026-08-26)
 

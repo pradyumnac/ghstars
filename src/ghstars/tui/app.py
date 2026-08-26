@@ -355,16 +355,21 @@ class TuiApp(App[None]):
     }
     """
 
+    _FOOTER_SEP = " •"
+
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("q", "quit", "Quit"),
-        Binding("t", "tag_selected", "Tag / Retag"),
-        Binding("d", "toggle_detail_pane", "Detail"),
-        Binding("space", "toggle_select", "Select"),
-        Binding("a", "select_all", "Select all"),
-        Binding("c", "clear_selection", "Clear selection"),
-        Binding("l", "show_lists", "Lists"),
-        Binding("o", "open_in_browser", "Open"),
-        Binding("u", "unstar_selected", "Unstar"),
+        Binding("q", "quit", f"Quit{_FOOTER_SEP}"),
+        Binding("t", "tag_selected", f"Tag / Retag{_FOOTER_SEP}"),
+        Binding("d", "toggle_detail_pane", f"Detail{_FOOTER_SEP}"),
+        Binding("space", "toggle_select", f"Select{_FOOTER_SEP}"),
+        Binding("a", "select_all", f"Select all{_FOOTER_SEP}"),
+        Binding("c", "clear_selection", f"Clear selection{_FOOTER_SEP}"),
+        Binding("l", "show_lists", f"Lists{_FOOTER_SEP}"),
+        Binding("o", "open_in_browser", f"Open{_FOOTER_SEP}"),
+        Binding("u", "unstar_selected", f"Unstar{_FOOTER_SEP}"),
+        # Description carries the active sort mode in parens; kept in
+        # sync by _update_sort_binding_description() on every toggle.
+        Binding("s", "cycle_sort", f"Sort (Date){_FOOTER_SEP}"),
         Binding("r", "refresh_rate_limit", "Refresh rate limit"),
     ]
 
@@ -384,6 +389,9 @@ class TuiApp(App[None]):
         self._selected: set[str] = set()
         self._picker_open = False
         self._unstar_confirm_open = False
+        # Spec story 57's default sort: star date descending (newest
+        # first), the triage order. "s" cycles to "name" and back.
+        self._sort_mode = "starred_desc"
 
         # Ticket 21: `config/tui.toml` (user-authored, read-only here) and
         # `state/tui-state.toml` (machine-owned, read + written here). A
@@ -423,6 +431,7 @@ class TuiApp(App[None]):
         # Detail pane is visible by default; "d" (action_toggle_detail_pane)
         # hides/shows it on demand. `#stars-table { height: 1fr }` picks
         # up the freed space automatically whenever it's hidden.
+        self._update_sort_binding_description()
         self._reload_local_state()
         self._refresh_table()
         self._fetch_rate_limit()
@@ -548,11 +557,41 @@ class TuiApp(App[None]):
     def _lists_by_id(self) -> dict[str, List]:
         return {lst.id: lst for lst in self._lists}
 
+    def _sorted_stars(self) -> list[Star]:
+        # Spec story 57's five sort keys. "starred_desc" (newest first)
+        # is the default -- the triage order.
+        if self._sort_mode == "name":
+            return sorted(self._stars, key=lambda s: s.full_name)
+        if self._sort_mode == "stargazer_desc":
+            return sorted(self._stars, key=lambda s: s.stargazer_count, reverse=True)
+        if self._sort_mode == "language":
+            # No language sorts last, alphabetical otherwise.
+            return sorted(
+                self._stars, key=lambda s: (s.language is None, s.language or "")
+            )
+        if self._sort_mode == "list_count_desc":
+            return sorted(self._stars, key=lambda s: len(s.list_ids), reverse=True)
+        if self._sort_mode == "list_name":
+            # Beyond spec story 57's literal five keys (which lists
+            # "List count", not List *name*) -- added on top per user
+            # request. Sorts by each Star's alphabetically-first List
+            # name (a Star can belong to several); no Lists sorts last.
+            by_id = self._lists_by_id()
+
+            def _first_list_name(star: Star) -> tuple[bool, str]:
+                names = sorted(
+                    by_id[lid].name for lid in star.list_ids if lid in by_id
+                )
+                return (not names, names[0] if names else "")
+
+            return sorted(self._stars, key=_first_list_name)
+        return sorted(self._stars, key=lambda s: s.starred_at, reverse=True)
+
     def _refresh_table(self) -> None:
         table = self.query_one("#stars-table", DataTable)
         table.clear()
         by_id = self._lists_by_id()
-        for star in sorted(self._stars, key=lambda s: s.full_name):
+        for star in self._sorted_stars():
             mark = "[x]" if star.full_name in self._selected else "[ ]"
             # `tag_star()` pushes to GitHub immediately (ticket 16), so
             # `list_ids` is already live by the time this renders -- no
@@ -652,6 +691,61 @@ class TuiApp(App[None]):
 
     def action_refresh_rate_limit(self) -> None:
         self._fetch_rate_limit()
+
+    # Spec story 57's five sort keys, plus "list_name" (List name
+    # ascending, added on top per user request -- not in the literal
+    # spec wording, which only lists "List count"). Cycle order via "s".
+    _SORT_MODES: ClassVar[list[str]] = [
+        "starred_desc",
+        "name",
+        "stargazer_desc",
+        "language",
+        "list_count_desc",
+        "list_name",
+    ]
+    # Short form for the Footer's "Sort (...)" label.
+    _SORT_LABELS: ClassVar[dict[str, str]] = {
+        "starred_desc": "Date",
+        "name": "Name",
+        "stargazer_desc": "Stars",
+        "language": "Lang",
+        "list_count_desc": "Lists#",
+        "list_name": "List A-Z",
+    }
+    # Longer form for the one-off toast on each toggle.
+    _SORT_NOTIFY_LABELS: ClassVar[dict[str, str]] = {
+        "starred_desc": "star date (newest first)",
+        "name": "name",
+        "stargazer_desc": "star count (highest first)",
+        "language": "language",
+        "list_count_desc": "List count (highest first)",
+        "list_name": "List name (A to Z)",
+    }
+
+    def _update_sort_binding_description(self) -> None:
+        """Keeps the Footer's "Sort (...)" label (`BINDINGS` above) in
+        step with `self._sort_mode` -- mutates `self._bindings` the
+        same way `_apply_keybinding_overrides()` does, then
+        `refresh_bindings()` to repaint the Footer."""
+        label = self._SORT_LABELS[self._sort_mode]
+        key_to_bindings = self._bindings.key_to_bindings
+        bindings = key_to_bindings.get("s")
+        if not bindings:
+            return
+        key_to_bindings["s"] = [
+            replace(b, description=f"Sort ({label}){self._FOOTER_SEP}")
+            if b.action == "cycle_sort"
+            else b
+            for b in bindings
+        ]
+        self.refresh_bindings()
+
+    def action_cycle_sort(self) -> None:
+        index = self._SORT_MODES.index(self._sort_mode)
+        self._sort_mode = self._SORT_MODES[(index + 1) % len(self._SORT_MODES)]
+        self._refresh_table()
+        self._update_sort_binding_description()
+        self.notify(f"Sorted by {self._SORT_NOTIFY_LABELS[self._sort_mode]}.")
 
     # -- open in browser / unstar ---------------------------------------------
 

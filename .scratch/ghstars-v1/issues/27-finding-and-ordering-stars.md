@@ -9,6 +9,30 @@
 - [ ] Filter by Category, by Intent, and by List, each reachable by its own key
 - [ ] A dedicated "unclassified only" filter
 - [ ] Search-as-you-type matches name and description, opened with `/`
-- [ ] Sort keys: name, star date, stargazer count, language, List count; any key reversible; star date descending is the default
+- [x] Sort keys: name, star date, stargazer count, language, List count; any key reversible; star date descending is the default
 - [ ] Applying a Filter while inside a Folder narrows that Folder's Stars, without leaving the Folder
 - [ ] Active Filter and sort persist into `state/tui-state.toml` (ticket 21) across a quit/relaunch
+
+## Comments
+
+**2026-08-26, partial (queued by user ahead of the full ticket):** sort
+only, implemented directly on `main` rather than in a worktree, since
+it's a small self-contained slice of this ticket. `"s"`
+(`action_cycle_sort`, `tui/app.py`) cycles the star table through all
+five keys every reversal direction spec story 57 asks for:
+`starred_desc` (default) → `name` → `stargazer_desc` → `language` →
+`list_count_desc` → back to `starred_desc`. `_sort_status_text()`
+renders the whole key map with the active one bracketed
+(`Date • [Name] • Stars • Lang • Lists`), shown via `notify()` on every
+toggle. Not yet persisted to `state/tui-state.toml` (in-memory/session
+only) — this ticket's own AC still requires that, along with every
+filter/search AC, none of which are implemented. Status stays
+`ready-for-agent`, not `done`.
+
+Also added a sixth key, `list_name` (List name ascending, no-Lists
+sorted last), beyond this ticket's literal five ("List count", not List
+*name*) — per a follow-up user request in the same session. The
+Footer's "Sort (...)" label (not a notify toast, per user correction)
+tracks the active mode live via `_update_sort_binding_description()`;
+every keybinding's Footer description also got a trailing " •"
+separator per the same request.

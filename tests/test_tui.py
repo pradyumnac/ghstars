@@ -8,6 +8,7 @@ runs in a `@work(thread=True)` worker, so tests await
 `app.workers.wait_for_complete()` after triggering it.
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -660,3 +661,159 @@ async def test_open_in_browser_launches_html_url(
         await pilot.press("o")
 
     assert opened == [star.html_url]
+
+
+async def test_sort_defaults_to_star_date_descending_and_s_toggles_to_name(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Spec story 57: star date descending (newest first) is the
+    default sort -- the triage order. "s" toggles to name and back.
+    Fixture is deliberately name-vs-date-discordant (the
+    later-alphabetical repo was starred earlier) so a passing
+    assertion actually proves which key is active, not a coincidence."""
+    star_b_older = make_star(
+        "pradyumnac/b", starred_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+    star_a_newer = make_star(
+        "pradyumnac/a", starred_at=datetime(2026, 6, 1, tzinfo=UTC)
+    )
+    store = StateStore(tmp_path)
+    store.save_stars([star_b_older, star_a_newer])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+        # Default starred_desc: pradyumnac/a (starred later) first,
+        # even though "b" would sort first if this were reversed.
+        assert table.get_row_at(0)[1] == "pradyumnac/a"
+        assert table.get_row_at(1)[1] == "pradyumnac/b"
+
+        await pilot.press("s")  # -> name (alphabetical ascending)
+        assert table.get_row_at(0)[1] == "pradyumnac/a"
+        assert table.get_row_at(1)[1] == "pradyumnac/b"
+
+        # Full cycle back to starred_desc: starred_desc -> name ->
+        # stargazer_desc -> language -> list_count_desc -> list_name ->
+        # starred_desc.
+        for _ in range(5):
+            await pilot.press("s")
+        assert table.get_row_at(0)[1] == "pradyumnac/a"
+        assert table.get_row_at(1)[1] == "pradyumnac/b"
+
+
+async def test_sort_by_stargazer_count_language_and_list_count(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    lst = List(id="L1", name="Explore: Tool", slug="explore-tool")
+    star_low = make_star(
+        "pradyumnac/low", stargazer_count=5, language="Zig", list_ids=[]
+    )
+    star_high = make_star(
+        "pradyumnac/high", stargazer_count=500, language="Ada", list_ids=["L1"]
+    )
+    store = StateStore(tmp_path)
+    store.save_stars([star_low, star_high])
+    store.save_lists([lst])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+        await pilot.press("s")  # -> name
+        await pilot.press("s")  # -> stargazer_desc
+        assert table.get_row_at(0)[1] == "pradyumnac/high"
+        assert table.get_row_at(1)[1] == "pradyumnac/low"
+
+        await pilot.press("s")  # -> language (alphabetical: Ada, Zig)
+        assert table.get_row_at(0)[1] == "pradyumnac/high"
+        assert table.get_row_at(1)[1] == "pradyumnac/low"
+
+        await pilot.press("s")  # -> list_count_desc
+        assert table.get_row_at(0)[1] == "pradyumnac/high"
+        assert table.get_row_at(1)[1] == "pradyumnac/low"
+
+
+def _sort_binding_description(app: TuiApp) -> str:
+    return next(
+        b.description
+        for b in app._bindings.key_to_bindings["s"]
+        if b.action == "cycle_sort"
+    )
+
+
+async def test_footer_sort_label_shows_active_mode_and_toggles(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """The Footer's "Sort (...)" key label (not a notify toast) tracks
+    the active sort mode, kept in sync by
+    _update_sort_binding_description()."""
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert _sort_binding_description(app) == "Sort (Date) •"
+        await pilot.press("s")
+        assert _sort_binding_description(app) == "Sort (Name) •"
+
+
+async def test_footer_keybindings_are_separated_with_a_bullet(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # Only TuiApp's own single-key BINDINGS, not App-level built-ins
+        # like ctrl+q/ctrl+c (also action "quit") which have their own,
+        # unrelated descriptions.
+        descriptions = [
+            b.description
+            for key in ("q", "t", "space", "a", "c", "l", "o", "u")
+            for b in app._bindings.key_to_bindings[key]
+            if b.action
+            in {
+                "quit",
+                "tag_selected",
+                "toggle_select",
+                "select_all",
+                "clear_selection",
+                "show_lists",
+                "open_in_browser",
+                "unstar_selected",
+            }
+        ]
+
+    assert descriptions
+    assert all(d.endswith(" •") for d in descriptions)
+
+
+async def test_sort_by_list_name_ascending_no_lists_last(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    list_b = List(id="LB", name="Explore: Bravo", slug="explore-bravo")
+    list_a = List(id="LA", name="Explore: Alpha", slug="explore-alpha")
+    star_in_b = make_star("pradyumnac/in-b", list_ids=["LB"])
+    star_in_a = make_star("pradyumnac/in-a", list_ids=["LA"])
+    star_unclassified = make_star("pradyumnac/none", list_ids=[])
+    store = StateStore(tmp_path)
+    store.save_stars([star_in_b, star_in_a, star_unclassified])
+    store.save_lists([list_a, list_b])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+        for _ in range(5):  # starred_desc -> ... -> list_name
+            await pilot.press("s")
+        assert app._sort_mode == "list_name"
+        assert table.get_row_at(0)[1] == "pradyumnac/in-a"
+        assert table.get_row_at(1)[1] == "pradyumnac/in-b"
+        assert table.get_row_at(2)[1] == "pradyumnac/none"
