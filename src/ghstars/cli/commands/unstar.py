@@ -30,11 +30,7 @@ def unstar_cmd(
     except GitHubApiError as exc:
         fail(str(exc))
     except Timeout:
-        # The GitHub-side unstar (inside unstar_star()) already
-        # succeeded -- only the local archive-and-save is blocked by a
-        # concurrent `ghstars` command holding the lock. Say so
-        # explicitly: a plain "try again" here would wrongly imply the
-        # unstar itself needs retrying too.
+        # Report remote success separately from local lock failure.
         fail(
             f"unstarred {repo} on GitHub, but could not acquire the local "
             "state lock to archive it locally — another ghstars command "

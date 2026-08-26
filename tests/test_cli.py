@@ -495,8 +495,7 @@ def test_sync_cmd_debug_flag_prints_plain_stage_lines_and_raises_logger_level(
         result = runner.invoke(app, ["sync", "--debug"])
 
         assert result.exit_code == 0
-        # Plain, non-animated stage lines -- not the spinner glyph -- so
-        # --debug output interleaves cleanly with the log lines it enables.
+        # Plain stage lines keep debug output readable.
         assert "Fetching starred repos..." in result.output
         assert fetcher_logger.level == logging.DEBUG
 

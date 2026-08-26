@@ -365,8 +365,7 @@ async def test_retag_moves_star_between_intents_in_same_category(
         await pilot.pause()
         picker_table = app.screen.query_one("#picker-table", DataTable)
         picker_table.focus()
-        # Retired: Tool sorts before Current: Tool alphabetically ("R" < "C"? no,
-        # 'C' < 'R', so Current: Tool is row 0, Retired: Tool is row 1).
+        # Current sorts before Retired alphabetically.
         await pilot.press("down")
         await pilot.press("enter")
         await app.workers.wait_for_complete()
@@ -438,8 +437,7 @@ async def test_tag_with_no_star_selected_does_not_open_the_picker(
         await pilot.pause()
         screen_count = len(app.screen_stack)
 
-    # No Star was synced, so the table is empty and there is nothing to
-    # tag. The picker must never open onto zero targets.
+    # An empty table provides no target for the picker.
     assert screen_count == 1
 
 
@@ -471,6 +469,7 @@ async def test_detail_pane_shows_full_record_of_star_under_cursor(
 
     assert star.full_name in text
     assert star.html_url in text
+    assert star.description is not None
     assert star.description in text
     assert "Python" in text
     assert "7" in text
@@ -497,7 +496,7 @@ async def test_detail_pane_updates_when_cursor_moves_to_a_different_star(
         await pilot.pause()
         table = _table(app)
         table.focus()
-        # Rows sorted by full_name: a, b.
+        # Rows sort by full name.
         assert "First star" in _detail_text(app)
         await pilot.press("down")
         assert "Second star" in _detail_text(app)
@@ -516,9 +515,7 @@ async def test_detail_pane_renders_before_rate_limit_worker_completes(
     app = TuiApp(client=FakeGitHubClient(), store=store)
     async with app.run_test() as pilot:
         await pilot.pause()
-        # No `await app.workers.wait_for_complete()` here: the rate
-        # limit fetch worker may still be in flight, yet the detail
-        # pane has already been populated from local state.
+        # The detail pane must render before the rate-limit worker completes.
         text = _detail_text(app)
 
     assert "Local only" in text
@@ -581,14 +578,13 @@ async def test_detail_pane_visible_by_default_and_toggles_with_d(
     app = TuiApp(client=FakeGitHubClient(), store=store)
     async with app.run_test() as pilot:
         await pilot.pause()
-        pane = app.query_one("#detail-pane", DetailPane)
-        assert pane.display is True
+        assert app.query_one("#detail-pane", DetailPane).display is True
 
         await pilot.press("d")
-        assert pane.display is False
+        assert app.query_one("#detail-pane", DetailPane).display is False
 
         await pilot.press("d")
-        assert pane.display is True
+        assert app.query_one("#detail-pane", DetailPane).display is True
 
 
 async def test_unstar_confirm_calls_remove_star_and_archives_locally(
@@ -610,8 +606,7 @@ async def test_unstar_confirm_calls_remove_star_and_archives_locally(
         await pilot.click("#confirm")
         await app.workers.wait_for_complete()
         await pilot.pause()
-        # Archived stars drop out of the table -- _reload_local_state()
-        # filters them the same way sync()-detected unstars already do.
+        # Archived stars are filtered from the table.
         assert _table(app).row_count == 0
 
     assert "pradyumnac/ghstars" not in {s.full_name for s in client.fetch_stars()}
@@ -685,8 +680,7 @@ async def test_sort_defaults_to_star_date_descending_and_s_toggles_to_name(
     async with app.run_test() as pilot:
         await pilot.pause()
         table = _table(app)
-        # Default starred_desc: pradyumnac/a (starred later) first,
-        # even though "b" would sort first if this were reversed.
+        # Newest starred date sorts first by default.
         assert table.get_row_at(0)[1] == "pradyumnac/a"
         assert table.get_row_at(1)[1] == "pradyumnac/b"
 
@@ -694,9 +688,7 @@ async def test_sort_defaults_to_star_date_descending_and_s_toggles_to_name(
         assert table.get_row_at(0)[1] == "pradyumnac/a"
         assert table.get_row_at(1)[1] == "pradyumnac/b"
 
-        # Full cycle back to starred_desc: starred_desc -> name ->
-        # stargazer_desc -> language -> list_count_desc -> list_name ->
-        # starred_desc.
+        # Five more presses complete the sort cycle.
         for _ in range(5):
             await pilot.press("s")
         assert table.get_row_at(0)[1] == "pradyumnac/a"
@@ -771,9 +763,7 @@ async def test_footer_keybindings_are_separated_with_a_bullet(
     app = TuiApp(client=FakeGitHubClient(), store=store)
     async with app.run_test() as pilot:
         await pilot.pause()
-        # Only TuiApp's own single-key BINDINGS, not App-level built-ins
-        # like ctrl+q/ctrl+c (also action "quit") which have their own,
-        # unrelated descriptions.
+        # Inspect only TuiApp's single-key bindings, not built-in bindings.
         descriptions = [
             b.description
             for key in ("q", "t", "space", "a", "c", "l", "o", "u")

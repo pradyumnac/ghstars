@@ -36,6 +36,5 @@ async def test_tui_bare_launch_calls_graphql_only_for_the_rate_limit(
         await pilot.pause()
         await app.workers.wait_for_complete()
 
-    # Exactly the rate-limit check, exactly once -- no fetch_stars(),
-    # fetch_lists(), or anything else, from mount alone.
+    # Mount performs only one rate-limit check.
     assert calls == [_RATE_LIMIT_QUERY]

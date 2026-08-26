@@ -25,6 +25,7 @@ from pathlib import Path
 
 import tomlkit
 from pydantic import BaseModel, Field, ValidationError
+from tomlkit.exceptions import TOMLKitError
 
 from ghstars.core.state_store import atomic_write
 
@@ -84,7 +85,7 @@ def load_tui_config(path: Path) -> TuiConfig:
         return TuiConfig()
     try:
         raw = tomlkit.loads(path.read_text())
-    except tomlkit.exceptions.TOMLKitError as exc:
+    except TOMLKitError as exc:
         raise TuiConfigError(f"{path}: invalid TOML: {exc}") from exc
     try:
         return TuiConfig.model_validate(raw)
@@ -123,7 +124,7 @@ def load_tui_state(path: Path) -> TuiState:
     try:
         raw = tomlkit.loads(path.read_text())
         return TuiState.model_validate(raw)
-    except (tomlkit.exceptions.TOMLKitError, ValidationError):
+    except TOMLKitError, ValidationError:
         return TuiState()
 
 

@@ -25,8 +25,7 @@ def test_sync_fetches_and_persists_stars(
     result = sync(client, store)
 
     assert result.star_count == 1
-    # Never-classified stars are never auto-tagged (ADR 0007) -- the
-    # saved record equals the fetched star byte-for-byte.
+    # Never-classified stars remain unchanged.
     assert store.load_stars() == [star]
 
 
@@ -65,7 +64,6 @@ def test_sync_marks_a_repo_missing_from_fetch_as_archived(
     archived = stars_by_name["pradyumnac/gone"]
     assert archived.archived is True
     assert archived.archived_at is not None
-    # Never deleted; last-known fields preserved (spec story 6).
     assert archived.language == "Python"
     assert archived.description == "unstarred later"
     assert archived.list_ids == []
@@ -198,7 +196,7 @@ def test_sync_leaves_remote_alone_when_local_pending_edit_matches_base(
 
 
 def test_sync_noops_when_local_and_remote_converge_on_the_same_result(
-    tmp_path: Path, make_star: StarFactory
+    tmp_path: Path, make_star: StarFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Scenario 3: both local and remote moved away from base, but landed
     on the same result -- already effectively applied, so nothing is
@@ -219,7 +217,7 @@ def test_sync_noops_when_local_and_remote_converge_on_the_same_result(
         calls.append((item_id, list_ids))
         original_push(item_id, list_ids)
 
-    client.update_list_membership_for_item = spy  # type: ignore[method-assign]
+    monkeypatch.setattr(client, "update_list_membership_for_item", spy)
 
     result = sync(client, store)
 
@@ -248,8 +246,7 @@ def test_sync_routes_a_conflicting_edit_to_the_retriage_queue_and_github_wins(
     store.save_stars([star])
     store.save_lists([base_lst, other_lst, remote_lst])
 
-    # Remote reclassified the star into a *different* List since the last
-    # sync, e.g. from the phone/web view.
+    # Remote moved the star to a different List.
     remote_star = star.model_copy(update={"pending_list_ids": None})
     base_remote = base_lst.model_copy(update={"items": []})
     remote_remote = remote_lst.model_copy(update={"items": ["pradyumnac/x"]})
@@ -270,14 +267,13 @@ def test_sync_routes_a_conflicting_edit_to_the_retriage_queue_and_github_wins(
     assert queue[0].attempted_list_ids == ["L_other"]
     assert queue[0].resolved is False
 
-    # Never pushed, never applied: the losing edit's target List stays
-    # untouched.
+    # The losing edit never changes its target List.
     by_id = {lst.id: lst for lst in store.load_lists()}
     assert by_id["L_other"].items == []
 
 
 def test_sync_persists_the_retriage_queue_before_stars_and_lists(
-    tmp_path: Path, make_star: StarFactory
+    tmp_path: Path, make_star: StarFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Durability: the Retriage Queue write must land before stars.json/
     lists.json. Those two already reflect the pending edit cleared (a
@@ -308,13 +304,12 @@ def test_sync_persists_the_retriage_queue_before_stars_and_lists(
     def _explode(*_args: object, **_kwargs: object) -> None:
         raise _Boom
 
-    store.save_stars = _explode  # type: ignore[method-assign]
+    monkeypatch.setattr(store, "save_stars", _explode)
 
     with pytest.raises(_Boom):
         sync(client, store)
 
-    # A fresh StateStore over the same directory, since the one above had
-    # save_stars swapped out.
+    # Read through a fresh store because the test replaced `save_stars`.
     queue = StateStore(tmp_path).load_retriage()
     assert len(queue) == 1
     assert queue[0].star_full_name == "pradyumnac/x"
@@ -382,8 +377,7 @@ def test_sync_reports_a_genuine_push_failure_and_keeps_going(
     store = StateStore(tmp_path)
     store.save_stars([kept, broken])
     store.save_lists([keep_lst])
-    # "L_deleted" was removed on GitHub since pradyumnac/broken was tagged
-    # into it -- the fake models that by simply never knowing about it.
+    # The fake client omits the deleted List.
     client = FakeGitHubClient(stars=[kept, broken], lists=[keep_lst])
 
     result = sync(client, store)  # must not raise
@@ -392,8 +386,7 @@ def test_sync_reports_a_genuine_push_failure_and_keeps_going(
     by_name = {s.full_name: s for s in store.load_stars()}
     assert by_name["pradyumnac/kept"].list_ids == ["L_1"]
     assert by_name["pradyumnac/broken"].pending_list_ids is None
-    # Still untagged after the failed tag push -- ADR 0007, ghstars
-    # never auto-tags an untagged star into anything, failed push or not.
+    # A failed push does not auto-tag the star.
     assert by_name["pradyumnac/broken"].list_ids == []
     assert store.load_retriage() == []
 
@@ -421,8 +414,7 @@ def test_sync_populates_list_ids_from_list_membership(
     by_name = {s.full_name: s for s in store.load_stars()}
     assert sorted(by_name["pradyumnac/shared"].list_ids) == ["L_1", "L_2"]
     assert by_name["pradyumnac/solo"].list_ids == ["L_2"]
-    # Not in any List after reconcile -- stays untagged (ADR 0007), no
-    # auto-created "Explore: General" or any other List.
+    # Reconciliation does not create a default List.
     assert by_name["pradyumnac/unlisted"].list_ids == []
     assert not any(lst.name == "Explore: General" for lst in store.load_lists())
 
@@ -508,9 +500,7 @@ def test_sync_does_not_touch_a_star_that_just_lost_a_merge_conflict(
     means nothing else applies a different edit to it either."""
     other_lst = List(id="L_other", name="Explore: Other", slug="other")
     remote_lst = List(id="L_remote", name="Explore: Remote", slug="remote")
-    # base: star was in no List. local: staged into L_other. remote: has
-    # since been staged into L_remote by someone else -- both sides moved
-    # away from base, to different results, so this is a conflict.
+    # Local and remote changed from base to different memberships.
     star = make_star("pradyumnac/x", pending_list_ids=["L_other"])
     store = StateStore(tmp_path)
     store.save_stars([star])

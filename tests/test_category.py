@@ -68,8 +68,7 @@ def test_rename_category_skips_a_list_renamed_on_github_since_the_last_sync(
     stale_local = List(id="L_explore", name="Explore: Old", slug="explore-old")
     store = StateStore(tmp_path)
     store.save_lists([stale_local])
-    # Live GitHub state has already moved on -- someone renamed it
-    # concurrently, since the local snapshot was taken.
+    # Live GitHub state changed after the local snapshot.
     live = List(id="L_explore", name="Explore: SomethingElse", slug="explore-x")
     client = FakeGitHubClient(lists=[live])
 
@@ -389,10 +388,7 @@ def test_drain_category_never_touches_an_unrelated_stars_local_state(
     store = StateStore(tmp_path)
     store.save_lists(lists)
     store.save_stars([migrated_star, tagged_star, archived_star])
-    # Only the migrated star is known to the fake GitHub client -- the
-    # tagged/archived stars stay purely local, same as a real account
-    # where `fetch_stars()` never returns Archived repos or local-only
-    # `pending_list_ids`.
+    # Other stars stay local because remote fetches omit archived and pending state.
     client = FakeGitHubClient(stars=[migrated_star], lists=lists)
 
     result = drain_category(client, store, "Old", "New")

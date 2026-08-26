@@ -27,18 +27,11 @@ from ghstars.github.schema import (
     UserListsResponse,
 )
 
-# Debug logging for every fetcher below (fetch_stars, fetch_lists,
-# check_rate_limit) and the two chokepoints they all go through
-# (_graphql, _paginate_all). Silent by default -- a caller enables it via
-# `ghstars sync --debug` or the `GHSTARS_DEBUG` env var (see
-# `cli/commands/sync.py`), which attaches a stderr handler and raises
-# this logger's level; library code here never configures handlers or
-# levels itself.
+# Fetcher logging is silent by default and enabled by the sync command.
 logger = logging.getLogger("ghstars.github")
 
 PAGE_SIZE = 100
-# A sync makes several paginated calls; require enough headroom that one
-# does not get stuck mid-way through a large starred-repos list (story 13).
+# Reserve rate-limit headroom for paginated sync calls.
 MIN_RATE_LIMIT_REMAINING = 50
 _GH_TIMEOUT_SECONDS = 30.0
 
@@ -293,9 +286,7 @@ def _parse_lists_page(data: dict[str, object]) -> tuple[list[UserListNode], Page
 
 
 def _list_items_query(list_id: str) -> str:
-    # list_id is opaque (e.g. "UL_kwDO..."). _graphql only threads a
-    # $cursor variable, so bake list_id into the query text. json.dumps
-    # escapes it safely as a GraphQL string literal.
+    # Embed the opaque list ID safely because only the cursor is a variable.
     return f"""
 query($cursor: String) {{
   node(id: {json.dumps(list_id)}) {{
@@ -321,12 +312,7 @@ def _parse_list_items_page(
 
 
 def _batched_repository_id_query(full_names: list[str]) -> str:
-    # One `repository(owner, name) { id }` selection per full_name, each
-    # under its own alias (`r0`, `r1`, ...) so a single request resolves
-    # every node ID at once (ticket 16). owner/name are baked into the
-    # query text, same pattern as `_list_items_query`'s list_id -- _graphql
-    # only threads a $cursor variable, not a variable per repo.
-    # json.dumps escapes each part safely as a GraphQL string literal.
+    # Build one aliased query that resolves all repository IDs in one request.
     fields = "\n".join(
         f"  r{index}: repository(owner: {json.dumps(owner)}, name: {json.dumps(name)}) {{ id }}"
         for index, full_name in enumerate(full_names)

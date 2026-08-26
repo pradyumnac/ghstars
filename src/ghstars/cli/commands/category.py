@@ -45,10 +45,7 @@ def category_rename_cmd(
     from the last `ghstars sync` — e.g. renamed or reclassified
     concurrently on github.com or the phone app.
     """
-    # Stripped up front so every message below (success, skip warning,
-    # not-found) reports the same normalized name `rename_category()`
-    # actually matched against, not the raw (possibly whitespace-padded)
-    # CLI argument.
+    # Normalize names so messages match the values used for lookup.
     old = old.strip()
     new = new.strip()
     client = cli.get_client()
@@ -99,7 +96,7 @@ def category_drain_cmd(
     never overwrites) any Star whose live List membership has already
     diverged from the last `ghstars sync`.
     """
-    # Stripped up front, same reasoning as category_rename_cmd above.
+    # Normalize names before lookup and reporting.
     from_category = from_category.strip()
     to_category = to_category.strip()
     client = cli.get_client()

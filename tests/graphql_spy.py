@@ -15,14 +15,7 @@ import pytest
 
 from ghstars.github import client as gh_client
 
-# Shaped for RealGitHubClient.check_rate_limit()'s own parsing
-# (`RateLimitResponse`) -- the one call `spy_on_graphql` expects to see in
-# a compliant surface's bare launch. Returned for *every* call regardless
-# of which query was actually sent: this spy's job is to record which
-# queries a surface makes, not to fake every GraphQL response shape. A
-# violation (e.g. an unexpected fetch_lists()/fetch_stars() call) is
-# caught by asserting on the returned call list, not by this payload
-# failing to validate somewhere downstream.
+# Return a rate-limit payload; tests validate calls separately from response shape.
 _RATE_LIMIT_PAYLOAD: dict[str, object] = {
     "rateLimit": {"remaining": 5000, "limit": 5000}
 }

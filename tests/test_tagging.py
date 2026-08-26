@@ -32,8 +32,7 @@ def test_tag_star_pushes_to_github_immediately_for_an_existing_list(
     assert result.removed_list_ids == []
     saved = {s.full_name: s for s in store.load_stars()}
     assert saved["pradyumnac/ghstars"].list_ids == ["L_1"]
-    # Pushed for real, not just staged: the fake client's own record and
-    # the List's `items` both reflect it immediately.
+    # The fake client and List membership update immediately.
     assert client.fetch_stars()[0].list_ids == ["L_1"]
     assert "pradyumnac/ghstars" in client.fetch_lists()[0].items
 

@@ -208,12 +208,7 @@ def test_remove_star_response_handles_null_starrable() -> None:
     assert parsed.remove_star.starrable is None
 
 
-# createUserList/updateUserListsForItem shapes below are derived from live
-# GraphQL schema introspection (verified: input/output field names and
-# types), not a captured real response -- the token used for this ticket
-# lacked the `user` scope those mutations need, so an actual live call was
-# never possible (see README.md's Authenticate section). Revisit these
-# fixtures against a real response once that scope is available.
+# These mutation fixtures use fields verified by GraphQL schema introspection.
 
 
 def test_create_user_list_response_parses_list() -> None:

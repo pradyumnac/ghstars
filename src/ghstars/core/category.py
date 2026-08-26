@@ -102,11 +102,7 @@ def rename_category(
         raise InvalidCategoryNameError("category name cannot be blank")
 
     with store.lock():
-        # Re-classify defensively rather than trusting `lists.json` was
-        # already classified when it was saved (every current write
-        # path -- `sync()`, `tag_star()` -- does, but this stays correct
-        # even if that invariant is ever violated). Idempotent: a
-        # correctly classified List reclassifies to the same result.
+        # Re-classify local Lists before selecting targets.
         local_lists = [classify_list(lst) for lst in store.load_lists()]
         targets = {
             lst.id: lst
@@ -129,8 +125,7 @@ def rename_category(
         for list_id, local_lst in targets.items():
             fresh_lst = _undiverged(local_lst, fresh_by_id)
             if fresh_lst is None:
-                # Deleted, renamed, or reclassified on GitHub since the
-                # local snapshot that triggered this rename.
+                # Skip Lists that changed since the local snapshot.
                 skipped.append(list_id)
                 continue
 
@@ -200,7 +195,7 @@ def drain_category(
         raise InvalidCategoryNameError("category name cannot be blank")
 
     with store.lock():
-        # Re-classify defensively, same reasoning as `rename_category`.
+        # Re-classify local Lists before selecting targets.
         local_lists = [classify_list(lst) for lst in store.load_lists()]
         from_targets = [
             lst
@@ -217,16 +212,7 @@ def drain_category(
         fresh_stars = reconcile_list_membership(client.fetch_stars(), fresh_lists)
 
         fresh_lists_by_id = {lst.id: lst for lst in fresh_lists}
-        # Fresh state is only ever read from here -- live membership and
-        # archived checks -- never written back wholesale. `fetch_stars()`
-        # always returns brand-new Star objects with `pending_list_ids`
-        # reset to None (see FakeGitHubClient.fetch_stars's own comment) and
-        # `archived=False` by construction, so saving these directly would
-        # silently wipe every OTHER star's staged `ghstars tag` edit and
-        # Archived history, not just the ones this drain actually touches.
-        # `local_stars_by_name` is the real save target: the existing local
-        # snapshot, patched in-place with only the migrated stars' new
-        # `list_ids`, everything else left untouched.
+        # Patch the local snapshot; do not overwrite staged or archived fields.
         fresh_stars_by_name = {star.full_name: star for star in fresh_stars}
         local_stars_by_name = {star.full_name: star for star in store.load_stars()}
 
@@ -238,9 +224,7 @@ def drain_category(
             intent = local_from.intent
             fresh_from = _undiverged(local_from, fresh_lists_by_id)
             if fresh_from is None:
-                # The source List was deleted, renamed, or reclassified
-                # on GitHub since the local snapshot -- nothing here is
-                # safe to migrate against a moving target.
+                # Skip a source List that changed since the local snapshot.
                 skipped.extend(local_from.items)
                 continue
 
@@ -249,8 +233,7 @@ def drain_category(
             for full_name in local_from.items:
                 star = fresh_stars_by_name.get(full_name)
                 if full_name not in live_members or star is None or star.archived:
-                    # Diverged since the snapshot: already moved off the
-                    # source List, or unstarred, on GitHub/phone.
+                    # Skip stars whose live membership no longer matches.
                     skipped.append(full_name)
                     continue
                 eligible.append(full_name)
@@ -297,9 +280,7 @@ def drain_category(
                 result_lists = apply_membership_diff(
                     result_lists, full_name, old_ids=star.list_ids, new_ids=desired
                 )
-                # Patch only `list_ids` onto the existing local record (if
-                # any) -- preserves that star's own `pending_list_ids`,
-                # `archived` state, and every other field untouched.
+                # Update only membership and preserve the remaining local fields.
                 local_record = local_stars_by_name.get(full_name)
                 if local_record is not None:
                     local_stars_by_name[full_name] = local_record.model_copy(

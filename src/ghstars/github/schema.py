@@ -141,9 +141,7 @@ class UserListsResponse(_GraphQLModel):
 
 
 class RepositoryItemNode(_GraphQLModel):
-    # None if `... on Repository` does not match. Should not happen —
-    # UserListItems only resolves to Repository (confirmed via
-    # introspection) — but the schema marks the field nullable.
+    # Nullable because the GraphQL union can return a non-Repository node.
     name_with_owner: str | None = None
 
 
@@ -157,8 +155,7 @@ class UserListItemsOnly(_GraphQLModel):
 
 
 class UserListItemsNodeResponse(_GraphQLModel):
-    # `node` is None if the list ID no longer resolves (e.g. deleted
-    # between the outer `viewer.lists` fetch and this per-list item fetch).
+    # Nullable when a List disappears between the outer and item fetches.
     node: UserListItemsOnly | None = None
 
 
@@ -193,9 +190,7 @@ class UpdateUserListResponse(_GraphQLModel):
 
 
 class DeleteUserListPayload(_GraphQLModel):
-    # GitHub's schema returns `user`/`clientMutationId` here, not the
-    # deleted List's identity -- nothing further to validate beyond a
-    # non-error response (confirmed via live introspection, ticket 07).
+    # The response has no deleted-List identity to validate.
     client_mutation_id: str | None = None
 
 

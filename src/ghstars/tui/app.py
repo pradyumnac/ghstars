@@ -142,11 +142,7 @@ class DetailPane(Static):
             f"Stars: {star.stargazer_count}",
             f"Fork: {star.fork}    Follow: {star.follow}",
             f"Archived: {star.archived}"
-            + (
-                f" (at {_format_date(star.archived_at)})"
-                if star.archived_at
-                else ""
-            ),
+            + (f" (at {_format_date(star.archived_at)})" if star.archived_at else ""),
             (
                 f"Starred: {_format_date(star.starred_at)}    "
                 f"First seen: {_format_date(star.first_seen)}    "
@@ -181,10 +177,7 @@ class RateLimitBar(Static):
         self.set_class(not status.ok, "-low")
 
     def show_unknown(self, detail: str) -> None:
-        # `detail` can be an arbitrary exception message -- a
-        # `ValidationError`'s, for instance, routinely contains `[...]`
-        # -- which Textual's markup parser would otherwise choke on
-        # (`MarkupError`) instead of just displaying it.
+        # Escape arbitrary error text before rendering it as markup.
         self.update(f"API rate limit: unknown ({escape(detail)})")
         self.set_class(True, "-low")
 
@@ -370,13 +363,10 @@ class TuiApp(App[None]):
         Binding("l", "show_lists", f"Lists{_FOOTER_SEP}"),
         Binding("o", "open_in_browser", f"Open{_FOOTER_SEP}"),
         Binding("u", "unstar_selected", f"Unstar{_FOOTER_SEP}"),
-        # Description carries the active sort mode in parens; kept in
-        # sync by _update_sort_binding_description() on every toggle.
+        # Keep the sort label synchronized with the active mode.
         Binding("s", "cycle_sort", f"Sort (Date){_FOOTER_SEP}"),
         Binding("slash", "open_search", f"Search{_FOOTER_SEP}"),
-        # Not shown in the Footer permanently -- only meaningful while
-        # the search box is open (a no-op otherwise, see
-        # action_close_search's own docstring).
+        # Hide this contextual binding from the Footer.
         Binding("escape", "close_search", "Close search", show=False),
         Binding("r", "refresh_rate_limit", "Refresh rate limit"),
     ]
@@ -399,13 +389,7 @@ class TuiApp(App[None]):
         self._picker_open = False
         self._unstar_confirm_open = False
 
-        # Ticket 21: `config/tui.toml` (user-authored, read-only here) and
-        # `state/tui-state.toml` (machine-owned, read + written here). A
-        # caller (`ghstars.cli.commands.tui`) passes explicit paths from
-        # `cli.get_tui_config_path()`/`cli.get_tui_state_path()`; the
-        # defaults below (siblings of `store`'s own directory, per ADR
-        # 0002's `~/.ghstars/{config,state}/` layout) exist so this
-        # module -- and tests -- never need to import `ghstars.cli`.
+        # Use explicit paths when provided; otherwise use the standard local paths.
         self._config_path = config_path or (
             store.base_dir.parent / "config" / "tui.toml"
         )
@@ -413,19 +397,13 @@ class TuiApp(App[None]):
         self._config: TuiConfig = load_tui_config(self._config_path)
         self._state: TuiState = load_tui_state(self._state_path)
 
-        # Spec story 57's default sort: star date descending (newest
-        # first), the triage order. Restored from tui-state.toml
-        # (spec story 71) if it holds a recognized key -- an
-        # unrecognized one (an older/newer ghstars version's key set)
-        # falls back to the default rather than crashing.
+        # Restore a recognized sort mode; default to newest starred date.
         saved_sort_key = self._state.sort_key
         self._sort_mode = (
             saved_sort_key if saved_sort_key in self._SORT_MODES else "starred_desc"
         )
 
-        # Applied here, before `compose()`/first paint -- not deferred to
-        # `on_mount()` -- so the very first render (including the
-        # Footer's key legend) already reflects any override.
+        # Apply overrides before the first render.
         self._apply_keybinding_overrides(self._config.keybindings)
         self._apply_colour_overrides(self._config.colours)
 
@@ -445,21 +423,12 @@ class TuiApp(App[None]):
         self.title = "ghstars"
         table = self.query_one("#stars-table", DataTable)
         table.add_columns(("Sel", "sel"), "Star", "Language", "Stars", "Lists")
-        # Detail pane is visible by default; "d" (action_toggle_detail_pane)
-        # hides/shows it on demand. `#stars-table { height: 1fr }` picks
-        # up the freed space automatically whenever it's hidden.
+        # The table fills the space when the detail pane is hidden.
         self._update_sort_binding_description()
         self._reload_local_state()
         self._refresh_table()
         self._fetch_rate_limit()
-        # Textual auto-focuses the first focusable widget in compose()
-        # order when nothing else claims focus -- with #search-input
-        # (added for search-as-you-type) mounted ahead of the table,
-        # that was the (display:none) search box, not the table. Beyond
-        # single keypresses silently typing into an invisible box, the
-        # Footer also suppresses most single-key bindings while an
-        # Input has focus (they'd be captured as text first), which is
-        # why the key legend looked empty until a row was clicked.
+        # Focus the table instead of the hidden search input on startup.
         table.focus()
 
     async def action_quit(self) -> None:
@@ -584,30 +553,23 @@ class TuiApp(App[None]):
         return {lst.id: lst for lst in self._lists}
 
     def _sorted_stars(self) -> list[Star]:
-        # Spec story 57's five sort keys. "starred_desc" (newest first)
-        # is the default -- the triage order.
+        # Sort by newest starred date unless another mode is active.
         if self._sort_mode == "name":
             return sorted(self._stars, key=lambda s: s.full_name)
         if self._sort_mode == "stargazer_desc":
             return sorted(self._stars, key=lambda s: s.stargazer_count, reverse=True)
         if self._sort_mode == "language":
-            # No language sorts last, alphabetical otherwise.
             return sorted(
                 self._stars, key=lambda s: (s.language is None, s.language or "")
             )
         if self._sort_mode == "list_count_desc":
             return sorted(self._stars, key=lambda s: len(s.list_ids), reverse=True)
         if self._sort_mode == "list_name":
-            # Beyond spec story 57's literal five keys (which lists
-            # "List count", not List *name*) -- added on top per user
-            # request. Sorts by each Star's alphabetically-first List
-            # name (a Star can belong to several); no Lists sorts last.
+            # Sort by each Star's first List name; unlisted Stars go last.
             by_id = self._lists_by_id()
 
             def _first_list_name(star: Star) -> tuple[bool, str]:
-                names = sorted(
-                    by_id[lid].name for lid in star.list_ids if lid in by_id
-                )
+                names = sorted(by_id[lid].name for lid in star.list_ids if lid in by_id)
                 return (not names, names[0] if names else "")
 
             return sorted(self._stars, key=_first_list_name)
@@ -634,9 +596,6 @@ class TuiApp(App[None]):
         by_id = self._lists_by_id()
         for star in self._visible_stars():
             mark = "[x]" if star.full_name in self._selected else "[ ]"
-            # `tag_star()` pushes to GitHub immediately (ticket 16), so
-            # `list_ids` is already live by the time this renders -- no
-            # separate "pending" state to show here anymore.
             memberships = ", ".join(
                 f"{by_id[lid].name} ({_visibility_label(by_id[lid].is_private)})"
                 for lid in star.list_ids
@@ -651,13 +610,7 @@ class TuiApp(App[None]):
                 height=self._config.row_height,
                 key=star.full_name,
             )
-        # `DataTable.clear()` resets the cursor to row 0, but only *posts*
-        # `RowHighlighted` when that's an actual change of coordinate --
-        # if the cursor was already sitting on row 0 (the common case),
-        # clearing and refilling the table is a no-op move and no event
-        # fires. Refreshing the detail pane explicitly here, rather than
-        # relying on that event, keeps it correct after every table
-        # rebuild regardless of where the cursor happened to be.
+        # Refresh the detail pane because rebuilding row 0 emits no highlight event.
         self._refresh_detail_pane()
 
     def _star_by_full_name(self, full_name: str) -> Star | None:
@@ -710,12 +663,7 @@ class TuiApp(App[None]):
             self._selected.discard(full_name)
         else:
             self._selected.add(full_name)
-        # Update just this row's "Sel" cell in place, not a full
-        # `_refresh_table()`. `DataTable.clear()` unconditionally resets
-        # the cursor to row 0, so rebuilding the whole table on every
-        # toggle would silently drop the cursor back to the top after
-        # each selection -- exactly wrong for "move down, select, move
-        # down, select" bulk selection.
+        # Update the cell in place so selection does not reset the cursor.
         mark = "[x]" if full_name in self._selected else "[ ]"
         self.query_one("#stars-table", DataTable).update_cell(full_name, "sel", mark)
 
@@ -733,9 +681,7 @@ class TuiApp(App[None]):
     def action_refresh_rate_limit(self) -> None:
         self._fetch_rate_limit()
 
-    # Spec story 57's five sort keys, plus "list_name" (List name
-    # ascending, added on top per user request -- not in the literal
-    # spec wording, which only lists "List count"). Cycle order via "s".
+    # Cycle through the supported sort modes with "s".
     _SORT_MODES: ClassVar[list[str]] = [
         "starred_desc",
         "name",
@@ -784,9 +730,7 @@ class TuiApp(App[None]):
     def action_cycle_sort(self) -> None:
         index = self._SORT_MODES.index(self._sort_mode)
         self._sort_mode = self._SORT_MODES[(index + 1) % len(self._SORT_MODES)]
-        # Spec story 71: persists into tui-state.toml on quit
-        # (action_quit's save_tui_state call) -- just the in-memory
-        # mutation here, no disk write on every toggle.
+        # Persist the mode when the app exits.
         self._state.sort_key = self._sort_mode
         self._refresh_table()
         self._update_sort_binding_description()
@@ -897,11 +841,7 @@ class TuiApp(App[None]):
         if not targets:
             self.notify("No star selected.", severity="warning")
             return
-        # Set synchronously, before scheduling the worker: `action_*`
-        # methods run to completion on the main loop for one key event
-        # before the next is dispatched, so this fully closes the
-        # window a fast double `t` press could otherwise use to
-        # schedule two `_open_picker` tasks and stack two modals.
+        # Set this before scheduling work so repeated keys cannot open two modals.
         self._picker_open = True
         self._open_picker(targets)
 
@@ -971,9 +911,7 @@ class TuiApp(App[None]):
         if len(targets) > 1:
             try:
                 node_ids = self._client.resolve_repository_node_ids(targets)
-            except Exception:  # noqa: BLE001 -- an optimization, not required;
-                # fall back to tag_star()'s own per-star resolution on any
-                # failure rather than failing the whole batch over it.
+            except Exception:  # noqa: BLE001 -- batching is an optimization.
                 node_ids = {}
         for full_name in targets:
             try:
@@ -1014,10 +952,7 @@ class TuiApp(App[None]):
             if removed_total:
                 message += f" ({removed_total} sibling List membership(s) removed.)"
             if not reloaded:
-                # `_reload_local_state()` already showed its own error
-                # notification; the table still reflects pre-tag
-                # membership, so say so instead of a bare success toast
-                # that would otherwise look contradictory next to it.
+                # Explain that the table still shows pre-tag state.
                 message += " (table may not reflect this yet — reload failed.)"
             self.notify(message)
         for error in errors:
@@ -1030,15 +965,7 @@ class TuiApp(App[None]):
         try:
             status = self._client.check_rate_limit()
         except Exception as exc:  # noqa: BLE001 -- same reasoning as
-            # `_apply_tag` above: this runs off the UI thread, and
-            # `check_rate_limit()` can fail in ways beyond the
-            # documented `GitHubApiError` -- notably a `ValidationError`
-            # from `RateLimitResponse.model_validate` when GitHub's
-            # response shape doesn't match, which `_graphql` never
-            # wraps. Anything that escapes this thread never reaches
-            # `call_from_thread`, leaving the bar's "checking..."
-            # placeholder stuck forever with no notification --
-            # indistinguishable from a hang.
+            # Report unexpected worker errors so the status bar cannot hang.
             self.call_from_thread(self._show_rate_limit_error, str(exc))
             return
         self.call_from_thread(self._show_rate_limit, status)

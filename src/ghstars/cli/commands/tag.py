@@ -53,11 +53,7 @@ def tag_cmd(
     except GitHubApiError as exc:
         fail(str(exc))
     except Timeout:
-        # `tag_star()` holds the state lock across its GitHub push now
-        # (ticket 16), longer than before -- a concurrent `ghstars`
-        # command waiting on the same lock can time out here instead of
-        # the usual quick acquire. A clean error beats a raw traceback;
-        # the repo was not modified either way (the lock never acquired).
+        # Report lock contention without a traceback; no state was written.
         fail(
             "could not acquire the local state lock — another ghstars "
             "command may be running. Try again."

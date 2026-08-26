@@ -44,9 +44,7 @@ def unstar_star(
     """
     client.remove_star(full_name)
 
-    # The GitHub-side unstar already succeeded. Hold the lock across
-    # this read-modify-write so a concurrent `ghstars sync` cannot
-    # clobber it (spec story 33), same as sync()'s locked span.
+    # Hold the lock across the local read-modify-write after remote success.
     now = datetime.now(UTC)
     with store.lock():
         stars = store.load_stars()

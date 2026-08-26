@@ -64,19 +64,13 @@ class ExportEntry(BaseModel):
     """
 
     name: str
-    # Named `list_name`, not `list` -- a field named `list` shadows the
-    # builtin `list` type used below in `fields: list[str] | None`, which
-    # breaks Python 3.14's lazy annotation evaluation (PEP 649): pydantic
-    # evaluates `list[str]` against a namespace that already binds `list`
-    # to this field, not the builtin, and blows up constructing the model.
+    # Use `list_name` to avoid shadowing the built-in `list` in annotations.
     list_name: str | None = None
     category: str | None = None
     intent: Intent | None = None
     output: str
     format: ExportFormat
-    # Star fields to include, in order. Defaults to DEFAULT_EXPORT_FIELDS
-    # -- deliberately not every Star field, so a plain `tools.yaml` stays
-    # readable without the caller enumerating fields for the common case.
+    # Fields default to the small, readable export set.
     fields: list[str] | None = None
 
     @model_validator(mode="after")
@@ -112,9 +106,7 @@ class ExportEntryResult(BaseModel):
     output: str
     format: ExportFormat
     star_count: int
-    # Malformed Lists that looked related to this entry's selector but
-    # were never included -- see module docstring. Empty in the common
-    # case; surfaced so the user can go rename the List (ticket 03).
+    # Report related malformed Lists without exporting them.
     skipped_malformed_lists: list[str] = []
 
 
@@ -200,8 +192,7 @@ def _serialize(
     if fmt == "json":
         return json.dumps(records, indent=2) + "\n"
     if fmt == "yaml":
-        # safe_dump only -- see module docstring. sort_keys=False keeps
-        # each record in `fields` order rather than alphabetized.
+        # Preserve the configured field order in YAML output.
         return yaml.safe_dump(records, sort_keys=False, allow_unicode=True)
     return _to_csv(records, fields)
 
@@ -221,17 +212,12 @@ def run_export(
         records = _star_records(selected, fields)
         content = _serialize(records, fields, entry.format)
 
-        # expanduser() first: `~/repos/dotfiles/tools.yaml` is not
-        # is_absolute() until `~` is expanded, so an unexpanded `~`
-        # would otherwise be joined onto base_dir as a literal
-        # directory named "~" instead of resolving to the home dir.
+        # Expand `~` before resolving relative output paths.
         output_path = Path(entry.output).expanduser()
         if not output_path.is_absolute():
             output_path = base_dir / output_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        # Same temp-file+rename guarantee as StateStore's own writes
-        # (ghstars.core.state_store.atomic_write) -- a downstream
-        # pipeline reading this file must never see a truncated one.
+        # Write atomically so readers never see a partial export.
         atomic_write(output_path, content)
 
         results.append(

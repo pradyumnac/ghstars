@@ -16,18 +16,13 @@ from ghstars.core.models import Intent, List
 
 _INTENTS: tuple[Intent, ...] = ("Explore", "Current", "Retired", "Reference")
 
-# Explore, Current, and Retired are mutually exclusive per Category. A
-# Star sits in exactly one of these at a time (spec story 16,
-# CONTEXT.md). Reference and unprefixed General Lists (intent=None) are
-# not part of this lifecycle -- they never take part in exclusivity.
+# Lifecycle Lists are mutually exclusive per Category; Reference and General Lists are exempt.
 LIFECYCLE_INTENTS: frozenset[Intent] = frozenset({"Explore", "Current", "Retired"})
 
 _SEPARATOR = ": "
 _LEADING_WORD = re.compile(r"^[A-Za-z]+")
 _INTENTS_CASEFOLDED = {intent.casefold() for intent in _INTENTS}
-# A colon or dash right after the leading word reads as an attempted
-# separator. Plain whitespace does not ("Explore Zone" is General, not
-# an attempt at "Explore: Zone").
+# A colon or dash marks a separator attempt; plain whitespace does not.
 _SEPARATOR_ATTEMPT = re.compile(r"^\s*[-:]")
 
 
@@ -54,15 +49,11 @@ def parse_list_name(name: str) -> ParsedListName:
         if candidate.casefold() in _INTENTS_CASEFOLDED and _SEPARATOR_ATTEMPT.match(
             rest
         ):
-            # Case-insensitive word match plus an attempted separator:
-            # wrong case or wrong separator, e.g. "explore: Foo" or
-            # "Explore - Foo". A bare "Explore" or "Explore Zone" is
-            # General, not malformed.
+            # Reject wrong-case or wrong-separator lifecycle prefixes.
             return ParsedListName(intent=None, category=None, malformed=True)
 
     if _SEPARATOR in name:
-        # `{word}: {rest}` where `word` is not a recognized Intent.
-        # Treated as a misspelled prefix, not a General name with a colon.
+        # Treat an unknown prefix before `: ` as malformed.
         return ParsedListName(intent=None, category=None, malformed=True)
 
     return ParsedListName(intent=None, category=None, malformed=False)

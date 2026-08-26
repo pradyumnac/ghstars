@@ -7,13 +7,7 @@ import typer
 from filelock import Timeout
 from rich.console import Console
 
-# `app` is imported by name -- not just reached via `cli.app` -- so mypy
-# can resolve its type for the `@app.command(...)` decorator below across
-# the ghstars.cli <-> ghstars.cli.commands import cycle (this package is
-# imported from ghstars/cli/__init__.py's own bottom, for registration).
-# `cli.<name>` calls inside the function body below still resolve live
-# against the `ghstars.cli` package itself, so a test's
-# `monkeypatch.setattr(cli_module, "get_client", ...)` still reaches them.
+# Import `app` directly for decorator typing; use `cli` for patchable dependencies.
 from ghstars import cli
 from ghstars.cli import app
 from ghstars.cli.errors import fail
@@ -36,22 +30,12 @@ def sync_cmd(
     """Fetch stars and Lists from GitHub into local state."""
     client = cli.get_client()
     store = cli.get_store()
-    # Read the env var manually rather than via typer's `envvar=` -- that
-    # goes through click's strict boolean parsing, so a non-boolean value
-    # (e.g. GHSTARS_DEBUG=verbose) would crash the whole sync instead of
-    # just falling back. Any non-empty value here is treated as truthy,
-    # matching the help text ("Also honors GHSTARS_DEBUG=1").
+    # Treat any non-empty `GHSTARS_DEBUG` value as true without strict parsing.
     debug = debug or bool(os.environ.get("GHSTARS_DEBUG"))
     if debug:
-        # Attach a handler to the fetcher logger only, and stop it from
-        # propagating -- logging.basicConfig() would set the *root*
-        # logger's level instead, which also turns on DEBUG for
-        # unrelated third-party loggers (e.g. filelock logs 4 lines per
-        # state-lock acquire/release, of which sync() does several).
+        # Configure only the fetcher logger; do not enable unrelated loggers.
         fetcher_logger = logging.getLogger(_FETCHER_LOGGER_NAME)
-        # Drop any handler this command attached on a prior invocation in
-        # the same process (e.g. repeated `runner.invoke()` calls in
-        # tests) before adding a fresh one, so they don't pile up.
+        # Remove a prior command handler before adding a new one.
         for old_handler in list(fetcher_logger.handlers):
             if getattr(old_handler, "_ghstars_debug_handler", False):
                 fetcher_logger.removeHandler(old_handler)
@@ -62,19 +46,11 @@ def sync_cmd(
         fetcher_logger.setLevel(logging.DEBUG)
         fetcher_logger.propagate = False
 
-    # A sync can take minutes (one `gh` subprocess round trip per page,
-    # per pending tag push -- see docs/explanation/known-limitations.md)
-    # with nothing else written to the console in the meantime. stderr,
-    # so a `--json` caller's stdout stays clean; Console degrades to
-    # plain status lines instead of an animated spinner when stderr
-    # isn't a terminal (e.g. piped/CI), rather than garbling output.
+    # Write progress to stderr so JSON output remains clean.
     console = Console(stderr=True)
     try:
         if debug:
-            # The animated spinner and raw debug log lines both target
-            # stderr; the spinner redraws its own line in place, which
-            # garbles interleaved plain log output. Plain stage lines
-            # instead, so --debug output stays readable top to bottom.
+            # Use plain stage lines so debug logs do not collide with the spinner.
             def _on_stage(stage: str) -> None:
                 typer.echo(f"{stage}...", err=True)
 
@@ -89,9 +65,7 @@ def sync_cmd(
     except (RateLimitExceededError, GitHubApiError) as exc:
         fail(str(exc))
     except Timeout:
-        # A concurrent `ghstars` command already holds the state lock --
-        # a clean error beats a raw traceback; nothing was written either
-        # way (the lock never acquired). Same pattern as tag.py.
+        # Report lock contention without a traceback; no state was written.
         fail(
             "could not acquire the local state lock — another ghstars "
             "command may be running. Try again."

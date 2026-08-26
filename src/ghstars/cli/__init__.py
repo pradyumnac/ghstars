@@ -14,15 +14,7 @@ from ghstars.cli.deps import (
 from ghstars.cli.errors import fail
 from ghstars.cli.git_diff import git_unavailable_reason
 
-# Re-exported so `ghstars.cli.commands.*` can reach these through this
-# package's own namespace (`import ghstars.cli as cli; cli.get_store()`,
-# etc.), not by importing them directly into a command module's own
-# globals -- tests monkeypatch these by name *on this module*
-# (`monkeypatch.setattr(cli_module, "get_store", ...)`, `tests/test_cli.py`
-# et al.), and a direct `from ghstars.cli.deps import get_store` in a
-# command module would copy the original binding at import time, deaf to
-# that monkeypatch. `app`/`category_app` need no such indirection --
-# never reassigned, only ever built once, right here.
+# Re-export dependencies so commands and tests can patch this package namespace.
 __all__ = [
     "app",
     "category_app",
@@ -92,9 +84,5 @@ def _render_records[ModelT: BaseModel](
         typer.echo(" ".join(str(getattr(record, f)) for f in display_fields))
 
 
-# Imported last, and only for its side effect: each `ghstars.cli.commands.*`
-# module registers its command(s) on `app`/`category_app` (both already
-# built above) via `@app.command(...)`/`@category_app.command(...)` at
-# import time. Mirrors how `ghstars.core.__init__` re-exports its
-# submodules' names -- this package re-exports registrations instead.
+# Import commands last so their decorators register all CLI commands.
 from ghstars.cli import commands  # noqa: F401

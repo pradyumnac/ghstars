@@ -45,10 +45,7 @@ def sync(
             f"rate limit exceeded: {status.remaining}/{status.limit} remaining"
         )
 
-    # Held across the whole read-diff-write span. FileLock is reentrant
-    # within a thread, so load_stars/save_stars's internal locking nests
-    # safely. This stops a concurrent `ghstars unstar` from reading a
-    # stale snapshot and clobbering this write, or vice versa (story 33).
+    # Hold the lock across the full read-diff-write span.
     with store.lock():
         previous = _load_previous_stars(store)
         report("Fetching starred repos")
@@ -56,45 +53,19 @@ def sync(
         archived = _carry_forward_archived(previous, stars, now=datetime.now(UTC))
         all_stars = stars + archived
 
-        # Fetched Lists carry only raw `name` from GitHub (spec story 2);
-        # classify_list() derives intent/category/malformed before persisting.
-        # Fetched before either save below, so a failure here never leaves
-        # stars.json updated while lists.json is stale, or vice versa.
+        # Classify Lists before saving either local snapshot.
         report("Fetching Lists")
         lists = [classify_list(lst) for lst in client.fetch_lists()]
         all_stars = reconcile_list_membership(all_stars, lists)
 
-        # Only now that current GitHub state is actually known (fresh
-        # fetch + reconcile above) can a pending local edit be arbitrated
-        # against it -- this is ticket 05's three-way merge, replacing
-        # ticket 04's unconditional pre-fetch push (see module docstring
-        # on `_merge_pending_list_membership`).
+        # Merge pending edits against the fresh GitHub state.
         report("Pushing pending tag changes")
         now = datetime.now(UTC)
         all_stars, lists, failed_tag_pushes, conflicts = _merge_pending_list_membership(
             client, previous=previous, current=all_stars, lists=lists, now=now
         )
 
-        # A Star with no List membership after the merge above is never
-        # auto-classified or pushed to GitHub (ADR 0007, superseding
-        # spec story 4's original "default into Explore: General"
-        # behavior). `Explore: General` is an ordinary List the user
-        # opts into like any other -- ghstars never creates or writes
-        # to it on their behalf. "Unclassified" is a derived, local-only
-        # view (`list_ids == [] and not archived`), computed fresh every
-        # sync from whatever GitHub already says -- never a separate
-        # persisted fact that needs reconciling, so this does not
-        # revisit ADR 0001's single-source-of-truth rule.
-        #
-        # Durability: the Retriage Queue write lands *before* stars.json/
-        # lists.json. Those two already reflect pending_list_ids cleared
-        # (fetch_stars() never returns it), so a crash between the two
-        # writes must never leave a state where the losing edit's own
-        # record is the one that didn't make it -- ticket 05 requires the
-        # losing edit is "never discarded." Worst case on a crash here is
-        # a duplicate retriage entry next sync (the same conflict gets
-        # re-detected against the same unwritten `previous`), which is
-        # recoverable; a missing one would not be.
+        # Save conflicts before snapshots so failed writes remain recoverable.
         report("Saving local state")
         if conflicts:
             store.save_retriage([*_load_previous_retriage(store), *conflicts])
@@ -223,8 +194,7 @@ def _merge_pending_list_membership(
             # Both landed on the same result already — no-op.
             updated_stars.append(star)
         else:
-            # Conflict: GitHub wins unconditionally. The local edit goes
-            # to the Retriage Queue, never pushed, never applied.
+            # GitHub wins; retain the local edit in the Retriage Queue.
             conflicts.append(
                 RetriageEntry(
                     star_full_name=star.full_name,

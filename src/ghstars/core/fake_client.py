@@ -19,10 +19,7 @@ class FakeGitHubClient:
         )
 
     def fetch_stars(self) -> list[Star]:
-        # pending_list_ids is purely local (ghstars.core.tagging's stage
-        # for an unpushed edit) -- no GitHubClient's fetch_stars can ever
-        # return it, real or fake, same as RealGitHubClient always
-        # constructing a fresh Star() that never sets the field.
+        # Remote fetches never return the local pending-edit field.
         return [
             star.model_copy(update={"pending_list_ids": None})
             for star in self._stars.values()
@@ -84,12 +81,7 @@ class FakeGitHubClient:
     def update_list_membership_for_node(
         self, node_id: str, list_ids: list[str]
     ) -> None:
-        # No separate node-ID space in this fake -- full_name doubles as
-        # the "node ID" everywhere else in this class (see
-        # resolve_repository_node_ids below). Kept as its own method
-        # (not a call to update_list_membership_for_item) so a test can
-        # override one without silently affecting the other, same as the
-        # real client's two distinct methods.
+        # Keep node updates separate so tests can override this path.
         self._update_membership(node_id, list_ids)
 
     def _update_membership(self, item_id: str, list_ids: list[str]) -> None:
@@ -110,9 +102,7 @@ class FakeGitHubClient:
             )
 
     def resolve_repository_node_ids(self, full_names: list[str]) -> dict[str, str]:
-        # Identity map for every known Star; a full_name this fake has
-        # never heard of is simply omitted, same contract as the real
-        # client for a renamed/deleted repo.
+        # Omit unknown repositories, matching the real client contract.
         return {name: name for name in full_names if name in self._stars}
 
     def remove_star(self, item_id: str) -> None:

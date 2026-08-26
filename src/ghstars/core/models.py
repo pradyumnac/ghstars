@@ -20,13 +20,7 @@ class Star(BaseModel):
     archived_at: datetime | None = None
     last_checked: datetime
     list_ids: list[str] = []
-    # The full desired list_ids set, staged locally for a later sync to
-    # push. None means no pending edit. `ghstars tag` pushes immediately
-    # instead of setting this since ticket 16 -- nothing in the codebase
-    # currently writes this field. Left in place, unused, as ready-built
-    # conflict-arbitration infrastructure (ADR 0004): `sync()`'s
-    # `_merge_pending_list_membership` still reads and clears it, in case
-    # a future feature (e.g. an offline mode) reintroduces a producer.
+    # Preserve staged membership edits for sync-time conflict arbitration.
     pending_list_ids: list[str] | None = None
 
 
@@ -38,10 +32,7 @@ class List(BaseModel):
     is_private: bool = False
     intent: Intent | None = None
     category: str | None = None
-    # Set when `name` looks like an attempted `{Intent}: {Category}` prefix
-    # that doesn't exactly match (wrong case, wrong separator, unrecognized
-    # word) -- flagged for the user to rename, never guessed at. A plain
-    # unprefixed name is General (malformed=False, intent=None), not this.
+    # Flag attempted but invalid `{Intent}: {Category}` names without guessing.
     malformed: bool = False
     items: list[str] = []
 

@@ -151,8 +151,7 @@ def test_diff_reports_git_not_installed_without_crashing(
     def _raise_missing_git(*_args: object, **_kwargs: object) -> None:
         raise FileNotFoundError("git")
 
-    # `git_diff.py` and this test both import the same cached `subprocess`
-    # module object, so patching it here reaches the code under test.
+    # Patch the shared subprocess module used by the code under test.
     monkeypatch.setattr(subprocess, "run", _raise_missing_git)
 
     result = runner.invoke(app, ["diff"])

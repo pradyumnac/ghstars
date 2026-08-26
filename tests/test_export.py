@@ -16,14 +16,14 @@ from ghstars.core.export import (
     run_export,
     select_stars,
 )
-from ghstars.core.models import List
+from ghstars.core.models import Intent, List
 
 
 def _list(
     name: str,
     *,
     id: str = "L_1",
-    intent: str | None = None,
+    intent: Intent | None = None,
     category: str | None = None,
     malformed: bool = False,
     items: list[str] | None = None,
@@ -118,8 +118,7 @@ def test_load_export_config_rejects_invalid_entries(
     tmp_path: Path, entry: dict[str, object]
 ) -> None:
     path = tmp_path / "export.toml"
-    # Hand-build minimal TOML matching each `entry` dict rather than a
-    # a full round-trip serializer -- keeps this test readable.
+    # Build minimal TOML directly from each entry.
     lines = ["[[exports]]"]
     for key, value in entry.items():
         if isinstance(value, list):
