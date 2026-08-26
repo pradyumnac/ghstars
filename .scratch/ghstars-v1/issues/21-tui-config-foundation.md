@@ -8,11 +8,75 @@ Per the spec's "TUI config: two files, split by who writes them" note: `config/t
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `tomlkit` added to `pyproject.toml` after a dependency-review pass; `uv.lock` regenerated
-- [ ] `config/tui.toml`, if present, overrides default keybindings, header height, row height, and colour palette; a missing file changes nothing
-- [ ] `state/tui-state.toml` is read at launch (missing file → defaults) and written at quit, holding at least the last View Mode, sort key, and active Filter
-- [ ] Hand-editing `tui.toml` to rebind a key and change row height, then relaunching, shows both changes take effect
-- [ ] Changing View Mode, quitting, and relaunching restores the same View Mode from `tui-state.toml`
-- [ ] ghstars never writes to `config/tui.toml` in this ticket — only `state/tui-state.toml` is machine-written here (ADR 0002)
+- [x] `tomlkit` added to `pyproject.toml` after a dependency-review pass; `uv.lock` regenerated
+- [x] `config/tui.toml`, if present, overrides default keybindings, header height, row height, and colour palette; a missing file changes nothing
+- [x] `state/tui-state.toml` is read at launch (missing file → defaults) and written at quit, holding at least the last View Mode, sort key, and active Filter
+- [x] Hand-editing `tui.toml` to rebind a key and change row height, then relaunching, shows both changes take effect
+- [x] Changing View Mode, quitting, and relaunching restores the same View Mode from `tui-state.toml`
+- [x] ghstars never writes to `config/tui.toml` in this ticket — only `state/tui-state.toml` is machine-written here (ADR 0002)
+
+## Comments
+
+- New module `src/ghstars/tui/config.py`: `TuiConfig`/`TuiColours` (read
+  via `load_tui_config`, mirrors `load_export_config`'s missing-file-is-
+  defaults / present-but-invalid-raises rule) and `TuiState` (read via
+  `load_tui_state`, but a corrupt state file falls back to defaults
+  rather than blocking launch — it's machine-written, not hand-authored
+  config, so failing loudly over it would be user-hostile) plus
+  `save_tui_state` (atomic write, via the same `atomic_write` helper
+  `StateStore`/`export.py` already share).
+- `TuiApp.__init__` now takes optional `config_path`/`state_path`
+  (defaulting to siblings of the `StateStore`'s own directory so tests
+  and this module need no `ghstars.cli` import); the real CLI entry
+  point (`ghstars.cli.commands.tui`) passes explicit paths from two new
+  `ghstars.cli.deps` getters, `get_tui_config_path()` /
+  `get_tui_state_path()`, following the same explicit-path pattern
+  `get_export_config_path()` already set.
+- Keybinding overrides rebuild `self._bindings` from `BINDINGS` with
+  each overridden action's key swapped, via Textual's own
+  `Binding.make_bindings()`/`BindingsMap` — composes with the existing
+  static `BINDINGS` list rather than replacing the mechanism, and an
+  override naming an unknown action is silently inert (no
+  `action_<name>` to dispatch to), not a hard error.
+- Colour overrides go through Textual's own theme system
+  (`App.register_theme`/`App.theme`), layered on top of the currently
+  active theme rather than a fixed baseline, so a user who already
+  picked a light/dark base theme elsewhere doesn't have that clobbered
+  by an unrelated override.
+- `view_mode` on `TuiState` is a stub, per the ticket's own guidance:
+  there is no View Mode switcher yet (ticket 25 builds it). It defaults
+  to `"list"`, is loaded/saved like every other state field, and a test
+  (`test_tui_app_restores_view_mode_across_relaunch`) exercises the
+  round trip by mutating `app._state.view_mode` directly — standing in
+  for what a future switcher's action will do. Nothing in this ticket
+  lets a user actually change it.
+- "Header height"/"row height" map to `DataTable`'s own
+  `header_height` constructor param and per-row `height` on
+  `add_row()` (the star table's header row vs. its data rows) — the
+  most literal reading of the spec's "header/row sizing" phrase given
+  the widgets actually in play, not the top `Header` clock bar.
+- Code review (medium effort) caught a real bug: the first cut of
+  `_apply_keybinding_overrides` rebuilt `self._bindings` from
+  `TuiApp.BINDINGS` alone, which silently dropped every App-level
+  binding TuiApp itself never declares -- `ctrl+q` force-quit,
+  `ctrl+c`, and the command palette's `ctrl+p` -- the moment a user
+  configured even one `[keybindings]` override. Fixed by mutating the
+  already-merged `self._bindings.key_to_bindings` in place instead,
+  moving only the key(s) bound to an overridden action and leaving
+  everything else untouched. Covered by a new regression test,
+  `test_keybinding_override_preserves_inherited_app_bindings`.
+- Tests: `tests/test_tui_config.py`, 16 new tests — missing-file
+  defaults and invalid-file errors for both `load_tui_config` and
+  `load_tui_state`, a save/load round trip (including that `None`
+  fields are omitted, not written as empty strings), and `TuiApp`
+  integration tests for keybinding override, header/row height,
+  colour override, the config-file-never-written guarantee, and the
+  View Mode persistence round trip. Full suite: 222 passed. `ruff
+  check` and `mypy src` both clean.
+- Avoided ticket 20's `RateLimitBar`/`_fetch_rate_limit` region and
+  ticket 22's compose/detail-pane scope entirely — only touched
+  `__init__`, `compose()`'s `DataTable(...)` line, `_refresh_table()`'s
+  `add_row(...)` call, and added `action_quit`/two `_apply_*` helper
+  methods.
