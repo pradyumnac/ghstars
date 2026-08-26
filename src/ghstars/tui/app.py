@@ -456,8 +456,26 @@ class FilterMenuScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+# The clear-filter option's label, per filter kind. The TUI holds one
+# filter key at a time, so every one of these clears the whole filter
+# and shows every Star. The wording names the screen the user is on.
+_CLEAR_FILTER_LABELS: dict[str, str] = {
+    "category": "All categories",
+    "intent": "All intents",
+    "list": "All lists",
+    "language": "All languages",
+    "license": "All licenses",
+    "owner": "All owners",
+    "recency": "Any star date",
+}
+
+
 class FilterScreen(ModalScreen[str | None]):
     """Choose one value for a filter."""
+
+    # The clear-filter option's value. `_set_filter` reads any falsy
+    # value as "clear the filter".
+    _CLEAR_VALUE: ClassVar[str] = ""
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("d", "recent_day", "", show=False),
@@ -469,33 +487,54 @@ class FilterScreen(ModalScreen[str | None]):
         Binding("escape", "cancel", "Cancel"),
     ]
 
-    def __init__(self, title: str, options: Sequence[tuple[str, str | Text]]) -> None:
+    def __init__(
+        self,
+        title: str,
+        options: Sequence[tuple[str, str | Text]],
+        *,
+        clear_label: str = "All stars",
+    ) -> None:
         super().__init__()
         self._title = title
         self._options = list(options)
         self._option_values = {value for value, _ in options}
+        self._clear_label = clear_label
         self._selected_value: str | None = None
 
+    @staticmethod
+    def _match_rank(label: str, query: str) -> tuple[bool, bool, str]:
+        """Rank one option against the query, best first.
+
+        Order: an exact match, then a prefix match, then any other
+        substring match. Ties break alphabetically. Each flag is `False`
+        when the option matches better, because `sort()` puts `False`
+        before `True`.
+
+        An empty query gives every option the same two flags, so the
+        alphabetical tiebreak decides the whole order.
+        """
+        lowered = label.lower()
+        return (lowered != query, not lowered.startswith(query), lowered)
+
     def _visible_options(self) -> list[tuple[str, str | Text]]:
+        """Filter and rank every option the screen can show.
+
+        The clear option is always in the set, so an empty query shows
+        it without a search. It always ranks last, so Enter on a fresh
+        screen applies a real option and never clears the filter by
+        accident.
+        """
         query = self.query_one("#filter-query", Input).value.strip().lower()
         options = list(self._options)
         if query:
-            if "all" in query:
-                options.insert(0, ("", "All stars"))
             options = [
                 (value, label)
                 for value, label in options
                 if query in str(label).lower()
             ]
-            options.sort(
-                key=lambda option: (
-                    str(option[1]).lower() != query,
-                    not str(option[1]).lower().startswith(query),
-                    str(option[1]).lower(),
-                )
-            )
-        else:
-            options.sort(key=lambda option: str(option[1]).lower())
+        options.sort(key=lambda option: self._match_rank(str(option[1]), query))
+        if not query or query in self._clear_label.lower():
+            options.append((self._CLEAR_VALUE, self._clear_label))
         return options
 
     def _refresh_options(self) -> None:
@@ -1415,7 +1454,13 @@ class TuiApp(App[None]):
                 title = "Filter by Recency (d/w/m/3/y/o)"
             else:
                 return
-            value = await self.push_screen_wait(FilterScreen(title, options))
+            value = await self.push_screen_wait(
+                FilterScreen(
+                    title,
+                    options,
+                    clear_label=_CLEAR_FILTER_LABELS.get(kind, "All stars"),
+                )
+            )
             if value is not None:
                 self._set_filter(value)
         finally:

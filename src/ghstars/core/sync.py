@@ -114,42 +114,43 @@ def _merge_pending_list_membership(
     lists: list[List],
     now: datetime,
 ) -> tuple[list[Star], list[List], list[str], list[RetriageEntry]]:
-    """Three-way merge each Star's staged List-membership edit against
-    what GitHub actually has, per sync (ticket 05). Runs *after*
-    `fetch_stars()`/`fetch_lists()`/`reconcile_list_membership()` in
-    `sync()`, so "remote" here is this sync's real fresh state, not a
-    stale guess — replacing ticket 04's `_push_pending_list_membership`,
-    which pushed blindly before any of that ran.
+    """Merge each Star's staged List-membership edit against GitHub, as
+    a three-way merge, once per sync (ticket 05).
 
-    - base: the last-synced snapshot's `list_ids` for the star, i.e.
-      `previous`, from before this sync's fetch.
-    - remote: `star.list_ids` on `current`, just set by
-      `reconcile_list_membership` from this sync's fresh pull.
-    - local: `star.pending_list_ids` from `previous` — the full desired
-      set, never a delta, same convention `tag_star()` writes.
+    Run this after `fetch_stars()`, `fetch_lists()`, and
+    `reconcile_list_membership()`. "Remote" is then this sync's fresh
+    state, not a stale guess.
 
-    Four scenarios:
-    - No pending edit, or local == base: nothing to push, remote stands.
-    - Local changed, remote didn't: push local — GitHub adopts it.
-    - Both changed to the same result: no-op, already effectively applied.
-    - Both changed to different results: GitHub wins, unconditionally.
-      The local edit is never pushed and never silently applied — it's
-      recorded in the local-only Retriage Queue (ADR 0001) for the user
-      to revisit. No auto-merge/union of the two sets, ever.
+    The three sides:
 
-    An Archived star is skipped outright: `archive_star()` already
-    cleared its `pending_list_ids` when it was carried forward, so any
-    staged edit for a repo unstarred since it was tagged is moot — not a
-    conflict, and not a failure. Nothing to arbitrate.
+    - base: `list_ids` on `previous`, from before this sync's fetch.
+    - remote: `list_ids` on `current`, which `reconcile_list_membership`
+      just set from this sync's pull.
+    - local: `pending_list_ids` on `previous`. This is always the full
+      desired set, never a delta, the same convention `tag_star()`
+      writes.
 
-    A push that raises (e.g. a staged List was deleted on GitHub since
-    tagging) is isolated and reported the same way ticket 04's push was:
-    one star's failure never aborts the others, and is never retried
-    next sync, since `fetch_stars()` always returns fresh Stars with
-    `pending_list_ids=None` regardless of what happened here. Catches
-    `Exception` broadly, on purpose: `ghstars.core` depends only on the
-    `GitHubClient` Protocol, never on a concrete implementation's error
-    types (`ghstars.github.GitHubApiError` included).
+    The four outcomes:
+
+    - No pending edit, or local equals base: push nothing. Remote
+      stands.
+    - Local changed and remote did not: push local.
+    - Both changed to the same result: push nothing.
+    - Both changed to different results: GitHub wins. Record the local
+      edit in the Retriage Queue (ADR 0001). Never push it, never apply
+      it, and never merge the two sets.
+
+    Skip an Archived star. `archive_star()` already cleared its
+    `pending_list_ids`, so a staged edit for a repo unstarred since it
+    was tagged is moot.
+
+    Isolate a failed push. One star's failure never aborts the others.
+    A failure is never retried next sync, because `fetch_stars()`
+    always returns fresh Stars with `pending_list_ids=None`.
+
+    Catch `Exception` broadly on purpose. `ghstars.core` depends only on
+    the `GitHubClient` Protocol, never on a concrete implementation's
+    error types.
     """
     base_by_name = {star.full_name: star.list_ids for star in previous}
     pending_by_name = {

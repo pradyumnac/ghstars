@@ -10,3 +10,19 @@
 - [ ] Package published to PyPI
 - [ ] Linux tar.gz binary attached to a GitHub Release via a GitHub Actions release workflow
 - [ ] Packaging layout doesn't foreclose adding `pipx`/`uvx`/`mise`/`eget` later, or the Windows/macOS builds in ticket 15
+- [ ] `tests/test_packaging.py` no longer breaks a plain `pytest` run
+
+## Comments
+
+**2026-08-26, from a review of commit 59bf8f8.**
+`tests/test_packaging.py:8-16` runs `uv build` in a subprocess. The `uv`
+executable is not a declared dependency. `pyproject.toml:23` names
+`uv_build` only, which is the build backend, not the command-line tool.
+
+A plain `pytest` run therefore fails on a machine that has every Python
+dependency but no `uv`.
+
+Fix this when you build this ticket. Mark the test and deselect it from
+the default run, then run it from the `mise` build task. A `shutil.which`
+guard with `pytest.skip` also works, but a packaging check that skips
+itself can rot without anyone noticing.

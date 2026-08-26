@@ -36,8 +36,9 @@ menu; recency offers 1d, 1w, 1m, 3m, 1y, and older-than-1y ranges. Filters
 compose with search, update the result count, and persist in
 `state/tui-state.toml`. `/` opens the search field, which matches
 case-insensitive substrings in the repository name and description. Filter
-value screens narrow their options as the user types. Enter selects a unique
-match; Escape cancels the screen. Recency keeps its existing shortcut keys.
+value screens narrow their options as the user types. Enter selects the
+best-ranked match; Escape cancels the screen. Recency keeps its existing
+shortcut keys.
 License now comes from GitHub's `licenseInfo` field and appears in the
 DetailPane. Owner, Fork, and Followed filters use fields already in local
 state. Archived Stars remain outside the active view.
@@ -58,3 +59,28 @@ Footer's "Sort (...)" label (not a notify toast, per user correction)
 tracks the active mode live via `_update_sort_binding_description()`;
 every keybinding's Footer description also got a trailing " •"
 separator per the same request.
+
+**2026-08-26, from a review of commit 99e4174.** Three findings, all
+confirmed against HEAD.
+
+Enter now selects the best-ranked match, not a unique match. Commit
+99e4174 made this change on purpose. The text above said "unique match"
+until this note, so the ticket was stale, not the code. The ranking puts
+an exact match first, then a prefix match, then any other substring
+match, then alphabetical order.
+
+"All stars" was a regression. The parent commit added it to every value
+screen. Commit 99e4174 added it only when the query held the letters
+"all", so an empty query hid the clear-filter option and a query such as
+"fall" inserted it and then filtered it out again. `_visible_options`
+now holds it in the option set at all times, and ranks and filters it
+like every other option.
+
+`_match_rank` is now a named helper with its own docstring. The three
+boolean sort keys had no explanation, so a later change could reverse
+the exact, prefix, and substring precedence without anyone noticing.
+
+- [x] Enter selects the best-ranked match; the ticket text now matches the code
+- [x] "All stars" appears in every value screen, including on an empty query
+- [x] The ranking order is a named helper, not three unexplained sort keys
+- [ ] Tests cover an exact match, a prefix match, multiple matches, zero matches, and an empty query

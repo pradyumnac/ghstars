@@ -86,78 +86,36 @@ def tag_star(
     lists: list[List] | None = None,
     node_id: str | None = None,
 ) -> TagResult:
-    """Add `full_name` to `list_name` and push it to GitHub immediately
-    (ticket 16 — see ADR 0004 for why the older staged-edit machinery
-    stays in the codebase, unused, rather than being deleted).
+    """Add `full_name` to `list_name`, then push the change to GitHub.
 
-    Creates the List for real immediately if it does not exist yet.
-    Checks live GitHub state for that (`client.fetch_lists()`), not the
-    local cache — a stale cache could otherwise create a duplicate List
-    GitHub already has under the same name.
+    Create the List when GitHub does not already have it. Read live
+    GitHub state to decide that, never the local cache. A stale cache
+    can create a duplicate List.
 
-    Before computing the new membership set, compares the star's local
-    `list_ids` (base) against its *remote* membership, derived from the
-    same `fetch_lists()` result (`List.items`) — free, no extra API
-    call. If they disagree, GitHub's List membership for this star has
-    drifted since the last `ghstars sync` and this raises
-    `StarListMembershipDriftError` naming the diverged List(s); nothing
-    is computed or pushed, nothing is staged. The user must `ghstars
-    sync` first, then retry. When they agree, "base" and "remote" are
-    the same set, so the new desired membership is computed from it
-    directly — there is no separate "which side wins" question left to
-    resolve once this point is reached.
+    Raise `StarListMembershipDriftError` when the star's local
+    `list_ids` disagree with its membership in the same `fetch_lists()`
+    result. Push nothing and write nothing. The user must run `ghstars
+    sync` first, then retry.
 
-    Suppose the target List's intent is Explore, Current, or Retired.
-    Then this strips any sibling List first: same Category, a
-    *different* one of those three intents. This is spec story 16.
-    This is an auto-resolve, not a hard error. So moving a Star from
-    Current to Retired (story 17) is one `tag` call. The user does not
-    need to untag first.
+    Strip a sibling List when the target List's intent is Explore,
+    Current, or Retired. A sibling holds the same Category under one of
+    the other two intents. This makes a Current-to-Retired move one
+    call (spec stories 16 and 17).
 
-    The resulting desired set is pushed via
-    `client.update_list_membership_for_item` (or
-    `update_list_membership_for_node` when `node_id` is supplied) in
-    the same call. On a push failure for any other reason (network/API
-    error, target List deleted concurrently), this raises
-    `TagPushError` and writes no local state at all — mirrors
-    `unstar_cmd`'s remote-first, write-only-on-success pattern. Only on
-    a successful push are `stars.json`/`lists.json` updated.
+    Raise `TagPushError` when the push fails, and write no local state.
+    Update `stars.json` and `lists.json` only after the push succeeds.
 
-    `lists`, if supplied, is trusted instead of a fresh
-    `client.fetch_lists()` call -- see the design note above this
-    module (ticket 19, scope 5: bulk-tagging N stars into the same
-    List without N redundant live fetches). Every existing
-    single-call-site caller omits it and gets the original
-    fetch-every-time behavior, unchanged. Defensively re-classified
-    (`classify_list`) either way, same reasoning as
-    `ghstars.core.category`'s targets -- correct even if a caller passes
-    a raw, unclassified fetch straight through. `apply_membership_diff`
-    (below) updates a threaded `lists` snapshot after every successful
-    push, so star N+1's remote-membership comparison above correctly
-    sees star N's own already-applied change within the same batch.
-
-    It does *not*, however, see a change some other process makes to
-    star N+1 specifically while star N's push is still in flight — the
-    threaded snapshot is only as fresh as the batch's own start-of-batch
-    `fetch_lists()`, refined by this batch's own pushes, not re-verified
-    against GitHub per star. A single `ghstars tag` call (no threaded
-    `lists`) always compares against a fetch from that same call, so it
-    does not have this gap. This is the same class of eventual-
-    consistency trade ticket 07's fetch-fresh-skip-diverged design
-    already accepts for List creation mid-batch (see the design note
-    above this module) — accepted here for the same reason: closing it
-    would mean a live `fetch_lists()` per star, which is exactly the
-    round-trip cost `lists` threading exists to avoid.
-
-    `node_id`, if supplied, is GitHub's pre-resolved opaque node ID for
-    `full_name` — passed straight to
-    `client.update_list_membership_for_node`, skipping the extra
-    `full_name` -> node ID round trip `update_list_membership_for_item`
-    would otherwise make. A bulk caller (the TUI's bulk-tag) resolves
-    every target's node ID in one batched
-    `client.resolve_repository_node_ids()` call up front and threads
-    the result in here per star. Omitted (every other caller), this
-    round trip happens the old way, unchanged.
+    Args:
+        lists: a List snapshot to trust in place of a fresh
+            `client.fetch_lists()` call. A bulk caller threads one
+            snapshot through every star, to avoid one fetch per star.
+            `apply_membership_diff` updates it after each push. See
+            `docs/explanation/known-limitations.md` for the staleness
+            this accepts.
+        node_id: GitHub's node ID for `full_name`. Skips the lookup
+            that `update_list_membership_for_item` makes. A bulk caller
+            resolves every ID in one `resolve_repository_node_ids()`
+            call.
     """
     with store.lock():
         stars = store.load_stars()

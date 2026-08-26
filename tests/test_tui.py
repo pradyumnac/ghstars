@@ -1089,11 +1089,14 @@ async def test_filter_search_selects_best_match_and_all_is_explicit(
         await pilot.press("c")
         await pilot.pause()
         filter_table = app.screen.query_one("#filter-table", DataTable)
+        # The clear option shows without a search, and always ranks last
+        # so that Enter never clears the filter by accident.
         assert [
             str(filter_table.get_row_at(i)[0]) for i in range(filter_table.row_count)
         ] == [
             "AI",
             "Tools",
+            "All categories",
         ]
         query = app.screen.query_one("#filter-query", Input)
         query.value = "to"
@@ -1108,13 +1111,99 @@ async def test_filter_search_selects_best_match_and_all_is_explicit(
         await pilot.press("c")
         await pilot.pause()
         query = app.screen.query_one("#filter-query", Input)
-        query.value = "all"
+        query.value = "all categories"
         await pilot.pause()
         filter_table = app.screen.query_one("#filter-table", DataTable)
-        assert str(filter_table.get_row_at(0)[0]) == "All stars"
+        assert str(filter_table.get_row_at(0)[0]) == "All categories"
         await pilot.press("enter")
         await pilot.pause()
         assert _table(app).row_count == 2
+
+
+async def test_filter_search_ranks_exact_before_prefix_before_substring(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """An exact match wins, then a prefix match, then any substring."""
+    lists = [
+        List(id="L1", name="Explore: Go", slug="explore-go", category="Go"),
+        List(id="L2", name="Explore: Gopher", slug="explore-gopher", category="Gopher"),
+        List(id="L3", name="Explore: Django", slug="explore-django", category="Django"),
+    ]
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/a", list_ids=["L1"])])
+    store.save_lists(lists)
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+        query = app.screen.query_one("#filter-query", Input)
+        query.value = "go"
+        await pilot.pause()
+        filter_table = app.screen.query_one("#filter-table", DataTable)
+        assert [
+            str(filter_table.get_row_at(i)[0]) for i in range(filter_table.row_count)
+        ] == [
+            "Go",  # exact
+            "Gopher",  # prefix
+            "Django",  # substring
+            # "All categories" also holds "go", inside "categories". The
+            # clear option always ranks last, so it never steals Enter.
+            "All categories",
+        ]
+
+
+async def test_filter_search_handles_multiple_zero_and_empty_queries(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Enter applies the best-ranked match. Zero matches leave the
+    screen open, because there is nothing to apply.
+    """
+    lists = [
+        List(id="L1", name="Explore: Tools", slug="explore-tools", category="Tools"),
+        List(id="L2", name="Explore: Toys", slug="explore-toys", category="Toys"),
+    ]
+    store = StateStore(tmp_path)
+    store.save_stars(
+        [
+            make_star("pradyumnac/tools", list_ids=["L1"]),
+            make_star("pradyumnac/toys", list_ids=["L2"]),
+        ]
+    )
+    store.save_lists(lists)
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+        filter_table = app.screen.query_one("#filter-table", DataTable)
+        query = app.screen.query_one("#filter-query", Input)
+
+        # Zero matches: no rows, and Enter leaves the screen open.
+        query.value = "zzz"
+        await pilot.pause()
+        assert filter_table.row_count == 0
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen.query("#filter-table")
+
+        # Multiple matches: both rows show, ranked alphabetically, and
+        # Enter applies the first one.
+        query.value = "to"
+        await pilot.pause()
+        assert [
+            str(filter_table.get_row_at(i)[0]) for i in range(filter_table.row_count)
+        ] == ["Tools", "Toys"]
+        await pilot.press("enter")
+        await pilot.pause()
+        assert _table(app).row_count == 1
+        assert _table(app).get_row_at(0)[1] == "pradyumnac/tools"
 
 
 async def test_metadata_filters_support_owner_fork_and_followed(

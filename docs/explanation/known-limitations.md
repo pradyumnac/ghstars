@@ -96,3 +96,27 @@ N Stars costs 2N sequential `gh api graphql` calls, plus one call per
 newly-created destination List. A drain is a deliberate, occasional
 user action, not part of every sync, so this is accepted as-is —
 revisit only if a real drain across a very large Category proves slow.
+
+## A threaded `lists` snapshot goes stale during a bulk tag
+
+`tag_star()` accepts a `lists` snapshot. A bulk caller fetches once at
+the start of a batch and threads the same snapshot through every star,
+instead of paying one `fetch_lists()` per star.
+`apply_membership_diff()` updates that snapshot after every successful
+push, so star N+1 sees star N's own change.
+
+**Effect:** the snapshot never sees a change another process makes to
+star N+1 while star N's push is still in flight. It is only as fresh as
+the batch's own start, plus the batch's own pushes.
+
+**Trigger:** another process must change the same star's List
+membership during the batch.
+
+**Not a problem for a single call:** one `ghstars tag` call threads no
+snapshot. It always compares against a fetch from that same call, so it
+does not have this gap.
+
+**Why it is accepted:** closing it needs a live `fetch_lists()` per
+star, which is the round trip that threading exists to avoid. This is
+the same trade ticket 07's fetch-fresh-skip-diverged design already
+accepts for creating a List mid-batch.
