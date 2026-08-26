@@ -7,7 +7,7 @@ palette, and last-View-Mode/sort/Filter persistence across quit/relaunch.
 from pathlib import Path
 
 from conftest import StarFactory
-from textual.widgets import DataTable, Footer
+from textual.widgets import DataTable, Static
 from textual.widgets._data_table import RowKey
 
 from ghstars.core.fake_client import FakeGitHubClient
@@ -38,6 +38,7 @@ def test_load_tui_config_missing_file_is_every_default(tmp_path: Path) -> None:
     assert config.header_height == 1
     assert config.row_height == 1
     assert config.colours.primary is None
+    assert config.layout == "compact"
 
 
 def test_load_tui_config_reads_overrides(tmp_path: Path) -> None:
@@ -46,12 +47,16 @@ def test_load_tui_config_reads_overrides(tmp_path: Path) -> None:
         """
         header_height = 3
         row_height = 2
+        layout = "balanced"
 
         [keybindings]
         tag_selected = "shift+t"
 
         [colours]
         primary = "#ff00ff"
+
+        [category_colours]
+        AI = "text-accent"
         """
     )
 
@@ -59,8 +64,10 @@ def test_load_tui_config_reads_overrides(tmp_path: Path) -> None:
 
     assert config.header_height == 3
     assert config.row_height == 2
+    assert config.layout == "balanced"
     assert config.keybindings == {"tag_selected": "shift+t"}
     assert config.colours.primary == "#ff00ff"
+    assert config.category_colours == {"AI": "text-accent"}
 
 
 def test_load_tui_config_invalid_toml_raises(tmp_path: Path) -> None:
@@ -71,6 +78,20 @@ def test_load_tui_config_invalid_toml_raises(tmp_path: Path) -> None:
         load_tui_config(path)
     except TuiConfigError:
         pass
+    else:
+        raise AssertionError("expected TuiConfigError")
+
+
+def test_load_tui_config_rejects_unknown_category_colour_role(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "tui.toml"
+    path.write_text('[category_colours]\nAI = "magenta"\n')
+
+    try:
+        load_tui_config(path)
+    except TuiConfigError as exc:
+        assert "category_colours" in str(exc)
     else:
         raise AssertionError("expected TuiConfigError")
 
@@ -98,6 +119,7 @@ def test_load_tui_state_missing_file_is_every_default(tmp_path: Path) -> None:
     assert state.sort_key is None
     assert state.filter is None
     assert state.detail_pane_visible is True
+    assert state.layout is None
 
 
 def test_load_tui_state_corrupt_file_falls_back_to_defaults(tmp_path: Path) -> None:
@@ -118,6 +140,7 @@ def test_save_then_load_tui_state_round_trips(tmp_path: Path) -> None:
         sort_key="newest",
         filter="unclassified",
         detail_pane_visible=False,
+        layout="balanced",
     )
 
     save_tui_state(path, state)
@@ -166,10 +189,10 @@ async def test_tui_app_with_no_config_file_uses_defaults(
     )
     async with app.run_test() as pilot:
         await pilot.pause()
-        footer_text = str(app.query_one(Footer).render())
+        action_text = str(app.query_one("#action-controls", Static).render())
 
-    # Default binding ("t") still shown; no override applied.
-    assert "t" in footer_text.lower()
+    # The default tag key remains visible in the bottom status bar.
+    assert "[t] Tag" in action_text
 
 
 async def test_tui_app_applies_keybinding_override(
@@ -307,6 +330,44 @@ async def test_tui_app_never_writes_tui_config(
         await app.action_quit()
 
     assert not config_path.exists()
+
+
+async def test_tui_app_persists_last_layout_over_config_default(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text('layout = "compact"\n')
+    state_path = tmp_path / "state" / "tui-state.toml"
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+
+    app1 = TuiApp(
+        client=FakeGitHubClient(),
+        store=store,
+        config_path=config_path,
+        state_path=state_path,
+    )
+    async with app1.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        app1.action_cycle_layout()
+        await pilot.pause()
+        await app1.action_quit()
+
+    assert load_tui_state(state_path).layout == "balanced"
+
+    app2 = TuiApp(
+        client=FakeGitHubClient(),
+        store=store,
+        config_path=config_path,
+        state_path=state_path,
+    )
+    async with app2.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        columns = [str(column.label) for column in _table(app2).columns.values()]
+
+    assert {"License", "Owner", "Starred"} <= set(columns)
 
 
 async def test_tui_app_restores_view_mode_across_relaunch(

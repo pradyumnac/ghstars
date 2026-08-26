@@ -14,9 +14,8 @@ overview, and each Star row's membership summary -- also renders its
 visibility explicitly.
 
 Rate limit (spec story 49): `GitHubClient.check_rate_limit()` is
-fetched once on mount and shown in a bar under the header, refreshable
-with `r`, so the user can see they're approaching a sync-blocking
-limit before `ghstars sync` fails outright
+fetched once on mount and shown in the title row. Press `r` to refresh
+it. This warns the user before `ghstars sync` reaches the API limit
 (docs/explanation/known-limitations.md: a full sync is not
 incremental and costs real API points every time).
 
@@ -32,8 +31,10 @@ and active Filter, read at launch and written on quit
 (`action_quit`).
 """
 
+import hashlib
 import json
 import webbrowser
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -41,13 +42,15 @@ from typing import ClassVar
 
 from filelock import Timeout
 from pydantic import ValidationError
-from textual import work
+from rich.style import Style
+from rich.text import Text
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.markup import escape
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, Static
+from textual.widgets import Button, Checkbox, DataTable, Input, Static
 
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
@@ -73,6 +76,81 @@ from ghstars.tui.config import (
 
 _LOCK = "\U0001f512"
 _GLOBE = "\U0001f310"
+_CATEGORY_ROLES = (
+    "text-primary",
+    "text-secondary",
+    "text-accent",
+    "text-success",
+)
+
+
+def _category_role(category: str | None, overrides: Mapping[str, str]) -> str:
+    """Return a stable semantic text role for a Category."""
+    if not category:
+        return "text-muted"
+    if category in overrides:
+        return overrides[category]
+    index = hashlib.sha256(category.encode()).digest()[0] % len(_CATEGORY_ROLES)
+    return _CATEGORY_ROLES[index]
+
+
+def _rich_colour(value: str) -> str:
+    """Convert a Textual RGBA hex value to the RGB form Rich accepts."""
+    return value[:7] if value.startswith("#") and len(value) == 9 else value
+
+
+def _styled_category(
+    category: str | None, variables: dict[str, str], overrides: Mapping[str, str]
+) -> Text:
+    """Render Category text with a colour from the active Textual theme."""
+    label = category or "-"
+    role = _category_role(category, overrides)
+    # `$text-muted` is a Textual expression (`auto 60%`), not a Rich colour.
+    # Use the active theme's muted foreground for Rich table cells.
+    resolved_role = "foreground-muted" if role == "text-muted" else role
+    return Text(label, style=_rich_colour(variables[resolved_role]))
+
+
+def _styled_list(
+    lst: List, variables: dict[str, str], overrides: Mapping[str, str]
+) -> Text:
+    """Render a full List name while keeping its Category as the colour cue."""
+    text = Text()
+    if lst.intent and lst.category:
+        text.append(f"{lst.intent}: ")
+        text.append_text(_styled_category(lst.category, variables, overrides))
+    else:
+        text.append(lst.name, style=_rich_colour(variables["foreground-muted"]))
+    return text
+
+
+def _membership_chip(
+    lst: List, variables: dict[str, str], overrides: Mapping[str, str]
+) -> Text:
+    """Render one text-first Intent and Category membership cue."""
+    text = Text(f"[{_LOCK if lst.is_private else _GLOBE} ")
+    if lst.intent and lst.category:
+        text.append(f"{lst.intent} · ")
+        text.append_text(_styled_category(lst.category, variables, overrides))
+    else:
+        text.append(lst.name, style=_rich_colour(variables["foreground-muted"]))
+    text.append("]")
+    text.stylize(Style(meta={"@click": f"app.filter_membership({lst.id!r})"}))
+    return text
+
+
+def _membership_chips(
+    lists: list[List], variables: dict[str, str], overrides: Mapping[str, str]
+) -> Text:
+    """Render several membership cues without hiding their text labels."""
+    if not lists:
+        return Text("-")
+    text = Text()
+    for index, lst in enumerate(lists):
+        if index:
+            text.append(" ")
+        text.append_text(_membership_chip(lst, variables, overrides))
+    return text
 
 
 @dataclass(frozen=True)
@@ -119,12 +197,21 @@ class DetailPane(Static):
     `GitHubClient`, so it can never block the initial paint.
     """
 
+    def __init__(
+        self,
+        *,
+        category_colours: Mapping[str, str] | None = None,
+        id: str | None = None,
+    ) -> None:
+        super().__init__(id=id)
+        self._category_colours = category_colours or {}
+
     def show_star(self, star: Star, lists: dict[str, List]) -> None:
+        member_lists = [lists[lid] for lid in star.list_ids if lid in lists]
         memberships = (
             ", ".join(
-                f"{lists[lid].name} ({_visibility_label(lists[lid].is_private)})"
-                for lid in star.list_ids
-                if lid in lists
+                f"{lst.name} ({_visibility_label(lst.is_private)})"
+                for lst in member_lists
             )
             or "none"
         )
@@ -153,35 +240,27 @@ class DetailPane(Static):
             f"Lists: {memberships}",
             f"Pending list edit: {pending}",
         ]
-        self.update("\n".join(lines))
+        body = Text.from_markup("\n".join(lines[:-2]))
+        body.append("\nLists: ")
+        if member_lists:
+            for index, lst in enumerate(member_lists):
+                if index:
+                    body.append(", ")
+                body.append_text(
+                    _styled_list(
+                        lst,
+                        self.app.get_css_variables(),
+                        self._category_colours,
+                    )
+                )
+                body.append(f" ({_visibility_label(lst.is_private)})")
+        else:
+            body.append("none")
+        body.append(f"\nPending list edit: {pending}")
+        self.update(body)
 
     def show_empty(self) -> None:
         self.update("No star selected.")
-
-
-class RateLimitBar(Static):
-    """Shows the remaining GitHub API rate limit (spec story 49).
-
-    Constructed with a "checking" placeholder rather than empty content:
-    a real `check_rate_limit()` call takes ~0.7s, and an empty `Static`
-    paints as a blank strip for that whole window -- indistinguishable
-    from the bar being broken.
-    """
-
-    def __init__(self, *, id: str | None = None) -> None:
-        super().__init__("API rate limit: checking...", id=id)
-
-    def show_status(self, status: RateLimitStatus) -> None:
-        marker = "ok" if status.ok else "LOW"
-        self.update(
-            f"API rate limit: {status.remaining}/{status.limit} remaining ({marker})"
-        )
-        self.set_class(not status.ok, "-low")
-
-    def show_unknown(self, detail: str) -> None:
-        # Escape arbitrary error text before rendering it as markup.
-        self.update(f"API rate limit: unknown ({escape(detail)})")
-        self.set_class(True, "-low")
 
 
 class ListPickerScreen(ModalScreen[TagChoice | None]):
@@ -194,10 +273,17 @@ class ListPickerScreen(ModalScreen[TagChoice | None]):
 
     BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Cancel")]
 
-    def __init__(self, lists: list[List], *, target_count: int) -> None:
+    def __init__(
+        self,
+        lists: list[List],
+        *,
+        target_count: int,
+        category_colours: Mapping[str, str] | None = None,
+    ) -> None:
         super().__init__()
         self._lists = sorted(lists, key=lambda lst: lst.name)
         self._target_count = target_count
+        self._category_colours = category_colours or {}
 
     def compose(self) -> ComposeResult:
         noun = "star" if self._target_count == 1 else "stars"
@@ -216,11 +302,12 @@ class ListPickerScreen(ModalScreen[TagChoice | None]):
     def on_mount(self) -> None:
         table = self.query_one("#picker-table", DataTable)
         table.add_columns("List", "Intent", "Category", "Visibility")
+        variables = self.app.get_css_variables()
         for lst in self._lists:
             table.add_row(
-                lst.name,
+                _styled_list(lst, variables, self._category_colours),
                 lst.intent or "-",
-                lst.category or "-",
+                _styled_category(lst.category, variables, self._category_colours),
                 _visibility_label(lst.is_private),
                 key=lst.id,
             )
@@ -382,11 +469,71 @@ class FilterScreen(ModalScreen[str | None]):
         Binding("escape", "cancel", "Cancel"),
     ]
 
-    def __init__(self, title: str, options: list[tuple[str, str]]) -> None:
+    def __init__(self, title: str, options: Sequence[tuple[str, str | Text]]) -> None:
         super().__init__()
         self._title = title
-        self._options = options
+        self._options = list(options)
         self._option_values = {value for value, _ in options}
+
+    def _visible_options(self) -> list[tuple[str, str | Text]]:
+        query = self.query_one("#filter-query", Input).value.strip().lower()
+        if not query:
+            return self._options
+        return [
+            (value, label)
+            for value, label in self._options
+            if query in str(label).lower()
+        ]
+
+    def _refresh_options(self) -> None:
+        table = self.query_one("#filter-table", DataTable)
+        table.clear()
+        table.add_row("All stars", key="")
+        for value, label in self._visible_options():
+            table.add_row(label, key=value)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "filter-query":
+            return
+        if self._title.startswith("Filter by Recency"):
+            shortcuts = {
+                "d": self.action_recent_day,
+                "w": self.action_recent_week,
+                "m": self.action_recent_month,
+                "3": self.action_recent_three_months,
+                "y": self.action_recent_year,
+                "o": self.action_recent_older,
+            }
+            action = shortcuts.get(event.value.lower())
+            if action is not None:
+                action()
+                return
+        self._refresh_options()
+
+    def on_key(self, event: events.Key) -> None:
+        if not self._title.startswith("Filter by Recency"):
+            return
+        shortcuts = {
+            "d": self.action_recent_day,
+            "w": self.action_recent_week,
+            "m": self.action_recent_month,
+            "3": self.action_recent_three_months,
+            "y": self.action_recent_year,
+            "o": self.action_recent_older,
+        }
+        action = shortcuts.get(event.key)
+        if action is not None:
+            event.stop()
+            action()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "filter-query":
+            return
+        options = self._visible_options()
+        if len(options) == 1:
+            self.dismiss(options[0][0])
+        elif not options and self._options:
+            self.dismiss(None)
 
     def _select_shortcut(self, value: str) -> None:
         if value in self._option_values:
@@ -413,16 +560,15 @@ class FilterScreen(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="filter-body"):
             yield Static(self._title)
+            yield Input(placeholder="Search filters...", id="filter-query")
             yield DataTable(id="filter-table", cursor_type="row")
             yield Button("Cancel", id="cancel")
 
     def on_mount(self) -> None:
         table = self.query_one("#filter-table", DataTable)
         table.add_column("Filter")
-        table.add_row("All stars", key="")
-        for value, label in self._options:
-            table.add_row(label, key=value)
-        table.focus()
+        self._refresh_options()
+        self.query_one("#filter-query", Input).focus()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.dismiss(event.row_key.value)
@@ -439,9 +585,15 @@ class ListsOverviewScreen(ModalScreen[None]):
 
     BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "close", "Close")]
 
-    def __init__(self, lists: list[List]) -> None:
+    def __init__(
+        self,
+        lists: list[List],
+        *,
+        category_colours: Mapping[str, str] | None = None,
+    ) -> None:
         super().__init__()
         self._lists = sorted(lists, key=lambda lst: lst.name)
+        self._category_colours = category_colours or {}
 
     def compose(self) -> ComposeResult:
         with Vertical(id="lists-overview"):
@@ -451,11 +603,12 @@ class ListsOverviewScreen(ModalScreen[None]):
     def on_mount(self) -> None:
         table = self.query_one("#overview-table", DataTable)
         table.add_columns("List", "Intent", "Category", "Visibility", "Items")
+        variables = self.app.get_css_variables()
         for lst in self._lists:
             table.add_row(
-                lst.name,
+                _styled_list(lst, variables, self._category_colours),
                 lst.intent or "-",
-                lst.category or "-",
+                _styled_category(lst.category, variables, self._category_colours),
                 _visibility_label(lst.is_private),
                 str(len(lst.items)),
                 key=lst.id,
@@ -484,24 +637,42 @@ class TuiApp(App[None]):
     #picker-buttons Button {
         margin-left: 1;
     }
-    RateLimitBar {
+    #title-row, #discovery-row, #bottom-status-row {
         height: 1;
+        margin: 0 1;
         padding: 0 1;
         background: $panel;
     }
-    RateLimitBar.-low {
-        background: $error;
-        color: $text;
+    #title-label, #action-controls {
+        width: 1fr;
+    }
+    #action-controls {
+        text-align: right;
+    }
+    #discovery-row {
+        align: right middle;
+    }
+    #bottom-status-row {
+        align: left middle;
+    }
+    #system-status, #collection-status {
+        width: auto;
+        text-align: right;
+    }
+    #discovery-controls {
+        width: auto;
+        text-align: left;
+    }
+    #system-status.-low {
+        color: $text-error;
     }
     #search-input {
         display: none;
     }
-    #result-status {
-        height: 1;
-        padding: 0 1;
-    }
     #stars-table {
         height: 1fr;
+        margin: 1;
+        border: round $primary;
     }
     DetailPane {
         height: 14;
@@ -521,13 +692,15 @@ class TuiApp(App[None]):
         Binding("a", "select_all", f"Select all{_FOOTER_SEP}"),
         Binding("c", "clear_selection", f"Clear selection{_FOOTER_SEP}"),
         Binding("l", "show_lists", f"Lists{_FOOTER_SEP}"),
-        Binding("f", "open_filter", f"Filter{_FOOTER_SEP}"),
+        Binding("f", "open_filter", "Filter", show=False),
+        Binding("x", "clear_discovery", "Clear", show=False),
+        Binding("z", "cycle_layout", f"Layout{_FOOTER_SEP}"),
         Binding("o", "open_in_browser", f"Open{_FOOTER_SEP}"),
         Binding("u", "unstar_selected", f"Unstar{_FOOTER_SEP}"),
         # Keep the sort label synchronized with the active mode.
-        Binding("s", "cycle_sort", f"Sort (Date){_FOOTER_SEP}"),
-        Binding("slash", "open_search", f"Search{_FOOTER_SEP}"),
-        # Hide this contextual binding from the Footer.
+        Binding("s", "cycle_sort", "Sort (Date)", show=False),
+        Binding("slash", "open_search", "Search", show=False),
+        # Hide this contextual binding from persistent key hints.
         Binding("escape", "close_search", "Close search", show=False),
         Binding("r", "refresh_rate_limit", "Refresh rate limit"),
         Binding("y", "sync", f"Sync{_FOOTER_SEP}"),
@@ -551,6 +724,10 @@ class TuiApp(App[None]):
         self._picker_open = False
         self._filter_open = False
         self._unstar_confirm_open = False
+        self._narrow = False
+        self._api_status = "◌ checking"
+        self._api_low = False
+        self._sync_status = "↻ idle"
 
         # Use explicit paths when provided; otherwise use the standard local paths.
         self._config_path = config_path or (
@@ -560,6 +737,7 @@ class TuiApp(App[None]):
         self._config: TuiConfig = load_tui_config(self._config_path)
         self._state: TuiState = load_tui_state(self._state_path)
         self._filter_key = self._state.filter
+        self._layout = self._state.layout or self._config.layout
 
         # Restore a recognized sort mode; default to newest starred date.
         saved_sort_key = self._state.sort_key
@@ -572,28 +750,35 @@ class TuiApp(App[None]):
         self._apply_colour_overrides(self._config.colours)
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
-        yield RateLimitBar(id="rate-limit-bar")
-        yield Static("Sync: idle", id="sync-status")
+        with Horizontal(id="title-row"):
+            yield Static("✦ ghstars", id="title-label")
+            yield Static(id="system-status")
+        with Horizontal(id="discovery-row"):
+            yield Static(id="collection-status")
         yield Input(placeholder="Search name/description...", id="search-input")
-        yield Static(id="result-status")
         yield DataTable(
             id="stars-table",
             cursor_type="row",
             header_height=self._config.header_height,
         )
-        yield DetailPane(id="detail-pane")
-        yield Footer()
+        yield DetailPane(
+            category_colours=self._config.category_colours, id="detail-pane"
+        )
+        with Horizontal(id="bottom-status-row"):
+            yield Static(id="discovery-controls")
+            yield Static(id="action-controls")
 
     def on_mount(self) -> None:
         self.title = "ghstars"
         table = self.query_one("#stars-table", DataTable)
-        table.add_columns(("Sel", "sel"), "Star", "Language", "Stars", "Lists")
-        self.query_one(
-            "#detail-pane", DetailPane
-        ).display = self._state.detail_pane_visible
+        self._narrow = self.size.width < 90
+        self._configure_table_columns(table)
+        self.query_one("#detail-pane", DetailPane).display = (
+            self._state.detail_pane_visible and not self._narrow
+        )
         # The table fills the space when the detail pane is hidden.
         self._update_sort_binding_description()
+        self._refresh_system_status()
         self._reload_local_state()
         self._refresh_table()
         self._fetch_rate_limit()
@@ -676,6 +861,94 @@ class TuiApp(App[None]):
         custom = replace(base, name="ghstars-config", variables=variables, **overrides)
         self.register_theme(custom)
         self.theme = "ghstars-config"
+
+    def _configure_table_columns(self, table: DataTable[object]) -> None:
+        """Apply the active density and terminal-width column set."""
+        table.clear(columns=True)
+        table.add_columns(("Sel", "sel"), "Star", "Language", "Stars")
+        if self._narrow:
+            table.add_column("Lists")
+        else:
+            table.add_column("Membership")
+            if self._layout == "balanced":
+                table.add_columns("License", "Owner", "Starred")
+
+    def _refresh_system_status(self) -> None:
+        """Render API and sync state in the title row."""
+        status = self.query_one("#system-status", Static)
+        status.update(f"[{self._api_status}]  [{self._sync_status}]")
+        status.set_class(self._api_low, "-low")
+
+    def _refresh_discovery_status(self, visible_count: int) -> None:
+        """Render discovery controls and collection counts."""
+        variables = self.get_css_variables()
+        accent = _rich_colour(variables["text-accent"])
+        active = _rich_colour(variables["text-primary"])
+        action_controls = Text()
+        for key, label in (
+            ("t", "Tag"),
+            ("d", "Detail"),
+            ("spc", "Select"),
+            ("l", "Lists"),
+            ("o", "Open"),
+            ("u", "Unstar"),
+            ("y", "Sync"),
+            ("q", "Quit"),
+        ):
+            if action_controls:
+                action_controls.append("  ")
+            action_controls.append(f"[{key}]", style=accent)
+            action_controls.append(f" {label}")
+        self.query_one("#action-controls", Static).update(action_controls)
+
+        controls = Text()
+        for key, label in (("/", "Search"), ("f", "Filter"), ("s", "Sort")):
+            if controls:
+                controls.append("  ")
+            controls.append(f"[{key}]", style=accent)
+            value = label
+            if label == "Search" and self._search_query.strip():
+                value = f"Search: {self._search_query.strip()}"
+            elif label == "Filter":
+                value = f"Filter: {self._filter_label() if self._filter_key else 'All'}"
+            elif label == "Sort":
+                value = f"Sort: {self._SORT_LABELS[self._sort_mode]}"
+            controls.append(f" {value}", style=active if ":" in value else None)
+        controls.append("  ")
+        controls.append("[x]", style=accent)
+        controls.append(" Clear")
+        self.query_one("#discovery-controls", Static).update(controls)
+
+        unclassified = sum(not star.list_ids for star in self._stars)
+        pending = sum(bool(star.pending_list_ids) for star in self._stars)
+        counts = Text(
+            f"[Stars: {visible_count}/{len(self._stars)}]  "
+            f"[Lists: {len(self._lists)}]  "
+        )
+        start = len(counts)
+        counts.append(f"[Unclassified: {unclassified}]")
+        counts.stylize(
+            Style(
+                color=accent,
+                meta={"@click": "app.filter_unclassified"},
+            ),
+            start,
+        )
+        counts.append(f"  [Pending: {pending}]")
+        self.query_one("#collection-status", Static).update(counts)
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Hide lower-priority columns when the terminal becomes narrow."""
+        narrow = event.size.width < 90
+        if narrow == self._narrow:
+            return
+        self._narrow = narrow
+        self.query_one("#detail-pane", DetailPane).display = (
+            self._state.detail_pane_visible and not narrow
+        )
+        table = self.query_one("#stars-table", DataTable)
+        self._configure_table_columns(table)
+        self._refresh_table()
 
     # -- local state, read from the last `ghstars sync` --------------------
 
@@ -802,28 +1075,37 @@ class TuiApp(App[None]):
         table = self.query_one("#stars-table", DataTable)
         table.clear()
         visible_stars = self._visible_stars()
-        status = self.query_one("#result-status", Static)
-        noun = "star" if len(visible_stars) == 1 else "stars"
-        details = [f"{len(visible_stars)} {noun}"]
-        if self._search_query.strip():
-            details.append(f"Search: {escape(self._search_query.strip())}")
-        if self._filter_key:
-            details.append(f"Filter: {escape(self._filter_label())}")
-        status.update(" • ".join(details))
+        self._refresh_discovery_status(len(visible_stars))
         by_id = self._lists_by_id()
         for star in visible_stars:
             mark = "[x]" if star.full_name in self._selected else "[ ]"
-            memberships = ", ".join(
-                f"{by_id[lid].name} ({_visibility_label(by_id[lid].is_private)})"
-                for lid in star.list_ids
-                if lid in by_id
-            )
-            table.add_row(
+            member_lists = [by_id[lid] for lid in star.list_ids if lid in by_id]
+            row: list[object] = [
                 mark,
                 star.full_name,
                 star.language or "-",
                 _format_count(star.stargazer_count),
-                memberships or "-",
+            ]
+            if self._narrow:
+                row.append(f"Lists: {len(member_lists)}")
+            else:
+                row.append(
+                    _membership_chips(
+                        member_lists,
+                        self.get_css_variables(),
+                        self._config.category_colours,
+                    )
+                )
+                if self._layout == "balanced":
+                    row.extend(
+                        (
+                            star.license or "-",
+                            star.full_name.split("/", 1)[0],
+                            _format_date(star.starred_at),
+                        )
+                    )
+            table.add_row(
+                *row,
                 height=self._config.row_height,
                 key=star.full_name,
             )
@@ -894,7 +1176,11 @@ class TuiApp(App[None]):
         self._refresh_table()
 
     def action_show_lists(self) -> None:
-        self.push_screen(ListsOverviewScreen(self._lists))
+        self.push_screen(
+            ListsOverviewScreen(
+                self._lists, category_colours=self._config.category_colours
+            )
+        )
 
     def action_refresh_rate_limit(self) -> None:
         self._fetch_rate_limit()
@@ -904,7 +1190,8 @@ class TuiApp(App[None]):
             self.notify("Sync already in progress.", severity="warning")
             return
         self._sync_in_progress = True
-        self.query_one("#sync-status", Static).update("Sync: starting...")
+        self._sync_status = "↻ starting"
+        self._refresh_system_status()
         self._run_sync()
 
     @work(thread=True)
@@ -922,22 +1209,21 @@ class TuiApp(App[None]):
         )
 
     def _show_sync_stage(self, stage: str) -> None:
-        self.query_one("#sync-status", Static).update(f"Sync: {stage}...")
+        self._sync_status = f"↻ {stage}"
+        self._refresh_system_status()
 
     def _show_sync_done(self, star_count: int, list_count: int) -> None:
         self._sync_in_progress = False
         self._reload_local_state()
         self._refresh_table()
-        self.query_one("#sync-status", Static).update(
-            f"Sync: complete ({star_count} stars, {list_count} Lists)"
-        )
+        self._sync_status = f"✓ complete · {star_count} Stars · {list_count} Lists"
+        self._refresh_system_status()
         self.notify(f"Synced {star_count} star(s), {list_count} list(s).")
 
     def _show_sync_error(self, detail: str) -> None:
         self._sync_in_progress = False
-        self.query_one("#sync-status", Static).update(
-            f"Sync: failed ({escape(detail)})"
-        )
+        self._sync_status = f"✕ failed: {detail}"
+        self._refresh_system_status()
         self.notify(f"Sync failed: {detail}", severity="error", timeout=8)
 
     # Cycle through the supported sort modes with "s".
@@ -949,7 +1235,7 @@ class TuiApp(App[None]):
         "list_count_desc",
         "list_name",
     ]
-    # Short form for the Footer's "Sort (...)" label.
+    # Short form for the bottom status bar's active sort value.
     _SORT_LABELS: ClassVar[dict[str, str]] = {
         "starred_desc": "Date",
         "name": "Name",
@@ -969,10 +1255,11 @@ class TuiApp(App[None]):
     }
 
     def _update_sort_binding_description(self) -> None:
-        """Keeps the Footer's "Sort (...)" label (`BINDINGS` above) in
-        step with `self._sort_mode` -- mutates `self._bindings` the
-        same way `_apply_keybinding_overrides()` does, then
-        `refresh_bindings()` to repaint the Footer."""
+        """Keep the sort binding description in step with the status bar.
+
+        The binding description remains useful in the command palette even
+        though the persistent hint now lives in the custom bottom bar.
+        """
         label = self._SORT_LABELS[self._sort_mode]
         key_to_bindings = self._bindings.key_to_bindings
         bindings = key_to_bindings.get("s")
@@ -986,6 +1273,15 @@ class TuiApp(App[None]):
         ]
         self.refresh_bindings()
 
+    def action_cycle_layout(self) -> None:
+        """Toggle compact and balanced columns and save the active density."""
+        self._layout = "balanced" if self._layout == "compact" else "compact"
+        self._state.layout = self._layout
+        table = self.query_one("#stars-table", DataTable)
+        self._configure_table_columns(table)
+        self._refresh_table()
+        self.notify(f"Layout: {self._layout}.")
+
     def action_cycle_sort(self) -> None:
         index = self._SORT_MODES.index(self._sort_mode)
         self._sort_mode = self._SORT_MODES[(index + 1) % len(self._SORT_MODES)]
@@ -996,6 +1292,24 @@ class TuiApp(App[None]):
         self.notify(f"Sorted by {self._SORT_NOTIFY_LABELS[self._sort_mode]}.")
 
     # -- filters --------------------------------------------------------------
+
+    def action_filter_membership(self, list_id: str) -> None:
+        """Apply the exact Intent-and-Category List selected in a chip."""
+        self._set_filter(f"list:{list_id}")
+
+    def action_filter_unclassified(self) -> None:
+        self._set_filter("unclassified")
+
+    def action_clear_discovery(self) -> None:
+        """Clear search and Filter state without changing the active sort."""
+        self._filter_key = None
+        self._state.filter = None
+        self._search_query = ""
+        search_input = self.query_one("#search-input", Input)
+        search_input.value = ""
+        search_input.display = False
+        self._refresh_table()
+        self.query_one("#stars-table", DataTable).focus()
 
     def _set_filter(self, value: str | None) -> None:
         self._filter_key = value or None
@@ -1023,20 +1337,34 @@ class TuiApp(App[None]):
         self._filter_open = True
         try:
             kind = await self.push_screen_wait(FilterMenuScreen())
+            options: list[tuple[str, str | Text]]
             if kind in {"clear", "unclassified"}:
                 self._set_filter(None if kind == "clear" else kind)
                 return
             if kind == "category":
                 values = sorted({lst.category for lst in self._lists if lst.category})
-                options = [(f"category:{value}", value) for value in values]
+                variables = self.get_css_variables()
+                options = [
+                    (
+                        f"category:{value}",
+                        _styled_category(
+                            value, variables, self._config.category_colours
+                        ),
+                    )
+                    for value in values
+                ]
                 title = "Filter by Category"
             elif kind == "intent":
                 values = sorted({lst.intent for lst in self._lists if lst.intent})
                 options = [(f"intent:{value}", value) for value in values]
                 title = "Filter by Intent"
             elif kind == "list":
+                variables = self.get_css_variables()
                 options = [
-                    (f"list:{lst.id}", lst.name)
+                    (
+                        f"list:{lst.id}",
+                        _styled_list(lst, variables, self._config.category_colours),
+                    )
                     for lst in sorted(self._lists, key=lambda item: item.name)
                 ]
                 title = "Filter by List"
@@ -1196,7 +1524,11 @@ class TuiApp(App[None]):
     async def _open_picker(self, targets: list[str]) -> None:
         try:
             choice = await self.push_screen_wait(
-                ListPickerScreen(self._lists, target_count=len(targets))
+                ListPickerScreen(
+                    self._lists,
+                    target_count=len(targets),
+                    category_colours=self._config.category_colours,
+                )
             )
         finally:
             self._picker_open = False
@@ -1318,8 +1650,13 @@ class TuiApp(App[None]):
         self.call_from_thread(self._show_rate_limit, status)
 
     def _show_rate_limit(self, status: RateLimitStatus) -> None:
-        self.query_one("#rate-limit-bar", RateLimitBar).show_status(status)
+        marker = "LOW " if not status.ok else ""
+        self._api_status = f"◌ {marker}{status.remaining}/{status.limit}"
+        self._api_low = not status.ok
+        self._refresh_system_status()
 
     def _show_rate_limit_error(self, detail: str) -> None:
-        self.query_one("#rate-limit-bar", RateLimitBar).show_unknown(detail)
+        self._api_status = "◌ error"
+        self._api_low = True
+        self._refresh_system_status()
         self.notify(f"Rate limit check failed: {escape(detail)}", severity="error")

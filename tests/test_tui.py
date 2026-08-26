@@ -10,10 +10,13 @@ runs in a `@work(thread=True)` worker, so tests await
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Event
 
 import pytest
 from conftest import StarFactory
 from filelock import Timeout
+from rich.style import Style
+from rich.text import Text
 from textual.widgets import DataTable, Input, Static
 
 from ghstars.core.fake_client import FakeGitHubClient
@@ -25,8 +28,8 @@ from ghstars.tui.app import (
     DetailPane,
     FilterScreen,
     ListPickerScreen,
-    RateLimitBar,
     TuiApp,
+    _category_role,
     _format_date,
     _visibility_label,
 )
@@ -41,6 +44,20 @@ def _detail_text(app: TuiApp) -> str:
     return str(app.query_one("#detail-pane", DetailPane).render())
 
 
+def test_category_roles_are_stable_semantic_cues() -> None:
+    role = _category_role("AI", {})
+
+    assert role == _category_role("AI", {})
+    assert role in {
+        "text-primary",
+        "text-secondary",
+        "text-accent",
+        "text-success",
+    }
+    assert _category_role(None, {}) == "text-muted"
+    assert _category_role("AI", {"AI": "text-accent"}) == "text-accent"
+
+
 async def test_stars_table_shows_membership_with_visibility(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
@@ -53,14 +70,43 @@ async def test_stars_table_shows_membership_with_visibility(
     store.save_lists([private_list])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
-    async with app.run_test() as pilot:
+    async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         row = _table(app).get_row_at(0)
 
     assert row[1] == "pradyumnac/ghstars"
-    assert "Current: Tool" in row[4]
-    assert _visibility_label(True) in row[4]
-    assert "pending" not in row[4]
+    membership = str(row[4])
+    assert "Current: Tool" in membership
+    assert "🔒" in membership
+    assert "pending" not in membership
+
+
+async def test_category_override_colours_membership_without_hiding_text(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    category_list = List(
+        id="L1",
+        name="Explore: AI",
+        slug="explore-ai",
+        intent="Explore",
+        category="AI",
+    )
+    store = StateStore(tmp_path / "state")
+    store.save_stars([make_star("pradyumnac/ghstars", list_ids=["L1"])])
+    store.save_lists([category_list])
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text('[category_colours]\nAI = "text-accent"\n')
+
+    app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        membership: object = _table(app).get_row_at(0)[4]
+        accent = app.get_css_variables()["text-accent"]
+
+    assert isinstance(membership, Text)
+    assert str(membership) == "[🌐 Explore · AI]"
+    assert any(str(span.style) == accent for span in membership.spans)
 
 
 async def test_stale_pending_list_ids_is_ignored_by_the_table(
@@ -99,8 +145,7 @@ async def test_rate_limit_bar_shows_remaining_after_mount(
     async with app.run_test() as pilot:
         await pilot.pause()
         await app.workers.wait_for_complete()
-        bar = app.query_one("#rate-limit-bar", RateLimitBar)
-        text = bar.render()
+        text = app.query_one("#system-status", Static).render()
 
     assert "42" in str(text)
     assert "5000" in str(text)
@@ -119,8 +164,8 @@ async def test_rate_limit_bar_flags_when_not_ok(
     async with app.run_test() as pilot:
         await pilot.pause()
         await app.workers.wait_for_complete()
-        bar = app.query_one("#rate-limit-bar", RateLimitBar)
-        has_low_class = "-low" in bar.classes
+        status = app.query_one("#system-status", Static)
+        has_low_class = "-low" in status.classes
 
     assert has_low_class
 
@@ -128,13 +173,22 @@ async def test_rate_limit_bar_flags_when_not_ok(
 async def test_rate_limit_bar_shows_checking_state_before_first_fetch_resolves(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    """Acceptance: the bar must never paint blank while the first
-    `check_rate_limit()` call (~0.7s on a real client) is in flight."""
+    """The title row must not be blank while the first API call runs."""
     store = StateStore(tmp_path)
     store.save_stars([make_star("pradyumnac/ghstars")])
+    release = Event()
 
-    bar = RateLimitBar(id="rate-limit-bar")
-    text = str(bar.render())
+    class BlockingRateLimitClient(FakeGitHubClient):
+        def check_rate_limit(self) -> RateLimitStatus:
+            release.wait(timeout=2)
+            return super().check_rate_limit()
+
+    app = TuiApp(client=BlockingRateLimitClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        text = str(app.query_one("#system-status", Static).render())
+        release.set()
+        await app.workers.wait_for_complete()
 
     assert "checking" in text.lower()
     assert text.strip() != ""
@@ -159,9 +213,9 @@ async def test_rate_limit_bar_shows_error_when_model_validate_raises(
     async with app.run_test() as pilot:
         await pilot.pause()
         await app.workers.wait_for_complete()
-        bar = app.query_one("#rate-limit-bar", RateLimitBar)
-        text = str(bar.render())
-        has_low_class = "-low" in bar.classes
+        status = app.query_one("#system-status", Static)
+        text = str(status.render())
+        has_low_class = "-low" in status.classes
 
     assert "checking" not in text.lower()
     assert text.strip() != ""
@@ -210,6 +264,7 @@ async def test_single_item_tag_pushes_immediately(
         await pilot.press("enter")
         await app.workers.wait_for_complete()
         await pilot.pause()
+        counts = str(app.query_one("#collection-status", Static).render())
 
     updated = next(s for s in store.load_stars() if s.full_name == "pradyumnac/ghstars")
     new_list = next(lst for lst in store.load_lists() if lst.name == "Explore: Foo")
@@ -217,6 +272,8 @@ async def test_single_item_tag_pushes_immediately(
     assert updated.pending_list_ids is None
     # Pushed for real on GitHub too, not just staged locally.
     assert client.fetch_stars()[0].list_ids == [new_list.id]
+    assert "Lists: 1" in counts
+    assert "Unclassified: 0" in counts
 
 
 async def test_bulk_tag_applies_to_every_selected_star(
@@ -421,7 +478,7 @@ async def test_lists_overview_shows_public_and_private_explicitly(
         overview = app.screen.query_one("#overview-table", DataTable)
         rows = [overview.get_row_at(i) for i in range(overview.row_count)]
 
-    by_name = {row[0]: row for row in rows}
+    by_name = {str(row[0]): row for row in rows}
     assert _visibility_label(False) in by_name["Reference: Docs"][3]
     assert _visibility_label(True) in by_name["Current: Secret"][3]
 
@@ -580,7 +637,7 @@ async def test_detail_pane_visible_by_default_and_toggles_with_d(
     store.save_lists([])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
-    async with app.run_test() as pilot:
+    async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         assert app.query_one("#detail-pane", DetailPane).display is True
 
@@ -600,7 +657,7 @@ async def test_detail_pane_toggle_persists_across_quit(
     state_path = tmp_path / "tui-state.toml"
 
     app = TuiApp(client=FakeGitHubClient(), store=store, state_path=state_path)
-    async with app.run_test() as pilot:
+    async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         await pilot.press("d")
         await pilot.press("q")
@@ -621,13 +678,17 @@ async def test_sync_runs_only_after_explicit_key_and_reports_completion(
     app = TuiApp(client=client, store=store)
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert "idle" in str(app.query_one("#sync-status", Static).render())
+        assert "idle" in str(app.query_one("#system-status", Static).render())
+        app._show_sync_stage("fetching Stars")
+        assert "fetching Stars" in str(app.query_one("#system-status", Static).render())
         await pilot.press("y")
         await app.workers.wait_for_complete()
         await pilot.pause()
-        status = str(app.query_one("#sync-status", Static).render())
+        status = str(app.query_one("#system-status", Static).render())
+        counts = str(app.query_one("#collection-status", Static).render())
 
     assert "complete" in status
+    assert "Stars: 1/1" in counts
     saved = {star.full_name: star for star in store.load_stars()}
     assert "pradyumnac/fresh" in saved
     assert saved["pradyumnac/stale"].archived is True
@@ -654,7 +715,9 @@ async def test_unstar_confirm_calls_remove_star_and_archives_locally(
         await pilot.pause()
         # Archived stars are filtered from the table.
         assert _table(app).row_count == 0
+        counts = str(app.query_one("#collection-status", Static).render())
 
+    assert "Stars: 0/0" in counts
     assert "pradyumnac/ghstars" not in {s.full_name for s in client.fetch_stars()}
     saved = {s.full_name: s for s in store.load_stars()}
     assert saved["pradyumnac/ghstars"].archived is True
@@ -773,62 +836,155 @@ async def test_sort_by_stargazer_count_language_and_list_count(
         assert table.get_row_at(1)[1] == "pradyumnac/low"
 
 
-def _sort_binding_description(app: TuiApp) -> str:
-    return next(
-        b.description
-        for b in app._bindings.key_to_bindings["s"]
-        if b.action == "cycle_sort"
+async def test_bottom_status_sort_label_shows_active_mode_and_toggles(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """The bottom status bar tracks the active sort mode."""
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        controls = app.query_one("#discovery-controls", Static)
+        assert "Sort: Date" in str(controls.render())
+        await pilot.press("s")
+        assert "Sort: Name" in str(controls.render())
+
+
+async def test_bottom_status_shows_compact_action_keys(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        actions = str(app.query_one("#action-controls", Static).render())
+
+    assert all(
+        label in actions
+        for label in ("[t] Tag", "[d] Detail", "[spc] Select", "[q] Quit")
     )
 
 
-async def test_footer_sort_label_shows_active_mode_and_toggles(
+async def test_discovery_rows_show_controls_counts_and_clickable_membership(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    """The Footer's "Sort (...)" key label (not a notify toast) tracks
-    the active sort mode, kept in sync by
-    _update_sort_binding_description()."""
+    ai = List(
+        id="L_ai",
+        name="Explore: AI",
+        slug="explore-ai",
+        intent="Explore",
+        category="AI",
+    )
+    classified = make_star("pradyumnac/classified", list_ids=["L_ai"])
+    unclassified = make_star("pradyumnac/unclassified", list_ids=[])
     store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
-    store.save_lists([])
+    store.save_stars([classified, unclassified])
+    store.save_lists([ai])
 
     app = TuiApp(client=FakeGitHubClient(), store=store)
-    async with app.run_test() as pilot:
+    async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
-        assert _sort_binding_description(app) == "Sort (Date) •"
-        await pilot.press("s")
-        assert _sort_binding_description(app) == "Sort (Name) •"
-
-
-async def test_footer_keybindings_are_separated_with_a_bullet(
-    tmp_path: Path, make_star: StarFactory
-) -> None:
-    store = StateStore(tmp_path)
-    store.save_stars([make_star("pradyumnac/ghstars")])
-    store.save_lists([])
-
-    app = TuiApp(client=FakeGitHubClient(), store=store)
-    async with app.run_test() as pilot:
+        controls_widget = app.query_one("#discovery-controls", Static)
+        controls = str(controls_widget.render())
+        counts = str(app.query_one("#collection-status", Static).render())
+        assert controls_widget.parent is not None
+        controls_parent_id = controls_widget.parent.id
+        membership: object = _table(app).get_row_at(0)[4]
+        handled = await app.run_action("app.filter_membership('L_ai')", app)
         await pilot.pause()
-        # Inspect only TuiApp's single-key bindings, not built-in bindings.
-        descriptions = [
-            b.description
-            for key in ("q", "t", "space", "a", "c", "l", "o", "u")
-            for b in app._bindings.key_to_bindings[key]
-            if b.action
-            in {
-                "quit",
-                "tag_selected",
-                "toggle_select",
-                "select_all",
-                "clear_selection",
-                "show_lists",
-                "open_in_browser",
-                "unstar_selected",
-            }
+        filtered_names = [
+            str(_table(app).get_row_at(index)[1])
+            for index in range(_table(app).row_count)
         ]
 
-    assert descriptions
-    assert all(d.endswith(" •") for d in descriptions)
+    assert controls_parent_id == "bottom-status-row"
+    assert all(label in controls for label in ("Search", "Filter: All", "Sort: Date"))
+    assert all(
+        label in counts
+        for label in ("Stars: 2/2", "Lists: 1", "Unclassified: 1", "Pending: 0")
+    )
+    assert isinstance(membership, Text)
+    assert any(
+        span.style.meta.get("@click") == "app.filter_membership('L_ai')"
+        for span in membership.spans
+        if isinstance(span.style, Style)
+    )
+    assert handled is True
+    assert filtered_names == ["pradyumnac/classified"]
+
+
+async def test_layout_density_and_narrow_columns(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    config_path = tmp_path / "config" / "tui.toml"
+    config_path.parent.mkdir()
+    config_path.write_text('layout = "balanced"\n')
+    store = StateStore(tmp_path / "state")
+    store.save_stars(
+        [make_star("pradyumnac/repo", language="Python", stargazer_count=42)]
+    )
+    store.save_lists([])
+
+    wide_app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with wide_app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        wide_columns = [
+            str(column.label) for column in _table(wide_app).columns.values()
+        ]
+        wide_app.action_cycle_layout()
+        await pilot.pause()
+        compact_columns = [
+            str(column.label) for column in _table(wide_app).columns.values()
+        ]
+
+    narrow_app = TuiApp(client=FakeGitHubClient(), store=store, config_path=config_path)
+    async with narrow_app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        narrow_columns = [
+            str(column.label) for column in _table(narrow_app).columns.values()
+        ]
+        narrow_row = _table(narrow_app).get_row_at(0)
+        narrow_detail_visible = narrow_app.query_one("#detail-pane", DetailPane).display
+
+    assert {"Membership", "License", "Owner", "Starred"} <= set(wide_columns)
+    assert "Membership" in compact_columns
+    assert not {"License", "Owner", "Starred"} & set(compact_columns)
+    assert narrow_columns == ["Sel", "Star", "Language", "Stars", "Lists"]
+    assert narrow_row[1:4] == ["pradyumnac/repo", "Python", "42"]
+    assert narrow_row[4] == "Lists: 0"
+    assert narrow_detail_visible is False
+
+
+async def test_unclassified_count_action_applies_quick_filter(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    store.save_stars(
+        [
+            make_star("pradyumnac/classified", list_ids=["L1"]),
+            make_star("pradyumnac/unclassified"),
+        ]
+    )
+    store.save_lists([List(id="L1", name="Explore: AI", slug="explore-ai")])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        handled = await app.run_action("app.filter_unclassified", app)
+        await pilot.pause()
+        names = [
+            str(_table(app).get_row_at(index)[1])
+            for index in range(_table(app).row_count)
+        ]
+
+    assert handled is True
+    assert names == ["pradyumnac/unclassified"]
 
 
 async def test_filters_by_category_intent_list_and_unclassified(
@@ -861,7 +1017,7 @@ async def test_filters_by_category_intent_list_and_unclassified(
         await pilot.press("c")
         await pilot.pause()
         assert isinstance(app.screen, FilterScreen)
-        await pilot.press("down", "enter")  # All stars -> AI
+        await pilot.press("a", "i", "enter")  # Search for AI
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "pradyumnac/explore"
 
@@ -876,7 +1032,7 @@ async def test_filters_by_category_intent_list_and_unclassified(
         await pilot.pause()
         await pilot.press("i")
         await pilot.pause()
-        await pilot.press("down", "enter")  # All stars -> Current
+        await pilot.press("c", "u", "r", "r", "e", "n", "t", "enter")
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "pradyumnac/current"
 
@@ -884,7 +1040,7 @@ async def test_filters_by_category_intent_list_and_unclassified(
         await pilot.pause()
         await pilot.press("l")
         await pilot.pause()
-        await pilot.press("down", "enter")  # All stars -> Current: Tools
+        await pilot.press("c", "u", "r", "r", "e", "n", "t", "enter")
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "pradyumnac/current"
 
@@ -906,7 +1062,7 @@ async def test_filters_by_category_intent_list_and_unclassified(
         await pilot.pause()
         await pilot.press("g")
         await pilot.pause()
-        await pilot.press("down", "enter")  # All stars -> Go
+        await pilot.press("g", "o", "enter")  # Search for Go
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "pradyumnac/current"
 
@@ -929,7 +1085,7 @@ async def test_metadata_filters_support_owner_fork_and_followed(
         await pilot.pause()
         await pilot.press("k")
         await pilot.pause()
-        await pilot.press("down", "enter")
+        await pilot.press("enter")
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "alice/tool"
 
@@ -941,7 +1097,7 @@ async def test_metadata_filters_support_owner_fork_and_followed(
         await pilot.pause()
         await pilot.press("w")
         await pilot.pause()
-        await pilot.press("down", "enter")
+        await pilot.press("enter")
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "alice/tool"
 
@@ -949,7 +1105,7 @@ async def test_metadata_filters_support_owner_fork_and_followed(
         await pilot.pause()
         await pilot.press("o")
         await pilot.pause()
-        await pilot.press("down", "enter")
+        await pilot.press("a", "l", "i", "c", "e", "enter")
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "alice/tool"
 
@@ -957,7 +1113,7 @@ async def test_metadata_filters_support_owner_fork_and_followed(
         await pilot.pause()
         await pilot.press("v")
         await pilot.pause()
-        await pilot.press("down", "down", "enter")  # All stars -> MIT
+        await pilot.press("m", "i", "t", "enter")  # Search for MIT
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "alice/tool"
 
@@ -1011,6 +1167,8 @@ async def test_search_matches_name_and_description_as_you_type(
         assert _table(app).row_count == 2
         search.value = "widget"
         await pilot.pause()
+        controls = str(app.query_one("#discovery-controls", Static).render())
+        assert "Search: widget" in controls
         assert _table(app).row_count == 1
         assert _table(app).get_row_at(0)[1] == "pradyumnac/needle"
 

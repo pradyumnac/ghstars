@@ -9,6 +9,7 @@
 - [x] Filter by Category, by Intent, List, Language, License, Owner, Forks, and Followed
 - [x] A dedicated "unclassified only" filter in the Filter menu
 - [x] Search-as-you-type matches name and description, opened with `/`
+- [x] Filter values narrow their options as the user types; recency keeps its shortcut keys
 - [x] Sort keys: name, star date, stargazer count, language, List count; any key reversible; star date descending is the default
 - [ ] Applying a Filter while inside a Folder narrows that Folder's Stars, without leaving the Folder
 - [x] Sort persists into `state/tui-state.toml` (ticket 21) across a quit/relaunch
@@ -34,8 +35,9 @@ Forks, Followed, Unclassified, and Clear. Its shortcuts are shown in the
 menu; recency offers 1d, 1w, 1m, 3m, 1y, and older-than-1y ranges. Filters
 compose with search, update the result count, and persist in
 `state/tui-state.toml`. `/` opens the search field, which matches
-case-insensitive substrings in the repository name and description. Enter
-keeps the search active and returns focus to the table; Escape clears it.
+case-insensitive substrings in the repository name and description. Filter
+value screens narrow their options as the user types. Enter selects a unique
+match; Escape cancels the screen. Recency keeps its existing shortcut keys.
 License now comes from GitHub's `licenseInfo` field and appears in the
 DetailPane. Owner, Fork, and Followed filters use fields already in local
 state. Archived Stars remain outside the active view.

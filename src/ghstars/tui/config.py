@@ -22,6 +22,7 @@ still never writes `tui.toml`.
 """
 
 from pathlib import Path
+from typing import Literal
 
 import tomlkit
 from pydantic import BaseModel, Field, ValidationError
@@ -31,6 +32,14 @@ from ghstars.core.state_store import atomic_write
 
 DEFAULT_HEADER_HEIGHT = 1
 DEFAULT_ROW_HEIGHT = 1
+
+LayoutDensity = Literal["compact", "balanced"]
+SemanticTextRole = Literal[
+    "text-primary",
+    "text-secondary",
+    "text-accent",
+    "text-success",
+]
 
 
 class TuiConfigError(Exception):
@@ -69,10 +78,12 @@ class TuiConfig(BaseModel):
     `TuiApp._apply_keybinding_overrides()`.
     """
 
-    keybindings: dict[str, str] = {}
+    keybindings: dict[str, str] = Field(default_factory=dict)
     header_height: int = Field(default=DEFAULT_HEADER_HEIGHT, ge=1)
     row_height: int = Field(default=DEFAULT_ROW_HEIGHT, ge=1)
-    colours: TuiColours = TuiColours()
+    colours: TuiColours = Field(default_factory=TuiColours)
+    category_colours: dict[str, SemanticTextRole] = Field(default_factory=dict)
+    layout: LayoutDensity = "compact"
 
 
 def load_tui_config(path: Path) -> TuiConfig:
@@ -109,6 +120,7 @@ class TuiState(BaseModel):
     sort_key: str | None = None
     filter: str | None = None
     detail_pane_visible: bool = True
+    layout: LayoutDensity | None = None
 
 
 def load_tui_state(path: Path) -> TuiState:
