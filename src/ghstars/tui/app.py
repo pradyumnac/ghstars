@@ -344,6 +344,9 @@ class TuiApp(App[None]):
         background: $error;
         color: $text;
     }
+    #search-input {
+        display: none;
+    }
     #stars-table {
         height: 1fr;
     }
@@ -370,6 +373,11 @@ class TuiApp(App[None]):
         # Description carries the active sort mode in parens; kept in
         # sync by _update_sort_binding_description() on every toggle.
         Binding("s", "cycle_sort", f"Sort (Date){_FOOTER_SEP}"),
+        Binding("slash", "open_search", f"Search{_FOOTER_SEP}"),
+        # Not shown in the Footer permanently -- only meaningful while
+        # the search box is open (a no-op otherwise, see
+        # action_close_search's own docstring).
+        Binding("escape", "close_search", "Close search", show=False),
         Binding("r", "refresh_rate_limit", "Refresh rate limit"),
     ]
 
@@ -387,6 +395,7 @@ class TuiApp(App[None]):
         self._stars: list[Star] = []
         self._lists: list[List] = []
         self._selected: set[str] = set()
+        self._search_query = ""
         self._picker_open = False
         self._unstar_confirm_open = False
 
@@ -423,6 +432,7 @@ class TuiApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield RateLimitBar(id="rate-limit-bar")
+        yield Input(placeholder="Search name/description...", id="search-input")
         yield DataTable(
             id="stars-table",
             cursor_type="row",
@@ -442,6 +452,15 @@ class TuiApp(App[None]):
         self._reload_local_state()
         self._refresh_table()
         self._fetch_rate_limit()
+        # Textual auto-focuses the first focusable widget in compose()
+        # order when nothing else claims focus -- with #search-input
+        # (added for search-as-you-type) mounted ahead of the table,
+        # that was the (display:none) search box, not the table. Beyond
+        # single keypresses silently typing into an invisible box, the
+        # Footer also suppresses most single-key bindings while an
+        # Input has focus (they'd be captured as text first), which is
+        # why the key legend looked empty until a row was clicked.
+        table.focus()
 
     async def action_quit(self) -> None:
         """Persist `state/tui-state.toml` before exiting (spec story 71).
@@ -594,11 +613,26 @@ class TuiApp(App[None]):
             return sorted(self._stars, key=_first_list_name)
         return sorted(self._stars, key=lambda s: s.starred_at, reverse=True)
 
+    def _visible_stars(self) -> list[Star]:
+        """`_sorted_stars()` narrowed by the search-as-you-type query
+        (spec story 56), case-insensitive substring match on name and
+        description. No active query returns every sorted Star."""
+        stars = self._sorted_stars()
+        query = self._search_query.strip().lower()
+        if not query:
+            return stars
+        return [
+            star
+            for star in stars
+            if query in star.full_name.lower()
+            or (star.description is not None and query in star.description.lower())
+        ]
+
     def _refresh_table(self) -> None:
         table = self.query_one("#stars-table", DataTable)
         table.clear()
         by_id = self._lists_by_id()
-        for star in self._sorted_stars():
+        for star in self._visible_stars():
             mark = "[x]" if star.full_name in self._selected else "[ ]"
             # `tag_star()` pushes to GitHub immediately (ticket 16), so
             # `list_ids` is already live by the time this renders -- no
@@ -757,6 +791,44 @@ class TuiApp(App[None]):
         self._refresh_table()
         self._update_sort_binding_description()
         self.notify(f"Sorted by {self._SORT_NOTIFY_LABELS[self._sort_mode]}.")
+
+    # -- search ---------------------------------------------------------------
+
+    def action_open_search(self) -> None:
+        search_input = self.query_one("#search-input", Input)
+        search_input.display = True
+        search_input.focus()
+
+    def action_close_search(self) -> None:
+        """Escape: clears the query (spec story 56 doesn't call for
+        "remember it, just hide it" -- a cleared search on close
+        matches how "/" reads as a fresh start each time, not a
+        pause/resume toggle) and returns focus to the table. Bound at
+        the App level so Escape works from anywhere, but a no-op when
+        the search box isn't even open, so it doesn't fight some other
+        Escape-driven flow in a future feature."""
+        search_input = self.query_one("#search-input", Input)
+        if not search_input.display:
+            return
+        search_input.value = ""
+        search_input.display = False
+        self._search_query = ""
+        self._refresh_table()
+        self.query_one("#stars-table", DataTable).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "search-input":
+            return
+        self._search_query = event.value
+        self._refresh_table()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Enter: keep the filter active (unlike Escape), just return
+        focus to the table so arrow keys/actions work again without an
+        extra Tab."""
+        if event.input.id != "search-input":
+            return
+        self.query_one("#stars-table", DataTable).focus()
 
     # -- open in browser / unstar ---------------------------------------------
 
