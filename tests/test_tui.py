@@ -16,11 +16,21 @@ from textual.widgets import DataTable, Input
 from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
-from ghstars.tui.app import ListPickerScreen, RateLimitBar, TuiApp, _visibility_label
+from ghstars.tui.app import (
+    DetailPane,
+    ListPickerScreen,
+    RateLimitBar,
+    TuiApp,
+    _visibility_label,
+)
 
 
 def _table(app: TuiApp) -> DataTable[str]:
     return app.query_one("#stars-table", DataTable)
+
+
+def _detail_text(app: TuiApp) -> str:
+    return str(app.query_one("#detail-pane", DetailPane).render())
 
 
 async def test_stars_table_shows_membership_with_visibility(
@@ -360,3 +370,129 @@ async def test_tag_with_no_star_selected_does_not_open_the_picker(
     # No Star was synced, so the table is empty and there is nothing to
     # tag. The picker must never open onto zero targets.
     assert screen_count == 1
+
+
+async def test_detail_pane_shows_full_record_of_star_under_cursor(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Ticket 22 / spec story 59: every Star field the local state store
+    holds, including description and html_url which the table never
+    shows, appears in the detail pane for the highlighted row."""
+    lst = List(id="L1", name="Current: Tool", slug="current-tool", is_private=True)
+    star = make_star(
+        "pradyumnac/ghstars",
+        description="A star-tracking tool",
+        language="Python",
+        stargazer_count=7,
+        fork=True,
+        follow=True,
+        archived=False,
+        list_ids=["L1"],
+    )
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([lst])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        text = _detail_text(app)
+
+    assert star.full_name in text
+    assert star.html_url in text
+    assert star.description in text
+    assert "Python" in text
+    assert "7" in text
+    assert "True" in text  # fork / follow
+    assert str(star.starred_at) in text
+    assert str(star.first_seen) in text
+    assert str(star.last_checked) in text
+    assert "Current: Tool" in text
+    assert _visibility_label(True) in text
+    assert "none pending" in text  # pending_list_ids is None by default
+
+
+async def test_detail_pane_updates_when_cursor_moves_to_a_different_star(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star_a = make_star("pradyumnac/a", description="First star")
+    star_b = make_star("pradyumnac/b", description="Second star")
+    store = StateStore(tmp_path)
+    store.save_stars([star_a, star_b])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+        table.focus()
+        # Rows sorted by full_name: a, b.
+        assert "First star" in _detail_text(app)
+        await pilot.press("down")
+        assert "Second star" in _detail_text(app)
+        assert "First star" not in _detail_text(app)
+
+
+async def test_detail_pane_renders_before_rate_limit_worker_completes(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """The detail pane must never block the initial paint on a live
+    GitHub call -- it renders purely from already-loaded local state."""
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars", description="Local only")])
+    store.save_lists([])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # No `await app.workers.wait_for_complete()` here: the rate
+        # limit fetch worker may still be in flight, yet the detail
+        # pane has already been populated from local state.
+        text = _detail_text(app)
+
+    assert "Local only" in text
+
+
+async def test_detail_pane_updates_after_tagging_star_with_cursor_on_first_row(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Regression test (code review finding): `DataTable.clear()` only
+    posts `RowHighlighted` when the cursor coordinate actually changes.
+    With the cursor left on row 0 (the default, common case), tagging
+    that star must still refresh the detail pane -- not rely on an
+    event that `_refresh_table()`'s `table.clear()` won't fire here.
+    """
+    star = make_star("pradyumnac/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+    client = FakeGitHubClient(stars=[star])
+
+    app = TuiApp(client=client, store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert "Lists: none" in _detail_text(app)
+        _table(app).focus()  # cursor stays on row 0
+        await pilot.press("t")
+        await pilot.pause()
+        app.screen.query_one("#new-list-input", Input).value = "Explore: Foo"
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        text = _detail_text(app)
+
+    assert "Explore: Foo" in text
+    assert "Lists: none" not in text
+
+
+async def test_detail_pane_shows_placeholder_when_table_is_empty(
+    tmp_path: Path,
+) -> None:
+    store = StateStore(tmp_path)
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        text = _detail_text(app)
+
+    assert "No star selected" in text
