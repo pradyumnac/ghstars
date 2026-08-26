@@ -4,7 +4,6 @@ from pydantic import BaseModel
 
 from ghstars.core.models import List, Star
 from ghstars.core.state_store import StateStore
-from ghstars.core.sync import EXPLORE_GENERAL
 
 
 class StatusReport(BaseModel):
@@ -79,10 +78,12 @@ def build_status(store: StateStore) -> StatusReport:
     the max `last_checked` across all Stars -- `None` when there are no
     Stars yet, i.e. before the first `sync`.
 
-    "Unclassified": Stars whose `list_ids` includes the `Explore:
-    General` List's id, resolved by name against `load_lists()` (ticket
-    05's default-classification target, `ghstars.core.sync.EXPLORE_GENERAL`).
-    Zero, not an error, when that List hasn't been created locally yet.
+    "Unclassified": Stars with no List membership at all and not
+    Archived -- a derived, local-only view, never a real GitHub List
+    (ADR 0007). ghstars never auto-tags a never-classified Star into
+    `Explore: General` or anywhere else; that List is an ordinary List
+    the user opts into like any other, so it plays no special role
+    here.
 
     Retriage Queue count: unresolved entries only (`resolved=False`),
     matching what `ghstars retriage` itself is for -- open conflicts to
@@ -94,11 +95,8 @@ def build_status(store: StateStore) -> StatusReport:
 
     last_sync_at = max((star.last_checked for star in stars), default=None)
 
-    explore_general = next((lst for lst in lists if lst.name == EXPLORE_GENERAL), None)
-    unclassified_count = (
-        sum(1 for star in stars if explore_general.id in star.list_ids)
-        if explore_general is not None
-        else 0
+    unclassified_count = sum(
+        1 for star in stars if not star.archived and not star.list_ids
     )
 
     retriage_queue_count = sum(1 for entry in retriage if not entry.resolved)

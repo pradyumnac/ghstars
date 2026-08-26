@@ -91,11 +91,3 @@ def sync_cmd(
             "Re-run `ghstars tag` if you still want it classified.",
             err=True,
         )
-    if result.failed_default_pushes:
-        names = ", ".join(result.failed_default_pushes)
-        typer.echo(
-            f"warning: could not push default classification for: {names} "
-            "(the repo or the 'Explore: General' List may have changed "
-            "concurrently). Re-run `ghstars sync` to retry.",
-            err=True,
-        )

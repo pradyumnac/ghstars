@@ -55,26 +55,21 @@ def test_status_plain_text_reports_never_synced(
     assert result.exit_code == 0
     assert "Last sync: never" in result.output
     assert "Retriage Queue: 0" in result.output
-    assert "Unclassified (Explore: General): 0" in result.output
+    assert "Unclassified: 0" in result.output
     assert "Verify: ok" in result.output
 
 
 def test_status_json_counts_mixed_classified_unclassified_and_retriage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
-    explore_general = List(
-        id="L_general", name="Explore: General", slug="explore-general"
-    )
     current_tool = List(id="L_tool", name="Current: Tool", slug="current-tool")
     later = datetime(2026, 8, 20, tzinfo=UTC)
     classified = make_star(
         "pradyumnac/classified", list_ids=["L_tool"], last_checked=NOW
     )
-    unclassified = make_star(
-        "pradyumnac/unclassified", list_ids=["L_general"], last_checked=later
-    )
+    unclassified = make_star("pradyumnac/unclassified", list_ids=[], last_checked=later)
     store = StateStore(tmp_path)
-    store.save_lists([explore_general, current_tool])
+    store.save_lists([current_tool])
     store.save_stars([classified, unclassified])
     store.save_retriage(
         [
@@ -158,7 +153,7 @@ def test_verify_state_passes_on_clean_state() -> None:
     assert verify_state([star], [lst]) == []
 
 
-def test_build_status_ignores_a_resolved_explore_general_list_with_no_stars(
+def test_build_status_handles_a_completely_empty_store(
     tmp_path: Path,
 ) -> None:
     store = StateStore(tmp_path)

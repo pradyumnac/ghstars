@@ -36,6 +36,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import ClassVar
 
+from filelock import Timeout
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
@@ -441,8 +442,30 @@ class TuiApp(App[None]):
     # -- local state, read from the last `ghstars sync` --------------------
 
     def _reload_local_state(self) -> None:
-        self._stars = [s for s in self._store.load_stars() if not s.archived]
-        self._lists = self._store.load_lists()
+        """Load `self._stars`/`self._lists` from the store, tolerating a
+        concurrent `ghstars` process holding the state lock.
+
+        Called both on first mount (where `self._stars`/`self._lists`
+        already default to `[]`) and after a tag push completes. A
+        `Timeout` here must not crash the app either time -- on mount,
+        the TUI still opens (empty, with an error notification) rather
+        than never launching at all; after a tag push, the last
+        successfully loaded state is left in place rather than wiped,
+        same as `_fetch_rate_limit`'s own broad-catch precedent.
+        """
+        try:
+            stars = [s for s in self._store.load_stars() if not s.archived]
+            lists = self._store.load_lists()
+        except Timeout:
+            self.notify(
+                "could not load local state — another ghstars command may "
+                "be running. Try again once it finishes.",
+                severity="error",
+                timeout=8,
+            )
+            return
+        self._stars = stars
+        self._lists = lists
 
     def _lists_by_id(self) -> dict[str, List]:
         return {lst.id: lst for lst in self._lists}

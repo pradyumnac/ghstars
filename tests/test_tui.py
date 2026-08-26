@@ -10,7 +10,9 @@ runs in a `@work(thread=True)` worker, so tests await
 
 from pathlib import Path
 
+import pytest
 from conftest import StarFactory
+from filelock import Timeout
 from textual.widgets import DataTable, Input
 
 from ghstars.core.fake_client import FakeGitHubClient
@@ -159,6 +161,28 @@ async def test_rate_limit_bar_shows_error_when_model_validate_raises(
     assert "checking" not in text.lower()
     assert text.strip() != ""
     assert has_low_class
+
+
+async def test_tui_launches_and_notifies_when_state_lock_is_held(
+    tmp_path: Path, make_star: StarFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A concurrent `ghstars` command (e.g. `sync`) holding the state
+    lock must not crash the TUI on mount -- it opens empty, with an
+    error notification, instead of a raw `filelock.Timeout` traceback."""
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("pradyumnac/ghstars")])
+
+    def _raise_timeout(*args: object, **kwargs: object) -> list[Star]:
+        raise Timeout(str(store.base_dir / ".lock"))
+
+    monkeypatch.setattr(store, "load_stars", _raise_timeout)
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = _table(app)
+
+    assert table.row_count == 0
 
 
 async def test_single_item_tag_pushes_immediately(

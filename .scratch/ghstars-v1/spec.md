@@ -23,7 +23,7 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
 1. As a developer, I want ghstars to fetch all my starred repos from GitHub, so that I have an up-to-date local view of everything I've starred.
 2. As a developer, I want ghstars to fetch my existing GitHub Lists and their membership, so that classification I've already done on github.com is respected, not overwritten.
 3. As a developer, I want newly starred repos (starred from my phone or the GitHub web UI) pulled in automatically on the next sync, so that I never have to remember to add them manually.
-4. As a developer, I want unclassified new stars to land in `Explore: General` by default, so that nothing slips through without at least a landing spot.
+4. As a developer, I want unclassified new stars to be visible as Unclassified rather than slip through unnoticed, so that I always know what still needs a decision — without ghstars writing anything to my real GitHub Lists on my behalf (superseded by ADR 0007: never pushed to `Explore: General` or anywhere else; "Unclassified" is a derived local view, `ghstars status`'s `unclassified_count`).
 5. As a developer, I want ghstars to detect when I've unstarred a repo on GitHub, so that its local record is marked Archived rather than silently vanishing.
 6. As a developer, I want ghstars to never delete history for an unstarred repo, so that I can still see when and why I once starred something.
 7. As a developer, I want local retagging changes to sync out to GitHub, so that my phone/web view of my Lists matches what I did in the TUI/CLI.
@@ -206,7 +206,7 @@ A missing file means defaults, never an error — the same rule
 
 **CLI conventions**
 
-Global `--json` flag; `--fields` selector on list-returning commands; no interactive prompts under `--json` (missing required input is a hard error with non-zero exit); `ghstars status --json` as the single health-check entrypoint (last sync time, Retriage Queue count, `Explore: General` count, verify pass/fail).
+Global `--json` flag; `--fields` selector on list-returning commands; no interactive prompts under `--json` (missing required input is a hard error with non-zero exit); `ghstars status --json` as the single health-check entrypoint (last sync time, Retriage Queue count, Unclassified count, verify pass/fail).
 
 **Export engine**
 
@@ -255,6 +255,7 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 - ADR 0001 (GitHub is the sole source of truth for List membership) and ADR 0002 (single `~/.ghstars/` directory instead of XDG base dirs) are binding architectural context — read both before implementing the sync engine or state layout.
 - ADR 0006 (the TUI can sync on an explicit keypress) supersedes ADR 0003 and governs stories 65 and 66. Read it before adding any live GitHub call to the TUI.
 - ADR 0005 (compound Category) is `proposed`, not accepted. Do not build against it.
+- ADR 0007 supersedes story 4 as originally written: a never-classified Star is never pushed into `Explore: General` or any other List. "Unclassified" is a derived local view (`list_ids == [] and not archived`), never a real GitHub List membership ghstars writes on the user's behalf.
 - The TUI's rate-limit worker catches only `GitHubApiError` (`tui/app.py:432`). A `ValidationError` from `RateLimitResponse.model_validate` escapes the worker and leaves the bar blank with no message. Story 63 must fix this, and match the broad-catch reasoning `_apply_tag` already documents.
 - `updateUserListsForItem`'s full-replace semantics (confirmed via live GraphQL schema introspection and a live query against the user's own account, which returned 6 real Lists) is a load-bearing API detail, not an assumption.
 - The old `gh-stars.py` script and `github-stars` skill stay in place until ghstars is verified stable; retirement is a follow-up action, not part of this build.

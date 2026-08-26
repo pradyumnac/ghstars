@@ -25,12 +25,9 @@ def test_sync_fetches_and_persists_stars(
     result = sync(client, store)
 
     assert result.star_count == 1
-    # Never-classified stars default into `Explore: General` (spec story 4,
-    # see the default-classification tests below), so the saved record no
-    # longer equals the fetched star byte-for-byte -- only `list_ids` moves.
-    saved = store.load_stars()[0]
-    assert saved == star.model_copy(update={"list_ids": saved.list_ids})
-    assert saved.list_ids == [store.load_lists()[0].id]
+    # Never-classified stars are never auto-tagged (ADR 0007) -- the
+    # saved record equals the fetched star byte-for-byte.
+    assert store.load_stars() == [star]
 
 
 def test_sync_raises_before_writing_when_rate_limited(
@@ -118,10 +115,7 @@ def test_sync_self_heals_when_previous_state_is_corrupt(
     result = sync(FakeGitHubClient(stars=[star]), store)
 
     assert result.star_count == 1
-    # Never-classified stars default into `Explore: General` (spec story 4).
-    saved = store.load_stars()[0]
-    assert saved == star.model_copy(update={"list_ids": saved.list_ids})
-    assert saved.list_ids == [store.load_lists()[0].id]
+    assert store.load_stars() == [star]
 
 
 def test_sync_fetches_and_classifies_lists(tmp_path: Path) -> None:
@@ -398,14 +392,9 @@ def test_sync_reports_a_genuine_push_failure_and_keeps_going(
     by_name = {s.full_name: s for s in store.load_stars()}
     assert by_name["pradyumnac/kept"].list_ids == ["L_1"]
     assert by_name["pradyumnac/broken"].pending_list_ids is None
-    # Still unclassified after the failed tag push, but the default-
-    # classification step (spec story 4) must NOT also claim it: the
-    # star still carries a genuine failed user tag intent, not "never
-    # classified by anyone" -- defaulting it would silently paper over
-    # that failure with an unrelated List instead of leaving it for the
-    # "re-run `ghstars tag`" message to actually be correct about.
+    # Still untagged after the failed tag push -- ADR 0007, ghstars
+    # never auto-tags an untagged star into anything, failed push or not.
     assert by_name["pradyumnac/broken"].list_ids == []
-    assert result.failed_default_pushes == []
     assert store.load_retriage() == []
 
 
@@ -432,12 +421,10 @@ def test_sync_populates_list_ids_from_list_membership(
     by_name = {s.full_name: s for s in store.load_stars()}
     assert sorted(by_name["pradyumnac/shared"].list_ids) == ["L_1", "L_2"]
     assert by_name["pradyumnac/solo"].list_ids == ["L_2"]
-    # Not in any List after reconcile -- defaults into `Explore: General`
-    # (spec story 4), rather than staying unclassified.
-    explore_general = next(
-        lst for lst in store.load_lists() if lst.name == "Explore: General"
-    )
-    assert by_name["pradyumnac/unlisted"].list_ids == [explore_general.id]
+    # Not in any List after reconcile -- stays untagged (ADR 0007), no
+    # auto-created "Explore: General" or any other List.
+    assert by_name["pradyumnac/unlisted"].list_ids == []
+    assert not any(lst.name == "Explore: General" for lst in store.load_lists())
 
 
 def test_reconcile_list_membership_never_relists_an_archived_star(
@@ -493,115 +480,32 @@ def test_remove_star_from_lists_drops_only_the_matching_star() -> None:
     assert by_id["L_3"].items == []
 
 
-def test_sync_defaults_a_never_classified_star_into_explore_general(
+def test_sync_never_auto_tags_a_never_classified_star(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    """Spec story 4: a star with no real classification lands in
-    `Explore: General`, created for real (public by default, story 48)
-    since it doesn't exist yet."""
-    star = make_star("pradyumnac/unclassified")
-    client = FakeGitHubClient(stars=[star])
-    store = StateStore(tmp_path)
-
-    result = sync(client, store)
-
-    assert result.failed_default_pushes == []
-    saved_lists = store.load_lists()
-    assert len(saved_lists) == 1
-    assert saved_lists[0].name == "Explore: General"
-    assert saved_lists[0].intent == "Explore"
-    assert saved_lists[0].category == "General"
-    assert saved_lists[0].is_private is False
-    assert saved_lists[0].items == ["pradyumnac/unclassified"]
-    assert store.load_stars()[0].list_ids == [saved_lists[0].id]
-
-
-def test_sync_creates_explore_general_only_once_for_several_unclassified_stars(
-    tmp_path: Path, make_star: StarFactory
-) -> None:
-    """Several never-classified stars in the same sync must share one
-    `Explore: General` List, not one each."""
+    """ADR 0007 (supersedes spec story 4): a star with no real
+    classification is left alone on GitHub -- no List is created or
+    pushed to on its behalf, and its local record keeps empty
+    `list_ids`. "Untagged" is a derived local view, not a real List."""
     stars = [make_star(f"pradyumnac/star-{i}") for i in range(3)]
     client = FakeGitHubClient(stars=stars)
     store = StateStore(tmp_path)
 
     result = sync(client, store)
 
-    assert result.failed_default_pushes == []
-    saved_lists = store.load_lists()
-    assert len(saved_lists) == 1
-    assert saved_lists[0].name == "Explore: General"
-    assert sorted(saved_lists[0].items) == [
-        "pradyumnac/star-0",
-        "pradyumnac/star-1",
-        "pradyumnac/star-2",
-    ]
+    assert result.star_count == 3
+    assert store.load_lists() == []
     for star in store.load_stars():
-        assert star.list_ids == [saved_lists[0].id]
+        assert star.list_ids == []
 
 
-def test_sync_reuses_an_existing_explore_general_list_across_syncs(
-    tmp_path: Path, make_star: StarFactory
-) -> None:
-    """A second sync must not create a duplicate `Explore: General` List
-    -- lazy creation is idempotent across syncs, not just within one."""
-    first = make_star("pradyumnac/first")
-    store = StateStore(tmp_path)
-    sync(FakeGitHubClient(stars=[first]), store)
-    explore_general = store.load_lists()[0]
-
-    second = make_star("pradyumnac/second")
-    client = FakeGitHubClient(
-        stars=[first, second],
-        lists=[explore_general.model_copy(update={"items": [first.full_name]})],
-    )
-    sync(client, store)
-
-    saved_lists = store.load_lists()
-    assert len(saved_lists) == 1
-    assert saved_lists[0].id == explore_general.id
-    assert sorted(saved_lists[0].items) == ["pradyumnac/first", "pradyumnac/second"]
-
-
-def test_sync_isolates_a_default_push_failure_and_reports_it(
-    tmp_path: Path, make_star: StarFactory
-) -> None:
-    """One star's default-classification push failing must not abort
-    the default-classification step for any other unclassified star, or
-    the sync as a whole."""
-    ok = make_star("pradyumnac/ok")
-    broken = make_star("pradyumnac/broken")
-    client = FakeGitHubClient(stars=[ok, broken])
-
-    original_push = client.update_list_membership_for_item
-
-    def flaky_push(item_id: str, list_ids: list[str]) -> None:
-        if item_id == "pradyumnac/broken":
-            raise RuntimeError("boom")
-        original_push(item_id, list_ids)
-
-    client.update_list_membership_for_item = flaky_push  # type: ignore[method-assign]
-    store = StateStore(tmp_path)
-
-    result = sync(client, store)  # must not raise
-
-    assert result.failed_default_pushes == ["pradyumnac/broken"]
-    by_name = {s.full_name: s for s in store.load_stars()}
-    saved_lists = store.load_lists()
-    assert len(saved_lists) == 1  # the List is still created, just once
-    assert by_name["pradyumnac/ok"].list_ids == [saved_lists[0].id]
-    assert by_name["pradyumnac/broken"].list_ids == []
-
-
-def test_sync_does_not_default_a_star_that_just_lost_a_merge_conflict(
+def test_sync_does_not_touch_a_star_that_just_lost_a_merge_conflict(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     """A star whose pending edit just lost a three-way merge conflict
     can also have empty `list_ids` here, if remote itself was empty --
-    but ticket 05 promises the losing edit is "never applied." The
-    default-classification step (spec story 4) must not apply a
-    *different* edit to it in the same sync; that would break the same
-    promise a different way."""
+    ticket 05 promises the losing edit is "never applied," and ADR 0007
+    means nothing else applies a different edit to it either."""
     other_lst = List(id="L_other", name="Explore: Other", slug="other")
     remote_lst = List(id="L_remote", name="Explore: Remote", slug="remote")
     # base: star was in no List. local: staged into L_other. remote: has
@@ -616,54 +520,11 @@ def test_sync_does_not_default_a_star_that_just_lost_a_merge_conflict(
     remote_remote = remote_lst.model_copy(update={"items": ["pradyumnac/x"]})
     client = FakeGitHubClient(stars=[remote_star], lists=[other_lst, remote_remote])
 
-    result = sync(client, store)
+    sync(client, store)
 
-    assert result.failed_default_pushes == []
     saved = store.load_stars()[0]
-    # GitHub's state wins per ticket 05 -- but remote's actual result
-    # here (L_remote) is not empty, so this asserts the star was never
-    # touched by the default step at all: no "Explore: General" List
-    # was created just for a star the merge already resolved.
+    # GitHub's state wins per ticket 05.
     assert saved.list_ids == ["L_remote"]
-    assert not any(lst.name == "Explore: General" for lst in store.load_lists())
     queue = store.load_retriage()
     assert len(queue) == 1
     assert queue[0].star_full_name == "pradyumnac/x"
-
-
-def test_sync_isolates_explore_general_creation_failure(
-    tmp_path: Path, make_star: StarFactory
-) -> None:
-    """If creating the `Explore: General` List itself fails, every
-    unclassified star's default push must be reported as failed, and
-    the failure must not propagate out of `sync()` and lose progress
-    already computed earlier in the same call (e.g. a successful tag
-    push)."""
-    keep_lst = List(id="L_1", name="Explore: Keep", slug="keep")
-    kept = make_star("pradyumnac/kept", pending_list_ids=["L_1"])
-    unclassified = make_star("pradyumnac/unclassified")
-    store = StateStore(tmp_path)
-    store.save_stars([kept, unclassified])
-    store.save_lists([keep_lst])
-    client = FakeGitHubClient(stars=[kept, unclassified], lists=[keep_lst])
-
-    def broken_create_list(
-        name: str, *, is_private: bool = False, description: str | None = None
-    ) -> List:
-        raise RuntimeError("boom")
-
-    client.create_list = broken_create_list  # type: ignore[method-assign]
-
-    result = sync(client, store)  # must not raise
-
-    assert result.failed_default_pushes == ["pradyumnac/unclassified"]
-    # The earlier, unrelated tag push still succeeded and was persisted --
-    # the List-creation failure did not unwind the whole sync.
-    assert result.failed_tag_pushes == []
-    by_name = {s.full_name: s for s in store.load_stars()}
-    assert by_name["pradyumnac/kept"].list_ids == ["L_1"]
-    assert by_name["pradyumnac/unclassified"].list_ids == []
-    saved_lists = store.load_lists()
-    assert len(saved_lists) == 1
-    assert saved_lists[0].id == "L_1"
-    assert saved_lists[0].items == ["pradyumnac/kept"]  # the earlier push's effect

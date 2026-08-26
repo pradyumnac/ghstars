@@ -12,7 +12,7 @@ def status_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
     """Report local-state health in one call: last sync time, Retriage
-    Queue count, unclassified (`Explore: General`) count, and a
+    Queue count, Unclassified (no List membership) count, and a
     deterministic offline verify pass/fail (ticket 08).
 
     Reads only `StateStore.load_*()` -- never a live `GitHubClient` call
@@ -28,7 +28,7 @@ def status_cmd(
     last_sync = report.last_sync_at.isoformat() if report.last_sync_at else "never"
     typer.echo(f"Last sync: {last_sync}")
     typer.echo(f"Retriage Queue: {report.retriage_queue_count}")
-    typer.echo(f"Unclassified (Explore: General): {report.unclassified_count}")
+    typer.echo(f"Unclassified: {report.unclassified_count}")
     if report.verify_ok:
         typer.echo("Verify: ok")
     else:

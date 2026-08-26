@@ -29,7 +29,6 @@ from ghstars.core.models import (
 from ghstars.core.state_store import StateStore
 from ghstars.core.status import StatusReport, build_status, verify_state
 from ghstars.core.sync import (
-    EXPLORE_GENERAL,
     RateLimitExceededError,
     SyncResult,
     archive_star,
@@ -55,7 +54,6 @@ from ghstars.core.taxonomy import (
 
 __all__ = [
     "DEFAULT_EXPORT_FIELDS",
-    "EXPLORE_GENERAL",
     "LIFECYCLE_INTENTS",
     "CategoryNotFoundError",
     "DrainResult",

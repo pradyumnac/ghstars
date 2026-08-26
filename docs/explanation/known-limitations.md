@@ -88,17 +88,6 @@ rate-limit points are charged by query complexity, not request count,
 so it would not even save quota) unless a real bulk-tag workload proves
 the ID-lookup batch alone isn't enough.
 
-## Default-classification pushes are not batched either
-
-`_apply_default_classification` (ticket 17, spec story 4) pushes each
-never-classified Star into `Explore: General` one at a time, same
-sequential cost shape as the pending-tag-push case above. This mostly
-matters once, on a first sync against an existing account with many
-unclassified stars — every later sync only has to push newly-starred
-repos. Accepted as a one-time cost, not batched/throttled, matching
-the decision already made for pending tag pushes above. Revisit if a
-large first sync proves slow in practice.
-
 ## `category drain` pushes are not batched either
 
 `drain_category()` (ticket 07) migrates each Star one at a time, the
