@@ -11,7 +11,20 @@ Local state has no signal to distinguish these today, so case 2 currently gets s
 
 **Deliberately deferred — this is edge-case cleanup, not core v1 functionality.** Do not pick this up, or let it block/execute, until the main v1 flow is implemented. Mirrors ticket 13's own "all v1-functional pieces must be in place" gate for the same reason.
 
-**Status:** needs design, not yet speced — no acceptance criteria yet. Write these once the main flow lands and the user decides whether this distinction is worth new state, and if so, what shape that state takes (a tombstone record? a `last_classified_at` timestamp compared against sync history? something else?).
+**Status:** retired
+
+## Decision
+
+Do not distinguish a never-classified Star from a Star whose Lists were
+cleared on GitHub. Both states are Unclassified.
+
+ADR 0007 removed the default List assignment that made this distinction
+necessary. Sync does not write List membership for either state.
+
+Do not add a tombstone, timestamp, or other local state for this ticket. If a
+future workflow needs a reviewed-without-List state, add a separate local
+triage disposition. The user must set that disposition explicitly. A List
+membership change must clear it.
 
 ## Comments (originating finding, 2026-08-17)
 

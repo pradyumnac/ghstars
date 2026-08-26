@@ -15,7 +15,13 @@ and moves `row_height` into each layout preset. The star-count column
 becomes one entry in a preset's `columns` list. This ticket reads those
 fields. It does not define them. Read ADR 0008 first.
 
-**Status:** partial — the TUI already has chrome and an explicit sync action. Reconcile each acceptance criterion before more implementation.
+**Status:** retired
+
+## Decision
+
+Retire this ticket. The TUI already provides the required chrome and explicit sync action. Do not add more work under this ticket.
+
+The remaining checklist items are not a reason to reopen the ticket. Track any future changes as a new ticket with updated acceptance criteria.
 
 - [ ] Header height, clock visibility, and row height read from `tui.toml` (ticket 23) and apply on launch
 - [ ] The star-count column shows when a layout preset lists it in `columns`; at row height 2, description shows on the second line

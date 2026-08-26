@@ -31,8 +31,8 @@ the agent skill against unstable commands or JSON schemas.
 | Ticket | State | Next action |
 | --- | --- | --- |
 | 12 | Ready | Add the local nudge store. It is required before ticket 14. |
-| 24 | Partial | Reconcile each acceptance criterion with the existing TUI chrome and explicit sync code. Implement or record each missing behavior. |
-| 18 | Needs design | Decide whether cleared and never-classified Stars need distinct local state. Do not implement before a design decision. |
+| 24 | Retired | No further work is planned under this ticket. |
+| 18 | Retired | Empty List membership always means Unclassified. |
 | 13 | Ready | Start after tickets 12 and 14 complete. |
 | 15 | Ready | Start after ticket 13. |
 
