@@ -7,7 +7,7 @@ Rationale lives in each file under `docs/adr/`; this is an index only.
 | --- | --- | --- | --- |
 | [0001](0001-github-is-sole-source-of-truth-for-list-membership.md) | accepted | done | GitHub is the sole source of truth for List existence and membership |
 | [0002](0002-single-dotdir-instead-of-xdg-base-dirs.md) | accepted | in-progress | Single ~/.ghstars/ directory instead of XDG base dirs |
-| [0003](0003-github-sync-is-always-explicit.md) | superseded by 0004 | not-started | GitHub sync is always explicit, never auto-triggered |
+| [0003](0003-github-sync-is-always-explicit.md) | superseded by 0006 | not-started | GitHub sync is always explicit, never auto-triggered |
 | [0004](0004-pending-tag-staging-and-retriage-stay-dormant.md) | accepted | done | Pending-tag staging and the Retriage Queue stay in place, dormant, after ticket 16 |
-| [0004](0004-tui-may-sync-on-an-explicit-keypress.md) | accepted | not-started | The TUI can sync on an explicit keypress |
 | [0005](0005-compound-category-kind-and-subject.md) | proposed | n/a | Compound Category: a kind and a subject in one List name |
+| [0006](0006-tui-may-sync-on-an-explicit-keypress.md) | accepted | not-started | The TUI can sync on an explicit keypress |

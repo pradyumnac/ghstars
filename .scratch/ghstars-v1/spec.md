@@ -129,7 +129,7 @@ cross-reference reason.
 
 **Actions**
 
-65. As a developer, I want a key that starts a full sync from inside the TUI, so that I can refresh stale data where I noticed it was stale. ghstars only syncs when I press the key (see ADR 0004).
+65. As a developer, I want a key that starts a full sync from inside the TUI, so that I can refresh stale data where I noticed it was stale. ghstars only syncs when I press the key (see ADR 0006).
 66. As a developer, I want a separate, short-named key that refreshes the API rate limit alone, so that a cheap check stays distinct from a full sync.
 67. As a developer, I want to open the Star under the cursor in my browser, so that I can read the repo itself. ghstars uses the XDG default handler.
 68. As a developer, I want to unstar the Star under the cursor after I confirm in a dialog, so that a real, irreversible GitHub change can never happen from one keypress.
@@ -253,7 +253,7 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 ## Further Notes
 
 - ADR 0001 (GitHub is the sole source of truth for List membership) and ADR 0002 (single `~/.ghstars/` directory instead of XDG base dirs) are binding architectural context — read both before implementing the sync engine or state layout.
-- ADR 0004 (the TUI can sync on an explicit keypress) supersedes ADR 0003 and governs stories 65 and 66. Read it before adding any live GitHub call to the TUI.
+- ADR 0006 (the TUI can sync on an explicit keypress) supersedes ADR 0003 and governs stories 65 and 66. Read it before adding any live GitHub call to the TUI.
 - ADR 0005 (compound Category) is `proposed`, not accepted. Do not build against it.
 - The TUI's rate-limit worker catches only `GitHubApiError` (`tui/app.py:432`). A `ValidationError` from `RateLimitResponse.model_validate` escapes the worker and leaves the bar blank with no message. Story 63 must fix this, and match the broad-catch reasoning `_apply_tag` already documents.
 - `updateUserListsForItem`'s full-replace semantics (confirmed via live GraphQL schema introspection and a live query against the user's own account, which returned 6 real Lists) is a load-bearing API detail, not an assumption.

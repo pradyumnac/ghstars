@@ -54,11 +54,6 @@ detail. Reconciled against the ticket files directly on 2026-08-18.
   follow-up action," but that line sits outside the formal Out of Scope
   section, so nothing tracks the actual retirement work. Open a ticket for
   it once ticket 14 lands.
-- `docs/adr/` has two different files both numbered `0004`
-  (`0004-pending-tag-staging-and-retriage-stay-dormant.md` and
-  `0004-tui-may-sync-on-an-explicit-keypress.md`). Renumber one — the TUI
-  sync-keypress ADR is the newer decision and is the likely candidate for
-  `0006` — and update `docs/adr/INDEX.md` and every cross-reference to it.
 
 ### Open
 
@@ -92,7 +87,7 @@ detail:
 - Design source: `spec.md` stories 50-72 and `CONTEXT.md` (`View Mode`,
   `Folder`, `Filter` added; `Category`'s old "Topic except in Reference
   Lists" carve-out removed).
-- ADR 0004 (accepted) supersedes ADR 0003: the TUI syncs only on an
+- ADR 0006 (accepted) supersedes ADR 0003: the TUI syncs only on an
   explicit keypress. ADR 0005 (proposed, do not build against it yet):
   compound Category, e.g. `Explore: Dev Tools / AI`.
 - Two known defects on `main`, both covered by spec stories: the

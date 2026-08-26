@@ -4,7 +4,7 @@
 
 Sizing: configurable header height (tall/short), clock on/off, row height (1 or 2 lines), a star-count column. A top bar shows API rate limit, last sync time, and List count. A bottom status bar shows visible/total Star count, pending-edit count, active sort, and active Filter — sort and Filter shown last, each with its keybind, for example `sort: newest [s]`.
 
-A sync key, distinct from the existing rate-limit-refresh key, runs a full `sync()` with its `on_stage` callback driving a visible progress modal — this implements ADR 0004. ghstars still never syncs except on this explicit keypress. This ticket must also decide, and state in its implementation, what happens to an in-flight selection and any staged `pending_list_ids` while a sync runs, and must stop a second sync from starting mid-flight.
+A sync key, distinct from the existing rate-limit-refresh key, runs a full `sync()` with its `on_stage` callback driving a visible progress modal — this implements ADR 0006. ghstars still never syncs except on this explicit keypress. This ticket must also decide, and state in its implementation, what happens to an in-flight selection and any staged `pending_list_ids` while a sync runs, and must stop a second sync from starting mid-flight.
 
 Every new bar shows a labelled placeholder immediately, never a blank strip, per spec story 72. Spec stories 62-66.
 
@@ -21,4 +21,4 @@ Every new bar shows a labelled placeholder immediately, never a blank strip, per
 - [ ] A sync key runs `ghstars.core.sync.sync()` with `on_stage` driving a progress modal; the key is distinct from the rate-limit-only refresh key
 - [ ] Pressing the sync key while a sync is already running does not start a second one
 - [ ] The implementation states explicitly what happens to the current selection and any staged `pending_list_ids` during a sync — not left implicit
-- [ ] Nothing in this ticket triggers a sync other than the explicit key (ADR 0004)
+- [ ] Nothing in this ticket triggers a sync other than the explicit key (ADR 0006)

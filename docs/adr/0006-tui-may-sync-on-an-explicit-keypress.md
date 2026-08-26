@@ -1,4 +1,4 @@
-# 0004 — The TUI can sync on an explicit keypress
+# 0006 — The TUI can sync on an explicit keypress
 
 ## Status
 

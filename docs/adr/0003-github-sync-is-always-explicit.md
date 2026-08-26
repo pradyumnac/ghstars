@@ -2,7 +2,7 @@
 
 ## Status
 
-superseded by 0004
+superseded by 0006
 
 ## Implemented
 
