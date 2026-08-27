@@ -51,17 +51,25 @@ def _list(
 def test_select_stars_matches_by_exact_list_name(make_star: StarFactory) -> None:
     lst = _list(
         "Current: Vendored Skills",
+        id="L_cur",
         intent="Current",
         category="Vendored Skills",
         items=["a/one", "b/two"],
     )
     other = _list(
-        "Explore: Other", intent="Explore", category="Other", items=["c/three"]
+        "Explore: Other",
+        id="L_other",
+        intent="Explore",
+        category="Other",
+        items=["c/three"],
     )
+    # Membership resolves through `Star.list_ids` now (see `select_stars`),
+    # not `List.items` -- both are set here since `sync()` keeps them
+    # reconciled in practice.
     stars = [
-        make_star("a/one"),
-        make_star("b/two"),
-        make_star("c/three"),
+        make_star("a/one", list_ids=["L_cur"]),
+        make_star("b/two", list_ids=["L_cur"]),
+        make_star("c/three", list_ids=["L_other"]),
     ]
     entry = ExportEntry(
         name="tools",
@@ -93,7 +101,10 @@ def test_select_stars_by_category_matches_across_intents_when_intent_omitted(
         category="Vendored Skills",
         items=["b/two"],
     )
-    stars = [make_star("a/one"), make_star("b/two")]
+    stars = [
+        make_star("a/one", list_ids=["L_e"]),
+        make_star("b/two", list_ids=["L_c"]),
+    ]
     entry = ExportEntry(
         name="all", category="Vendored Skills", output="all.yaml", format="yaml"
     )
@@ -120,7 +131,10 @@ def test_select_stars_by_category_and_intent_answers_explore_not_yet_tried(
         category="Vendored Skills",
         items=["b/two"],
     )
-    stars = [make_star("a/one"), make_star("b/two")]
+    stars = [
+        make_star("a/one", list_ids=["L_e"]),
+        make_star("b/two", list_ids=["L_c"]),
+    ]
     entry = ExportEntry(
         name="exploring",
         category="Vendored Skills",
@@ -187,7 +201,10 @@ def test_select_stars_sorts_by_full_name(make_star: StarFactory) -> None:
         category="Tool",
         items=["z/last", "a/first"],
     )
-    stars = [make_star("z/last"), make_star("a/first")]
+    stars = [
+        make_star("z/last", list_ids=["L_1"]),
+        make_star("a/first", list_ids=["L_1"]),
+    ]
     entry = ExportEntry(
         name="x", list_name="Current: Tool", output="x.yaml", format="yaml"
     )
@@ -197,6 +214,39 @@ def test_select_stars_sorts_by_full_name(make_star: StarFactory) -> None:
     assert [s.full_name for s in selected] == ["a/first", "z/last"]
 
 
+def test_select_stars_resolves_membership_through_star_list_ids(
+    make_star: StarFactory,
+) -> None:
+    """`List.items` and `Star.list_ids` are supposed to stay in sync via
+    `sync()`'s `reconcile_list_membership` (see `core/sync.py`), but this
+    fixture deliberately puts them out of sync to prove which one
+    `select_stars` actually trusts. `Star.list_ids` must win: a Star
+    listed in `List.items` but whose own `list_ids` disagrees is not
+    selected, and a Star absent from `List.items` but carrying the
+    List's id in `list_ids` is selected.
+    """
+    lst = _list(
+        "Current: Tool",
+        id="L_cur",
+        intent="Current",
+        category="Tool",
+        items=["stale/only-in-items"],
+    )
+    stale_only_in_items = make_star("stale/only-in-items", list_ids=[])
+    fresh_only_in_list_ids = make_star("fresh/only-in-list-ids", list_ids=["L_cur"])
+    entry = ExportEntry(
+        name="x", list_name="Current: Tool", output="x.yaml", format="yaml"
+    )
+
+    selected, _ = select_stars(
+        entry,
+        lists=[lst],
+        stars=[stale_only_in_items, fresh_only_in_list_ids],
+    )
+
+    assert [s.full_name for s in selected] == ["fresh/only-in-list-ids"]
+
+
 # --- run_export ------------------------------------------------------------
 
 
@@ -204,7 +254,12 @@ def test_run_export_writes_yaml_with_default_fields(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     lst = _list("Current: Tool", intent="Current", category="Tool", items=["a/one"])
-    star = make_star("a/one", description="does a thing", html_url="https://x/a/one")
+    star = make_star(
+        "a/one",
+        description="does a thing",
+        html_url="https://x/a/one",
+        list_ids=["L_1"],
+    )
     config = ExportConfig(
         exports=[
             ExportEntry(
@@ -234,7 +289,7 @@ def test_run_export_writes_yaml_with_default_fields(
 
 def test_run_export_writes_json(tmp_path: Path, make_star: StarFactory) -> None:
     lst = _list("Current: Tool", intent="Current", category="Tool", items=["a/one"])
-    star = make_star("a/one")
+    star = make_star("a/one", list_ids=["L_1"])
     config = ExportConfig(
         exports=[
             ExportEntry(
@@ -258,7 +313,7 @@ def test_run_export_writes_csv_with_custom_fields(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     lst = _list("Current: Tool", intent="Current", category="Tool", items=["a/one"])
-    star = make_star("a/one", language="Python", stargazer_count=42)
+    star = make_star("a/one", language="Python", stargazer_count=42, list_ids=["L_1"])
     config = ExportConfig(
         exports=[
             ExportEntry(
@@ -283,7 +338,7 @@ def test_run_export_relative_output_resolves_against_base_dir(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     lst = _list("Current: Tool", intent="Current", category="Tool", items=["a/one"])
-    star = make_star("a/one")
+    star = make_star("a/one", list_ids=["L_1"])
     nested_base = tmp_path / "repo"
     nested_base.mkdir()
     config = ExportConfig(
@@ -307,7 +362,7 @@ def test_run_export_absolute_output_is_honored_as_is(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     lst = _list("Current: Tool", intent="Current", category="Tool", items=["a/one"])
-    star = make_star("a/one")
+    star = make_star("a/one", list_ids=["L_1"])
     absolute_target = tmp_path / "elsewhere" / "tools.yaml"
     config = ExportConfig(
         exports=[
@@ -335,7 +390,7 @@ def test_run_export_expands_a_tilde_prefixed_output_to_the_home_dir(
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
     lst = _list("Current: Tool", intent="Current", category="Tool", items=["a/one"])
-    star = make_star("a/one")
+    star = make_star("a/one", list_ids=["L_1"])
     config = ExportConfig(
         exports=[
             ExportEntry(
@@ -362,7 +417,7 @@ def test_run_export_leaves_no_temp_file_behind(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     lst = _list("Current: Tool", intent="Current", category="Tool", items=["a/one"])
-    star = make_star("a/one")
+    star = make_star("a/one", list_ids=["L_1"])
     config = ExportConfig(
         exports=[
             ExportEntry(

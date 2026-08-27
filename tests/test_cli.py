@@ -205,7 +205,10 @@ def test_export_cmd_writes_configured_yaml_output(
         category="Tool",
         items=["example-owner/ghstars"],
     )
-    star = make_star("example-owner/ghstars", description="a tool")
+    # `list_ids` is the membership source `select_stars` resolves through
+    # (see `core/export.py`); `items` above is set too since `sync()`
+    # keeps both reconciled in practice.
+    star = make_star("example-owner/ghstars", description="a tool", list_ids=["L_1"])
     store = StateStore(tmp_path / "state")
     store.save_stars([star])
     store.save_lists([tool])
@@ -252,7 +255,7 @@ def test_export_cmd_json_output(
         category="Tool",
         items=["example-owner/ghstars"],
     )
-    star = make_star("example-owner/ghstars")
+    star = make_star("example-owner/ghstars", list_ids=["L_1"])
     store = StateStore(tmp_path / "state")
     store.save_stars([star])
     store.save_lists([tool])
