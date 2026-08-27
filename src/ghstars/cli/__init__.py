@@ -15,6 +15,7 @@ from ghstars.cli.deps import (
 )
 from ghstars.cli.errors import fail
 from ghstars.cli.git_diff import git_unavailable_reason
+from ghstars.core.fields import select_fields
 
 # Re-export dependencies so commands and tests can patch this package namespace.
 __all__ = [
@@ -73,10 +74,10 @@ def _render_records[ModelT: BaseModel](
             fail(f"unknown field(s): {', '.join(unknown)}")
 
     if json_output:
-        rows = [
-            record.model_dump(mode="json", include=set(selected) if selected else None)
-            for record in records
-        ]
+        # An empty --fields (e.g. --fields "" or --fields ",") filters to
+        # nothing after stripping; treat it as "no restriction", matching
+        # `display_fields = selected or default_fields` below.
+        rows = [select_fields(record, selected or None) for record in records]
         typer.echo(json.dumps(rows))
         return
 

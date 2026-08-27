@@ -27,6 +27,7 @@ from ghstars.core.export import (
     select_stars,
 )
 from ghstars.core.fake_client import FakeGitHubClient
+from ghstars.core.fields import FIELD_REGISTRY, FieldSet, select_fields
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import (
     Intent,
@@ -74,6 +75,7 @@ __all__ = [
     "DEFAULT_EXPORT_FIELDS",
     "DEFAULT_INCLUDE_ARCHIVED",
     "DEFAULT_SORT",
+    "FIELD_REGISTRY",
     "LIFECYCLE_INTENTS",
     "OLDER_THAN_CUTOFF",
     "RECENCY_CUTOFFS",
@@ -88,6 +90,7 @@ __all__ = [
     "ExportEntryResult",
     "Facets",
     "FakeGitHubClient",
+    "FieldSet",
     "GitHubClient",
     "Intent",
     "InvalidCategoryNameError",
@@ -124,6 +127,7 @@ __all__ = [
     "remove_star_from_lists",
     "rename_category",
     "run_export",
+    "select_fields",
     "select_stars",
     "strip_lifecycle_siblings",
     "sync",

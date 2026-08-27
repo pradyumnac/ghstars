@@ -2,15 +2,11 @@ import typer
 
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
+from ghstars.core.fields import FIELD_REGISTRY
 from ghstars.core.models import RetriageEntry
 
 RETRIAGE_FIELDS = set(RetriageEntry.model_fields.keys())
-DEFAULT_RETRIAGE_FIELDS = [
-    "star_full_name",
-    "attempted_list_ids",
-    "conflict_detected_at",
-    "resolved",
-]
+DEFAULT_RETRIAGE_FIELDS = list(FIELD_REGISTRY["retriage"].basic)
 
 
 @app.command("retriage")
