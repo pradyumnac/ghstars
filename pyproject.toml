@@ -67,6 +67,7 @@ module = [
   "ghstars.core.category",
   "ghstars.core.config",
   "ghstars.core.export",
+  "ghstars.core.fields",
   "ghstars.core.models",
   "ghstars.core.status",
   "ghstars.core.sync",

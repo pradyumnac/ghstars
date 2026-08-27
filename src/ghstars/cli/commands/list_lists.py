@@ -2,13 +2,14 @@ import typer
 
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
+from ghstars.core.fields import FIELD_REGISTRY
 from ghstars.core.models import List, Star
 
 STAR_FIELDS = set(Star.model_fields.keys())
-DEFAULT_STAR_FIELDS = ["full_name", "language", "stargazer_count"]
+DEFAULT_STAR_FIELDS = list(FIELD_REGISTRY["star"].basic)
 
 LIST_FIELDS = set(List.model_fields.keys())
-DEFAULT_LISTS_FIELDS = ["name", "intent", "category", "is_private", "malformed"]
+DEFAULT_LISTS_FIELDS = list(FIELD_REGISTRY["list"].basic)
 
 
 @app.command("list")

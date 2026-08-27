@@ -45,12 +45,15 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, model_validator
 
+from ghstars.core.fields import FIELD_REGISTRY, select_fields
 from ghstars.core.models import Intent, List, Star
 from ghstars.core.state_store import atomic_write
 
 ExportFormat = Literal["yaml", "json", "csv"]
 
-DEFAULT_EXPORT_FIELDS: tuple[str, ...] = ("full_name", "html_url", "description")
+# Sourced from the shared field registry (ticket 31 Scope D) -- see
+# `ghstars.core.fields.FIELD_REGISTRY["export"]`.
+DEFAULT_EXPORT_FIELDS: tuple[str, ...] = FIELD_REGISTRY["export"].basic
 
 
 class ExportEntry(BaseModel):
@@ -147,11 +150,7 @@ def select_stars(
 
 
 def _star_records(stars: list[Star], fields: list[str]) -> list[dict[str, object]]:
-    records = []
-    for star in stars:
-        dumped = star.model_dump(mode="json", include=set(fields))
-        records.append({f: dumped[f] for f in fields})
-    return records
+    return [select_fields(star, fields) for star in stars]
 
 
 def _to_csv(records: list[dict[str, object]], fields: list[str]) -> str:
