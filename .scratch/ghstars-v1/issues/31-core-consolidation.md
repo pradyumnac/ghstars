@@ -128,20 +128,37 @@ per target). Landed on `main` at `8acfc83`.
 
 ## Scope D — Shared rendering primitives
 
-- [ ] Replace the duplicated field-selection and reorder code in the CLI
+- [x] Replace the duplicated field-selection and reorder code in the CLI
       renderer and the export writer with one core helper.
-- [ ] Replace the separate default field lists for Stars, Lists, Retriage
+- [x] Replace the separate default field lists for Stars, Lists, Retriage
       entries, and export with one core registry.
-- [ ] The registry defines a basic set and a detailed set for each record type.
+- [x] The registry defines a basic set and a detailed set for each record type.
       Ticket 30 consumes both.
+
+**Delivered:** `src/ghstars/core/fields.py` — `FIELD_REGISTRY`, `FieldSet`
+(a `basic`/`detailed` tuple pair), `select_fields()`. Four registry keys:
+`star`, `list`, `retriage`, `export` — `star`/`export` both wrap `Star` but
+keep separate `basic` sets since their defaults always disagreed. Registry
+entries are defined against plain `Star`, not `StarRow` (`Star` carries no
+List-name field); ticket 30 adds a `StarRow`-based entry when it wires
+`ghstars list` through `query_stars()`. Landed on `feat/31-integration` at
+`adb8a63`; a review-found bug (`--fields ""` dumping to `{}` instead of
+falling back to every field) was fixed in the same merge.
 
 ## Scope E — Proof
 
-- [ ] The TUI tests and the new core tests exercise the same core query. No test
+- [x] The TUI tests and the new core tests exercise the same core query. No test
       reimplements a Filter, a Sort, or a search.
-- [ ] A test proves the TUI and a direct core call return the same Stars for the
+- [x] A test proves the TUI and a direct core call return the same Stars for the
       same query.
-- [ ] No TUI behavior regresses, except the two deliberate changes in Scope B.
+- [x] No TUI behavior regresses, except the two deliberate changes in Scope B.
+
+**Delivered:** `test_visible_rows_matches_a_direct_query_stars_call` in
+`tests/test_tui.py` — asserts `TuiApp._visible_rows()` and a direct
+`query_stars()` call return the same Stars for the same Filter/sort/search.
+Every existing `test_tui.py` Filter/Sort/search test already exercises
+`_visible_rows()`, which forwards to `query_stars()` — none reimplements the
+logic itself.
 
 ## Non-goals
 

@@ -20,6 +20,7 @@ from rich.style import Style
 from rich.text import Text
 from textual.widgets import DataTable, Input, Label, Static
 
+from ghstars.core.discovery import query_stars
 from ghstars.core.fake_client import FakeGitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
@@ -1477,6 +1478,52 @@ async def test_filters_by_category_intent_list_and_unclassified(
         await pilot.press("g", "o", "enter")  # Search for Go
         assert table.row_count == 1
         assert table.get_row_at(0)[1] == "example-owner/current"
+
+
+async def test_visible_rows_matches_a_direct_query_stars_call(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Ticket 31 Scope E: the TUI must not reimplement Filter/Sort/search
+    -- it calls `ghstars.core.discovery.query_stars()` through
+    `_visible_rows()`. Prove the two agree for the same Filter/sort/
+    search inputs, rather than trusting that `_visible_rows()`'s
+    implementation still forwards to `query_stars` by inspection alone.
+    """
+    explore = List(
+        id="L1", name="Explore: AI", slug="explore-ai", category="AI", intent="Explore"
+    )
+    star_explore = make_star(
+        "example-owner/explore", list_ids=["L1"], language="Python"
+    )
+    star_other = make_star("example-owner/other", list_ids=[], language="Go")
+    store = StateStore(tmp_path)
+    store.save_stars([star_explore, star_other])
+    store.save_lists([explore])
+
+    app = TuiApp(client=FakeGitHubClient(), store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+        await pilot.press("f")
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+        await pilot.press("a", "i", "enter")  # Filter by Category "AI"
+
+        tui_rows = app._visible_rows()
+
+        direct_rows = query_stars(
+            app._stars,
+            app._lists,
+            filters=[app._filter_key] if app._filter_key else [],
+            search=app._search_query,
+            sort=app._CORE_SORT[app._sort_mode],
+        )
+
+        assert [row.star.full_name for row in tui_rows] == [
+            row.star.full_name for row in direct_rows
+        ]
+        assert [row.star.full_name for row in tui_rows] == ["example-owner/explore"]
 
 
 async def test_filter_search_selects_best_match_and_all_is_explicit(
