@@ -59,3 +59,40 @@ def unstar_star(
         store.save_lists(remove_star_from_lists(store.load_lists(), full_name))
 
     return UnstarResult(full_name=full_name, found_locally=found_locally)
+
+
+class BulkUnstarOutcome(BaseModel):
+    """One repository's outcome from `bulk_unstar_stars()`.
+
+    Exactly one of `result` and `error` is set, mirroring
+    `tagging.BulkTagOutcome` (ticket 31, Scope C).
+    """
+
+    full_name: str
+    result: UnstarResult | None = None
+    error: str | None = None
+
+
+def bulk_unstar_stars(
+    client: GitHubClient, store: StateStore, full_names: list[str]
+) -> list[BulkUnstarOutcome]:
+    """Unstar every repo in `full_names`, one `unstar_star()` call per
+    repo, isolating each repo's failure from the others.
+
+    Built for the CLI's bulk unstar (ticket 30) -- the TUI keeps
+    refusing bulk unstar on blast-radius grounds (ticket 31, Scope B)
+    and never calls this. Builds on `unstar_star()` rather than
+    duplicating its lock/remove/archive sequence; unlike
+    `bulk_tag_stars()` there is no shared snapshot to thread between
+    calls -- each unstar is an independent GitHub `removeStar` mutation
+    with no equivalent to `tag_star()`'s `lists` reuse.
+    """
+    outcomes: list[BulkUnstarOutcome] = []
+    for full_name in full_names:
+        try:
+            result = unstar_star(client, store, full_name)
+        except Exception as exc:  # noqa: BLE001 -- isolate one repo's failure
+            outcomes.append(BulkUnstarOutcome(full_name=full_name, error=str(exc)))
+            continue
+        outcomes.append(BulkUnstarOutcome(full_name=full_name, result=result))
+    return outcomes

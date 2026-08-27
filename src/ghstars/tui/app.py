@@ -64,13 +64,7 @@ from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import sync
-from ghstars.core.tagging import (
-    StarArchivedError,
-    StarListMembershipDriftError,
-    StarNotFoundError,
-    TagPushError,
-    tag_star,
-)
+from ghstars.core.tagging import bulk_tag_stars
 from ghstars.core.unstar import unstar_star
 from ghstars.github import GitHubApiError
 from ghstars.tui.config import (
@@ -2121,87 +2115,32 @@ class TuiApp(App[None]):
 
     @work(thread=True)
     def _apply_tag(self, targets: list[str], choice: TagChoice) -> None:
-        """Runs off the UI thread: `tag_star()` touches the file-locked
-        StateStore and, for a real client, shells out to `gh`.
-
-        Catches every exception, not just the documented
-        `StarNotFoundError`/`StarArchivedError`/`GitHubApiError`. This
-        loop runs in a background thread: anything that escapes it (a
-        `filelock.Timeout` from a concurrent `ghstars` process holding
-        the store's lock, for instance) never reaches
-        `call_from_thread`, so the app would sit there with the
-        selection intact and no notification -- indistinguishable from
-        a hang. One star's unexpected failure should not sacrifice the
-        rest of the batch or the user-visible outcome either way.
-
-        Bulk-tagging N Stars into the same List used to cost N redundant
-        `fetch_lists()` calls -- `tag_star()` re-fetched every List from
-        GitHub on every call, by design, to check live state before
-        creating a List. Fixed in ticket 19 (scope 5): `tag_star()` now
-        accepts an optional pre-fetched `lists` snapshot, and returns the
-        (possibly List-creation-updated) snapshot it used on
-        `TagResult.lists`. This loop seeds `lists` as `None` for the
-        first star (identical behavior to before: a real fetch) and
-        threads each result's `lists` into the next call, so the whole
-        batch shares at most one live `fetch_lists()` round trip instead
-        of paying it per star. Trade-off: `tag_star()`'s drift check
-        (ticket 16) for star N+1 sees star N's own already-applied
-        change correctly, but not a change some other process makes
-        directly to star N+1 while star N's push is still in flight --
-        see the caveat on `tag_star()`'s own docstring. A single-item
-        tag never threads `lists`, so it does not have this gap.
-
-        `tag_star()` also pushes each star to GitHub immediately (ticket
-        16), which needs GitHub's node ID per star. For more than one
-        target, this resolves every target's node ID in one batched
-        `resolve_repository_node_ids()` call up front rather than paying
-        `tag_star()`'s internal one-round-trip-per-star resolution N
-        times -- see docs/explanation/known-limitations.md. A single
-        target skips this (no batching win for one repo). A `full_name`
-        missing from the batch result (lookup failed, or the repo was
-        renamed/deleted) just falls back to `tag_star()`'s own
-        resolution for that one star -- isolated the same way a push
-        failure already is below, not a reason to fail the whole batch.
-        The membership-update pushes themselves stay sequential, one per
-        star, preserving this loop's existing per-star failure isolation
-        and the incremental notification below.
+        """Runs off the UI thread: `bulk_tag_stars()` touches the
+        file-locked StateStore and, for a real client, shells out to
+        `gh`. The batching, per-star failure isolation, and node-ID /
+        `lists`-snapshot reuse this used to do inline now live in
+        `ghstars.core.tagging.bulk_tag_stars()` (ticket 31, Scope C) so
+        the CLI can reuse the same orchestration -- see that function's
+        docstring for the full reasoning. This method's only job is to
+        call it and translate its per-repository outcomes into this
+        screen's notification.
         """
+        outcomes = bulk_tag_stars(
+            self._client,
+            self._store,
+            targets,
+            choice.list_name,
+            is_private=choice.is_private,
+        )
         tagged = 0
         removed_total = 0
         errors: list[str] = []
-        lists: list[List] | None = None
-        node_ids: dict[str, str] = {}
-        if len(targets) > 1:
-            try:
-                node_ids = self._client.resolve_repository_node_ids(targets)
-            except Exception:  # noqa: BLE001 -- batching is an optimization.
-                node_ids = {}
-        for full_name in targets:
-            try:
-                result = tag_star(
-                    self._client,
-                    self._store,
-                    full_name,
-                    choice.list_name,
-                    is_private=choice.is_private,
-                    lists=lists,
-                    node_id=node_ids.get(full_name),
-                )
-            except (
-                StarNotFoundError,
-                StarArchivedError,
-                StarListMembershipDriftError,
-                TagPushError,
-                GitHubApiError,
-            ) as exc:
-                errors.append(f"{full_name}: {exc}")
-                continue
-            except Exception as exc:  # noqa: BLE001 -- see docstring above
-                errors.append(f"{full_name}: unexpected error: {exc}")
-                continue
-            lists = result.lists
-            tagged += 1
-            removed_total += len(result.removed_list_ids)
+        for outcome in outcomes:
+            if outcome.result is not None:
+                tagged += 1
+                removed_total += len(outcome.result.removed_list_ids)
+            else:
+                errors.append(f"{outcome.full_name}: {outcome.error}")
         self.call_from_thread(self._on_tag_done, choice, tagged, removed_total, errors)
 
     def _on_tag_done(

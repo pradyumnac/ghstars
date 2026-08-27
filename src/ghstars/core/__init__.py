@@ -6,13 +6,12 @@ from ghstars.core.category import (
     drain_category,
     rename_category,
 )
+from ghstars.core.config import CoreConfig, CoreConfigError, load_core_config
 from ghstars.core.export import (
     DEFAULT_EXPORT_FIELDS,
     ExportConfig,
-    ExportConfigError,
     ExportEntry,
     ExportEntryResult,
-    load_export_config,
     run_export,
     select_stars,
 )
@@ -37,11 +36,13 @@ from ghstars.core.sync import (
     sync,
 )
 from ghstars.core.tagging import (
+    BulkTagOutcome,
     StarArchivedError,
     StarListMembershipDriftError,
     StarNotFoundError,
     TagPushError,
     TagResult,
+    bulk_tag_stars,
     tag_star,
 )
 from ghstars.core.taxonomy import (
@@ -51,15 +52,23 @@ from ghstars.core.taxonomy import (
     parse_list_name,
     strip_lifecycle_siblings,
 )
-from ghstars.core.unstar import UnstarResult, unstar_star
+from ghstars.core.unstar import (
+    BulkUnstarOutcome,
+    UnstarResult,
+    bulk_unstar_stars,
+    unstar_star,
+)
 
 __all__ = [
     "DEFAULT_EXPORT_FIELDS",
     "LIFECYCLE_INTENTS",
+    "BulkTagOutcome",
+    "BulkUnstarOutcome",
     "CategoryNotFoundError",
+    "CoreConfig",
+    "CoreConfigError",
     "DrainResult",
     "ExportConfig",
-    "ExportConfigError",
     "ExportEntry",
     "ExportEntryResult",
     "FakeGitHubClient",
@@ -85,9 +94,11 @@ __all__ = [
     "UnstarResult",
     "archive_star",
     "build_status",
+    "bulk_tag_stars",
+    "bulk_unstar_stars",
     "classify_list",
     "drain_category",
-    "load_export_config",
+    "load_core_config",
     "parse_list_name",
     "reconcile_list_membership",
     "remove_star_from_lists",

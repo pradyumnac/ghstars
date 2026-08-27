@@ -10,9 +10,7 @@ from conftest import StarFactory
 from ghstars.core.export import (
     DEFAULT_EXPORT_FIELDS,
     ExportConfig,
-    ExportConfigError,
     ExportEntry,
-    load_export_config,
     run_export,
     select_stars,
 )
@@ -39,97 +37,12 @@ def _list(
     )
 
 
-# --- load_export_config -----------------------------------------------
-
-
-def test_load_export_config_missing_file_is_empty_config(tmp_path: Path) -> None:
-    config = load_export_config(tmp_path / "export.toml")
-
-    assert config == ExportConfig()
-
-
-def test_load_export_config_invalid_toml_raises(tmp_path: Path) -> None:
-    path = tmp_path / "export.toml"
-    path.write_text("this is not [valid toml")
-
-    with pytest.raises(ExportConfigError):
-        load_export_config(path)
-
-
-def test_load_export_config_parses_valid_entries(tmp_path: Path) -> None:
-    path = tmp_path / "export.toml"
-    path.write_text(
-        """
-[[exports]]
-name = "tools"
-list_name = "Current: Vendored Skills"
-output = "tools.yaml"
-format = "yaml"
-
-[[exports]]
-name = "tools-under-exploration"
-category = "Vendored Skills"
-intent = "Explore"
-output = "tools-under-exploration.yaml"
-format = "yaml"
-"""
-    )
-
-    config = load_export_config(path)
-
-    assert len(config.exports) == 2
-    assert config.exports[0].list_name == "Current: Vendored Skills"
-    assert config.exports[1].category == "Vendored Skills"
-    assert config.exports[1].intent == "Explore"
-
-
-@pytest.mark.parametrize(
-    "entry",
-    [
-        # neither list nor category
-        {"name": "x", "output": "x.yaml", "format": "yaml"},
-        # both list and category
-        {
-            "name": "x",
-            "list_name": "Explore: X",
-            "category": "X",
-            "output": "x.yaml",
-            "format": "yaml",
-        },
-        # intent alongside list, not category
-        {
-            "name": "x",
-            "list_name": "Explore: X",
-            "intent": "Explore",
-            "output": "x.yaml",
-            "format": "yaml",
-        },
-        # unknown Star field
-        {
-            "name": "x",
-            "list_name": "Explore: X",
-            "output": "x.yaml",
-            "format": "yaml",
-            "fields": ["not_a_real_field"],
-        },
-    ],
-)
-def test_load_export_config_rejects_invalid_entries(
-    tmp_path: Path, entry: dict[str, object]
-) -> None:
-    path = tmp_path / "export.toml"
-    # Build minimal TOML directly from each entry.
-    lines = ["[[exports]]"]
-    for key, value in entry.items():
-        if isinstance(value, list):
-            rendered = "[" + ", ".join(f'"{v}"' for v in value) + "]"
-        else:
-            rendered = f'"{value}"'
-        lines.append(f"{key} = {rendered}")
-    path.write_text("\n".join(lines))
-
-    with pytest.raises(ExportConfigError):
-        load_export_config(path)
+# Config *loading* moved to `ghstars.core.config.load_core_config`
+# (ticket 32 -- export config now lives under the `[export]` table of
+# `ghstars.toml`, not its own `export.toml`). Those tests live in
+# `tests/test_core_config.py`. `ExportConfig`/`ExportEntry` (the schema)
+# and everything downstream of an already-loaded config stay here,
+# unchanged.
 
 
 # --- select_stars --------------------------------------------------------

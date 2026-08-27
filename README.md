@@ -32,8 +32,8 @@ ghstars --help
 ## Configure
 
 `ghstars` auto-creates `~/.ghstars/config/` on every run. Taxonomy
-definitions land with a later ticket. Export mappings go in
-`~/.ghstars/config/export.toml` — see
+definitions land with a later ticket. Export mappings go in the
+`[export]` table of `~/.ghstars/config/ghstars.toml` — see
 [`docs/how-to/export.md`](docs/how-to/export.md).
 
 TUI settings go in `~/.ghstars/config/tui.toml`: keybindings, Category
