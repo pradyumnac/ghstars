@@ -74,7 +74,10 @@ def _render_records[ModelT: BaseModel](
             fail(f"unknown field(s): {', '.join(unknown)}")
 
     if json_output:
-        rows = [select_fields(record, selected) for record in records]
+        # An empty --fields (e.g. --fields "" or --fields ",") filters to
+        # nothing after stripping; treat it as "no restriction", matching
+        # `display_fields = selected or default_fields` below.
+        rows = [select_fields(record, selected or None) for record in records]
         typer.echo(json.dumps(rows))
         return
 

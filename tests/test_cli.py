@@ -102,6 +102,36 @@ def test_retriage_json_is_an_empty_list_when_the_queue_is_empty(
     assert json.loads(result.output) == []
 
 
+def test_retriage_json_empty_fields_string_means_no_restriction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--fields ""` strips to no field names; must fall back to every
+    field, matching `--fields` being omitted entirely -- not to an empty
+    record. Regression test for ticket 31 Scope D's `select_fields`
+    call site, which took an unfiltered empty list literally.
+    """
+    store = StateStore(tmp_path)
+    entry = RetriageEntry(
+        star_full_name="example-owner/x",
+        attempted_list_ids=["L_1"],
+        conflict_detected_at=NOW,
+    )
+    store.save_retriage([entry])
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(app, ["retriage", "--json", "--fields", ""])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == [
+        {
+            "star_full_name": "example-owner/x",
+            "attempted_list_ids": ["L_1"],
+            "conflict_detected_at": "2026-08-16T00:00:00Z",
+            "resolved": False,
+        }
+    ]
+
+
 def test_retriage_plain_text_reports_no_conflicts_when_the_queue_is_empty(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
