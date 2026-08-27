@@ -6,16 +6,17 @@ import typer
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
 from ghstars.cli.errors import fail
-from ghstars.core import ExportConfigError, load_export_config, run_export
+from ghstars.core import CoreConfigError, load_core_config, run_export
 
 
 @app.command("export")
 def export_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
-    """Write local Stars out to file(s), per `~/.ghstars/config/export.toml`.
+    """Write local Stars out to file(s), per the `[export]` table of
+    `~/.ghstars/config/ghstars.toml`.
 
-    Generic and config-driven (ticket 10): each entry in `export.toml`
+    Generic and config-driven (ticket 10): each entry in `[export]`
     maps a List or Category to an output file + format. ghstars ships no
     hardcoded exporter for any particular downstream use case (e.g. a
     `tools.yaml` for a dotfiles pipeline) — those are example config, not
@@ -25,8 +26,8 @@ def export_cmd(
     """
     store = cli.get_store()
     try:
-        config = load_export_config(cli.get_export_config_path())
-    except ExportConfigError as exc:
+        config = load_core_config(cli.get_core_config_path()).export
+    except CoreConfigError as exc:
         fail(str(exc))
 
     if not config.exports:
@@ -34,8 +35,8 @@ def export_cmd(
             typer.echo(json.dumps([]))
             return
         typer.echo(
-            "No exports configured. Add entries to "
-            f"{cli.get_export_config_path()} (see docs/how-to/export.md)."
+            "No exports configured. Add [[export.exports]] entries to "
+            f"{cli.get_core_config_path()} (see docs/how-to/export.md)."
         )
         return
 

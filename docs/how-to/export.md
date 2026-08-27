@@ -9,21 +9,27 @@ ghstars ships no built-in exporter for any one use case. You define each
 export in config. The examples below are one way to configure it, not a
 fixed feature.
 
+> Export config used to live in its own `~/.ghstars/config/export.toml`.
+> That file is retired — ghstars no longer reads it, and prints a
+> one-time warning on stderr if it finds one on disk. Move its entries
+> into the `[export]` table of `ghstars.toml`, then delete the old file.
+
 ## Configure an export
 
-Create `~/.ghstars/config/export.toml`. Add one `[[exports]]` entry per
-output file.
+Create `~/.ghstars/config/ghstars.toml`. Add one `[[export.exports]]`
+entry per output file — export config lives under the `[export]` table,
+alongside every other core-tier setting (see the three-tier config ADR).
 
 ```toml
 # Adopted skills the user actively uses, as tools.yaml.
-[[exports]]
+[[export.exports]]
 name = "tools"
 list_name = "Current: Vendored Skills"
 output = "tools.yaml"
 format = "yaml"
 
 # Candidate skills under evaluation, not yet adopted.
-[[exports]]
+[[export.exports]]
 name = "tools-under-exploration"
 category = "Vendored Skills"
 intent = "Explore"
@@ -38,7 +44,7 @@ instead — e.g. `output = "~/repos/dotfiles/tools.yaml"`.
 
 ## Entry fields
 
-Each `[[exports]]` entry takes these fields.
+Each `[[export.exports]]` entry takes these fields.
 
 | Field | Required | Meaning |
 | --- | --- | --- |

@@ -6,8 +6,8 @@ the same on every machine, is config. A value that records what the user
 last looked at is state. One fact never lives in both files.
 
 A missing file means every default applies, never an error -- the rule
-`ghstars.core.export.load_export_config` already follows for
-`export.toml` (ADR 0002).
+`ghstars.core.config.load_core_config` already follows for
+`ghstars.toml` (ADR 0002).
 
 Uses `tomlkit`, not stdlib `tomllib`, because both files must round-trip
 through a writer: `tui-state.toml` on every quit, and `tui.toml` when the
@@ -190,7 +190,7 @@ class TuiConfigError(Exception):
     """`config/tui.toml` is present but unparseable or fails validation.
 
     Raised at load time -- a bad user-authored config must never fall
-    back to a silent guess (same principle `ExportConfigError` follows),
+    back to a silent guess (same principle `CoreConfigError` follows),
     it should surface to the user so they can fix their dotfile.
     """
 
@@ -320,8 +320,8 @@ class TuiConfig(BaseModel):
 
 def load_tui_config(path: Path) -> TuiConfig:
     """Load and validate `tui.toml`. A missing file is every default,
-    not an error -- same rule `load_export_config` follows for
-    `export.toml`. A present-but-invalid file always raises
+    not an error -- same rule `load_core_config` follows for
+    `ghstars.toml`. A present-but-invalid file always raises
     `TuiConfigError` -- never silently ignored, never guessed at.
     """
     if not path.exists():
@@ -369,7 +369,7 @@ class TuiState(BaseModel):
 
 def load_tui_state(path: Path) -> TuiState:
     """Load `tui-state.toml`. A missing file is every default -- same
-    rule as `load_tui_config`/`load_export_config`. Unlike `tui.toml`,
+    rule as `load_tui_config`/`load_core_config`. Unlike `tui.toml`,
     a present-but-invalid state file is not hand-authored config to
     fail loudly over -- it is ghstars' own machine-written file, so a
     corrupt one (e.g. from an interrupted write, or a schema change

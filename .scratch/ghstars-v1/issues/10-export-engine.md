@@ -1,5 +1,14 @@
 # 10 — Export engine
 
+**Amended by ticket 32:** the config location described below
+(`get_export_config_path()`, `~/.ghstars/config/export.toml`) moved.
+Export config now lives in the `[export]` table of
+`~/.ghstars/config/ghstars.toml`, loaded by
+`ghstars.core.config.load_core_config`. `ExportConfig`/`ExportEntry`
+(the schema) and `select_stars`/`run_export` (selection and writing)
+are unchanged — see ticket 32 for the rest of the three-tier config
+split.
+
 **What to build:** A generic, config-driven export engine mapping a List (or Category) to an output file and format, so the user can drive their own downstream pipelines (`tools.yaml`, skill vendor lists) without ghstars hardcoding specific use cases. No hardcoded exporters — `tools.yaml`/`tools-under-exploration.yaml`-shaped mappings ship as example config, not special-cased code paths. Supports the "what am I currently exploring but haven't tried yet" query (story 35) as a config-driven case, not a bespoke command.
 
 **Blocked by:** 03.

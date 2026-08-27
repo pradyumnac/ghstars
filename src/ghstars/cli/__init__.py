@@ -4,9 +4,11 @@ import typer
 from pydantic import BaseModel
 
 from ghstars.cli.deps import (
+    check_stale_export_config,
     ensure_config_dir,
+    get_cli_config_path,
     get_client,
-    get_export_config_path,
+    get_core_config_path,
     get_store,
     get_tui_config_path,
     get_tui_state_path,
@@ -18,9 +20,11 @@ from ghstars.cli.git_diff import git_unavailable_reason
 __all__ = [
     "app",
     "category_app",
+    "check_stale_export_config",
     "ensure_config_dir",
+    "get_cli_config_path",
     "get_client",
-    "get_export_config_path",
+    "get_core_config_path",
     "get_store",
     "get_tui_config_path",
     "get_tui_state_path",
@@ -38,6 +42,7 @@ app.add_typer(category_app, name="category")
 def main() -> None:
     """ghstars: classify GitHub starred repos into GitHub's native Lists."""
     ensure_config_dir()
+    check_stale_export_config()
 
 
 def _render_records[ModelT: BaseModel](

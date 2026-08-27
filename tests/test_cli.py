@@ -37,8 +37,8 @@ def _use_client(monkeypatch: pytest.MonkeyPatch, client: FakeGitHubClient) -> No
     monkeypatch.setattr(cli_module, "get_client", lambda: client)
 
 
-def _use_export_config(monkeypatch: pytest.MonkeyPatch, path: Path) -> None:
-    monkeypatch.setattr(cli_module, "get_export_config_path", lambda: path)
+def _use_core_config(monkeypatch: pytest.MonkeyPatch, path: Path) -> None:
+    monkeypatch.setattr(cli_module, "get_core_config_path", lambda: path)
 
 
 class _TimeoutOnEnter:
@@ -186,7 +186,7 @@ def test_export_cmd_reports_no_exports_configured_when_no_config_file(
 ) -> None:
     store = StateStore(tmp_path / "state")
     _use_store(monkeypatch, store)
-    _use_export_config(monkeypatch, tmp_path / "export.toml")
+    _use_core_config(monkeypatch, tmp_path / "ghstars.toml")
 
     result = runner.invoke(app, ["export"])
 
@@ -211,17 +211,17 @@ def test_export_cmd_writes_configured_yaml_output(
     store.save_lists([tool])
     _use_store(monkeypatch, store)
 
-    config_path = tmp_path / "export.toml"
+    config_path = tmp_path / "ghstars.toml"
     config_path.write_text(
         """
-[[exports]]
+[[export.exports]]
 name = "tools"
 list_name = "Current: Tool"
 output = "tools.yaml"
 format = "yaml"
 """
     )
-    _use_export_config(monkeypatch, config_path)
+    _use_core_config(monkeypatch, config_path)
 
     output_dir = tmp_path / "cwd"
     output_dir.mkdir()
@@ -258,17 +258,17 @@ def test_export_cmd_json_output(
     store.save_lists([tool])
     _use_store(monkeypatch, store)
 
-    config_path = tmp_path / "export.toml"
+    config_path = tmp_path / "ghstars.toml"
     config_path.write_text(
         """
-[[exports]]
+[[export.exports]]
 name = "tools"
 list_name = "Current: Tool"
 output = "tools.json"
 format = "json"
 """
     )
-    _use_export_config(monkeypatch, config_path)
+    _use_core_config(monkeypatch, config_path)
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["export", "--json"])
@@ -302,10 +302,10 @@ def test_export_cmd_warns_about_skipped_malformed_lists(
     store.save_lists([malformed])
     _use_store(monkeypatch, store)
 
-    config_path = tmp_path / "export.toml"
+    config_path = tmp_path / "ghstars.toml"
     config_path.write_text(
         """
-[[exports]]
+[[export.exports]]
 name = "exploring"
 category = "Tool"
 intent = "Explore"
@@ -313,7 +313,7 @@ output = "exploring.yaml"
 format = "yaml"
 """
     )
-    _use_export_config(monkeypatch, config_path)
+    _use_core_config(monkeypatch, config_path)
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["export"])
@@ -329,9 +329,9 @@ def test_export_cmd_fails_on_invalid_config(
     store = StateStore(tmp_path / "state")
     _use_store(monkeypatch, store)
 
-    config_path = tmp_path / "export.toml"
+    config_path = tmp_path / "ghstars.toml"
     config_path.write_text("not valid [[ toml")
-    _use_export_config(monkeypatch, config_path)
+    _use_core_config(monkeypatch, config_path)
 
     result = runner.invoke(app, ["export"])
 

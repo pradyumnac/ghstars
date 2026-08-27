@@ -3,12 +3,17 @@
 Maps a List (or Category) to an output file + format, so the user can
 drive their own downstream pipelines (`tools.yaml`, skill vendor lists)
 without ghstars hardcoding any of those use cases. Per ADR 0002,
-`~/.ghstars/config/` is TOML, plain-text, and git-diffable -- read here via
-the stdlib `tomllib` (Python 3.11+), so the config side needs no new
-dependency. `pyyaml` is added only for the *output* side, to write a
-correct `tools.yaml`-shaped file (`yaml.safe_dump` only -- ghstars never
-parses YAML, so the historical `yaml.load`-on-untrusted-input class of
-issue does not apply here).
+`~/.ghstars/config/` is TOML, plain-text, and git-diffable. `pyyaml` is
+added only for the *output* side, to write a correct `tools.yaml`-shaped
+file (`yaml.safe_dump` only -- ghstars never parses YAML, so the
+historical `yaml.load`-on-untrusted-input class of issue does not apply
+here).
+
+Ticket 32 moved the *loading* of this schema into `ghstars.core.config`
+(`load_core_config`, reading the `[export]` table of `ghstars.toml`) --
+this module still owns the schema (`ExportConfig`/`ExportEntry`) and
+every step downstream of a loaded config (`select_stars`, `run_export`),
+just not the file read anymore.
 
 An export entry selects a List either by exact name (`list_name = "..."`),
 or by Category with an optional Intent filter (`category = "..."`,
@@ -34,12 +39,11 @@ guess. `select_stars()` instead reports it back as skipped.
 import csv
 import io
 import json
-import tomllib
 from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ValidationError, model_validator
+from pydantic import BaseModel, model_validator
 
 from ghstars.core.models import Intent, List, Star
 from ghstars.core.state_store import atomic_write
@@ -47,15 +51,6 @@ from ghstars.core.state_store import atomic_write
 ExportFormat = Literal["yaml", "json", "csv"]
 
 DEFAULT_EXPORT_FIELDS: tuple[str, ...] = ("full_name", "html_url", "description")
-
-
-class ExportConfigError(Exception):
-    """`~/.ghstars/config/export.toml` is unparseable or fails validation.
-
-    Raised at load time, before any file is written -- a bad config
-    entry must never fall back to a guess (same principle as ticket 03's
-    malformed-List handling), it hard-fails via `fail()` in the CLI.
-    """
 
 
 class ExportEntry(BaseModel):
@@ -108,25 +103,6 @@ class ExportEntryResult(BaseModel):
     star_count: int
     # Report related malformed Lists without exporting them.
     skipped_malformed_lists: list[str] = []
-
-
-def load_export_config(path: Path) -> ExportConfig:
-    """Load and validate `export.toml`. A missing file is empty config,
-    not an error -- `ensure_config_dir()` scaffolds the directory but no
-    file inside it (ADR 0002), same as no Lists synced yet elsewhere in
-    the CLI. A present-but-invalid file always raises `ExportConfigError`
-    -- never silently ignored, never guessed at.
-    """
-    if not path.exists():
-        return ExportConfig()
-    try:
-        raw = tomllib.loads(path.read_text())
-    except tomllib.TOMLDecodeError as exc:
-        raise ExportConfigError(f"{path}: invalid TOML: {exc}") from exc
-    try:
-        return ExportConfig.model_validate(raw)
-    except ValidationError as exc:
-        raise ExportConfigError(f"{path}: invalid export config: {exc}") from exc
 
 
 def _matches(entry: ExportEntry, lst: List) -> bool:

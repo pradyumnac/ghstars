@@ -6,13 +6,12 @@ from ghstars.core.category import (
     drain_category,
     rename_category,
 )
+from ghstars.core.config import CoreConfig, CoreConfigError, load_core_config
 from ghstars.core.export import (
     DEFAULT_EXPORT_FIELDS,
     ExportConfig,
-    ExportConfigError,
     ExportEntry,
     ExportEntryResult,
-    load_export_config,
     run_export,
     select_stars,
 )
@@ -66,9 +65,10 @@ __all__ = [
     "BulkTagOutcome",
     "BulkUnstarOutcome",
     "CategoryNotFoundError",
+    "CoreConfig",
+    "CoreConfigError",
     "DrainResult",
     "ExportConfig",
-    "ExportConfigError",
     "ExportEntry",
     "ExportEntryResult",
     "FakeGitHubClient",
@@ -98,7 +98,7 @@ __all__ = [
     "bulk_unstar_stars",
     "classify_list",
     "drain_category",
-    "load_export_config",
+    "load_core_config",
     "parse_list_name",
     "reconcile_list_membership",
     "remove_star_from_lists",
