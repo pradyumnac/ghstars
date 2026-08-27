@@ -14,7 +14,7 @@ already disagree, and proves that both surfaces return the same result.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done — all five scopes landed on `main`.
 
 ## Scope A — One query in core
 

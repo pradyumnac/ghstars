@@ -11,8 +11,10 @@ sort, bulk tagging, collection counts, API status, and explicit sync state.
 Ticket 31 moves all of that into `ghstars.core`. This ticket puts a CLI surface
 on top of it.
 
-**Blocked by:** 31 — every shared behavior must live in `ghstars.core` first.
-This ticket adds no core logic of its own.
+**Blocked by:** None — ticket 31 is done. Every criterion below marked
+"Depends on ticket 31 ..." must still be re-checked against the delivered
+signatures in `.scratch/ghstars-v1/issues/31-core-consolidation.md`'s
+"Delivered" notes before you rely on it.
 
 **Status:** ready-for-agent
 

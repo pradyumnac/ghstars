@@ -2,9 +2,10 @@
 
 ## Next work
 
-See `.scratch/ghstars-v1/issues/31-core-consolidation.md` for open scopes and
-`.scratch/ghstars-v1/issues/32-three-tier-config.md` for its remaining scope.
-Both files carry their own checkbox state — check there, not here.
+Ticket 31 is done. See `.scratch/ghstars-v1/issues/30-cli-feature-parity-for-agent-use.md`
+(unblocked) and `.scratch/ghstars-v1/issues/32-three-tier-config.md` (Scope 3
+remaining, blocked on ticket 30) for open scopes. Both carry their own
+checkbox state — check there, not here.
 
 ## Unscheduled follow-ups
 
