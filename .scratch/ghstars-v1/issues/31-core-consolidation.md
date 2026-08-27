@@ -21,24 +21,30 @@ already disagree, and proves that both surfaces return the same result.
 Move the whole discovery path into `ghstars.core`. The TUI calls the moved code.
 Do not leave a second copy behind.
 
-- [ ] Move every Filter into core: Category, Intent, List, Language, License,
+- [x] Move every Filter into core: Category, Intent, List, Language, License,
       Owner, Fork, Followed, Unclassified, and starred-date recency.
-- [ ] Move every Sort into core: name, star date, stargazer count, language,
+- [x] Move every Sort into core: name, star date, stargazer count, language,
       List count, and List name. Each Sort supports both directions.
-- [ ] Move search into core. Search matches case-insensitive text in the Star
+- [x] Move search into core. Search matches case-insensitive text in the Star
       name and the Star description.
-- [ ] Define one Filter grammar in core. The TUI and the CLI parse the same
+- [x] Define one Filter grammar in core. The TUI and the CLI parse the same
       grammar. Do not let the CLI invent a second vocabulary.
-- [ ] The core query accepts more than one Filter. Core combines them with AND.
-- [ ] Search and Filters compose in one deterministic order. Record that order.
-- [ ] Move the recency cutoffs into core constants. Do not make them
+- [x] The core query accepts more than one Filter. Core combines them with AND.
+- [x] Search and Filters compose in one deterministic order. Record that order.
+- [x] Move the recency cutoffs into core constants. Do not make them
       configurable. ADR 0008 rejected that.
-- [ ] The core query accepts a deterministic limit and offset. A repeated call
+- [x] The core query accepts a deterministic limit and offset. A repeated call
       with the same arguments returns the same rows in the same order.
-- [ ] Core resolves each Star's List names onto the returned row. A caller never
+- [x] Core resolves each Star's List names onto the returned row. A caller never
       joins `list_ids` against Lists itself.
-- [ ] Core returns the available facet values: Categories, Intents, Lists,
+- [x] Core returns the available facet values: Categories, Intents, Lists,
       Languages, Licenses, and Owners.
+
+**Delivered:** `src/ghstars/core/discovery.py` — `query_stars()`, `available_facets()`,
+`StarRow` (a `Star` plus resolved `list_names`, not an extended `Star`),
+`Facets`, `SortMode`, `RECENCY_CUTOFFS`, `OLDER_THAN_CUTOFF`. Compose order:
+Archived-exclusion, then Filters (AND), then search, then sort, then
+offset/limit. Landed on `main` at `8acfc83`.
 
 ### Filter arity changes TUI state
 
@@ -52,10 +58,15 @@ until a later ticket gives it multi-Filter UI.
 Two surfaces disagree today. Fix both disagreements here, before ticket 30
 freezes either one.
 
-- [ ] Core excludes Archived Stars by default. The TUI drops them silently
+- [x] Core excludes Archived Stars by default. The TUI drops them silently
       today; the CLI keeps them. Make the exclusion an explicit, named core
       default that both surfaces share.
-- [ ] Core exposes an opt-in that includes Archived Stars.
+- [x] Core exposes an opt-in that includes Archived Stars.
+
+      **Delivered:** `query_stars(..., include_archived=False)` — the default.
+      `DEFAULT_INCLUDE_ARCHIVED` in `core/discovery.py`. `_reload_local_state`
+      in the TUI no longer filters Archived Stars itself; the query does.
+
 - [ ] Fold `ghstars.core.export`'s Star selection onto the core query. Decide
       whether membership resolves through `List.items` or through
       `Star.list_ids`, and apply one answer everywhere.
@@ -75,15 +86,19 @@ freezes either one.
 
 The TUI holds the only bulk-tag orchestrator. Move it down so the CLI reuses it.
 
-- [ ] Add a core bulk-tag function. It resolves every repository node ID in one
+- [x] Add a core bulk-tag function. It resolves every repository node ID in one
       batch, threads the fetched Lists between calls, and isolates a failure for
       one repository from the others.
-- [ ] The core bulk-tag function returns one result per repository. A failure
+- [x] The core bulk-tag function returns one result per repository. A failure
       for one repository never hides the result for another.
-- [ ] The TUI calls the core bulk-tag function. Delete the TUI's own loop.
-- [ ] Add a core bulk-unstar function with one result per repository.
-- [ ] Single-Star `tag_star` and `unstar_star` keep working. The bulk functions
+- [x] The TUI calls the core bulk-tag function. Delete the TUI's own loop.
+- [x] Add a core bulk-unstar function with one result per repository.
+- [x] Single-Star `tag_star` and `unstar_star` keep working. The bulk functions
       build on them.
+
+**Delivered:** `bulk_tag_stars()` in `core/tagging.py` (`BulkTagOutcome`
+per target), `bulk_unstar_stars()` in `core/unstar.py` (`BulkUnstarOutcome`
+per target). Landed on `main` at `8acfc83`.
 
 ## Scope D — Shared rendering primitives
 

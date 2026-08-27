@@ -17,29 +17,40 @@ This ticket gives every layer a home.
 
 ## Scope 1 — The three tiers
 
-- [ ] Create `config/ghstars.toml` for core settings.
-- [ ] Create `config/cli.toml` for CLI settings.
-- [ ] `config/tui.toml` keeps every TUI setting. Do not move a TUI field.
-- [ ] Write the rule that decides which file a new setting lands in. Copy the
+- [x] Create `config/ghstars.toml` for core settings.
+- [x] Create `config/cli.toml` for CLI settings.
+- [x] `config/tui.toml` keeps every TUI setting. Do not move a TUI field.
+- [x] Write the rule that decides which file a new setting lands in. Copy the
       rule into each loader's docstring.
-- [ ] One setting must never live in two files.
-- [ ] ghstars never writes into `config/` on the user's behalf. ADR 0002 holds.
-- [ ] A missing file means every default applies. This matches how `tui.toml`
+- [x] One setting must never live in two files.
+- [x] ghstars never writes into `config/` on the user's behalf. ADR 0002 holds.
+- [x] A missing file means every default applies. This matches how `tui.toml`
       and `export.toml` already behave.
-- [ ] `GHSTARS_HOME` from ticket 30 relocates all three files.
+- [ ] `GHSTARS_HOME` from ticket 30 relocates all three files. Not yet
+      possible — ticket 30 has not added `GHSTARS_HOME`.
+
+**Delivered:** `get_core_config_path()`, `get_cli_config_path()` (path only,
+no loader yet — reserved for ticket 30) in `cli/deps.py`, alongside the
+existing `get_tui_config_path()`. Tier rule documented in `cli/deps.py`'s
+module docstring. Landed on `main` at `8acfc83`.
 
 ## Scope 2 — Fold export into core config
 
 Nothing has released yet. Ticket 13 has not started. Take the hard break.
 
-- [ ] Move the `export.toml` schema into `ghstars.toml` under `[export]`.
-- [ ] Delete the `export.toml` load path. Do not read the old file.
-- [ ] Do not write a migration. Do not add a migrate command. ADR 0002 forbids
+- [x] Move the `export.toml` schema into `ghstars.toml` under `[export]`.
+- [x] Delete the `export.toml` load path. Do not read the old file.
+- [x] Do not write a migration. Do not add a migrate command. ADR 0002 forbids
       ghstars writing into `config/`.
-- [ ] A leftover `export.toml` on disk must not change behavior. Decide whether
+- [x] A leftover `export.toml` on disk must not change behavior. Decide whether
       to warn about it or ignore it, and apply one answer.
-- [ ] Rewrite `docs/how-to/export.md` for the new location.
-- [ ] Amend ticket 10 to point here.
+- [x] Rewrite `docs/how-to/export.md` for the new location.
+- [x] Amend ticket 10 to point here.
+
+**Delivered:** `core/config.py` — `load_core_config()`, `CoreConfig`,
+`CoreConfigError`. A leftover `export.toml` triggers one stderr warning per
+CLI invocation (`check_stale_export_config()` in the `@app.callback()`), not
+silent ignore. Landed on `main` at `8acfc83`.
 
 ## Scope 3 — Adopt the CLI tier
 
@@ -52,14 +63,16 @@ Nothing has released yet. Ticket 13 has not started. Take the hard break.
 
 ## Scope 4 — Decision record
 
-- [ ] Write an ADR for the three-tier split. State the rule that assigns a
+- [x] Write an ADR for the three-tier split. State the rule that assigns a
       setting to a tier.
-- [ ] State how the split relates to ADR 0002, which puts user-authored settings
+- [x] State how the split relates to ADR 0002, which puts user-authored settings
       in `config/` and machine-written data in `state/`.
-- [ ] State how the split relates to ADR 0008, which keeps TUI config and TUI
+- [x] State how the split relates to ADR 0008, which keeps TUI config and TUI
       state disjoint. That rule still holds inside the TUI tier.
-- [ ] Record the `export.toml` hard break and the reason: no release has
+- [x] Record the `export.toml` hard break and the reason: no release has
       happened.
+
+**Delivered:** `docs/adr/0009-three-tier-config-split.md`. Index regenerated.
 
 ## Non-goals
 
