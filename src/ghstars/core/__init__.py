@@ -7,6 +7,17 @@ from ghstars.core.category import (
     rename_category,
 )
 from ghstars.core.config import CoreConfig, CoreConfigError, load_core_config
+from ghstars.core.discovery import (
+    DEFAULT_INCLUDE_ARCHIVED,
+    DEFAULT_SORT,
+    OLDER_THAN_CUTOFF,
+    RECENCY_CUTOFFS,
+    Facets,
+    SortMode,
+    StarRow,
+    available_facets,
+    query_stars,
+)
 from ghstars.core.export import (
     DEFAULT_EXPORT_FIELDS,
     ExportConfig,
@@ -61,7 +72,11 @@ from ghstars.core.unstar import (
 
 __all__ = [
     "DEFAULT_EXPORT_FIELDS",
+    "DEFAULT_INCLUDE_ARCHIVED",
+    "DEFAULT_SORT",
     "LIFECYCLE_INTENTS",
+    "OLDER_THAN_CUTOFF",
+    "RECENCY_CUTOFFS",
     "BulkTagOutcome",
     "BulkUnstarOutcome",
     "CategoryNotFoundError",
@@ -71,6 +86,7 @@ __all__ = [
     "ExportConfig",
     "ExportEntry",
     "ExportEntryResult",
+    "Facets",
     "FakeGitHubClient",
     "GitHubClient",
     "Intent",
@@ -82,10 +98,12 @@ __all__ = [
     "RateLimitStatus",
     "RenameResult",
     "RetriageEntry",
+    "SortMode",
     "Star",
     "StarArchivedError",
     "StarListMembershipDriftError",
     "StarNotFoundError",
+    "StarRow",
     "StateStore",
     "StatusReport",
     "SyncResult",
@@ -93,6 +111,7 @@ __all__ = [
     "TagResult",
     "UnstarResult",
     "archive_star",
+    "available_facets",
     "build_status",
     "bulk_tag_stars",
     "bulk_unstar_stars",
@@ -100,6 +119,7 @@ __all__ = [
     "drain_category",
     "load_core_config",
     "parse_list_name",
+    "query_stars",
     "reconcile_list_membership",
     "remove_star_from_lists",
     "rename_category",

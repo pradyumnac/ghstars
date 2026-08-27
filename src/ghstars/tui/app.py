@@ -41,7 +41,7 @@ import json
 import webbrowser
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 
@@ -60,6 +60,13 @@ from textual.timer import Timer
 from textual.widgets import Button, Checkbox, DataTable, Input, Label, Select, Static
 from tomlkit.exceptions import TOMLKitError
 
+from ghstars.core.discovery import (
+    Facets,
+    SortMode,
+    StarRow,
+    available_facets,
+    query_stars,
+)
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
@@ -1470,10 +1477,11 @@ class TuiApp(App[None]):
         controls.append(" Clear")
         self.query_one("#discovery-controls", Static).update(controls)
 
-        unclassified = sum(not star.list_ids for star in self._stars)
-        pending = sum(bool(star.pending_list_ids) for star in self._stars)
+        active_stars = self._active_stars()
+        unclassified = sum(not star.list_ids for star in active_stars)
+        pending = sum(bool(star.pending_list_ids) for star in active_stars)
         counts = Text(
-            f"[Stars: {visible_count}/{len(self._stars)}]  "
+            f"[Stars: {visible_count}/{len(active_stars)}]  "
             f"[Lists: {len(self._lists)}]  "
         )
         start = len(counts)
@@ -1508,7 +1516,10 @@ class TuiApp(App[None]):
         than crashing the TUI on mount with a raw traceback.
         """
         try:
-            stars = [s for s in self._store.load_stars() if not s.archived]
+            # Load every Star, Archived included -- `_visible_rows()` (via
+            # `ghstars.core.discovery.query_stars`) is what excludes
+            # Archived Stars by default, not this load.
+            stars = self._store.load_stars()
             lists = self._store.load_lists()
         except Timeout:
             self.notify(
@@ -1532,82 +1543,41 @@ class TuiApp(App[None]):
     def _lists_by_id(self) -> dict[str, List]:
         return {lst.id: lst for lst in self._lists}
 
-    def _sorted_stars(self) -> list[Star]:
-        # Sort by newest starred date unless another mode is active.
-        if self._sort_mode == "name":
-            return sorted(self._stars, key=lambda s: s.full_name)
-        if self._sort_mode == "stargazer_desc":
-            return sorted(self._stars, key=lambda s: s.stargazer_count, reverse=True)
-        if self._sort_mode == "language":
-            return sorted(
-                self._stars, key=lambda s: (s.language is None, s.language or "")
-            )
-        if self._sort_mode == "list_count_desc":
-            return sorted(self._stars, key=lambda s: len(s.list_ids), reverse=True)
-        if self._sort_mode == "list_name":
-            # Sort by each Star's first List name; unlisted Stars go last.
-            by_id = self._lists_by_id()
+    def _active_stars(self) -> list[Star]:
+        """`self._stars` minus Archived Stars -- the TUI's discoverable
+        pool. `_reload_local_state` loads every Star including Archived
+        ones; anything that isn't itself a `query_stars` call (facet
+        enumeration, the status-bar counts, "select all") uses this so it
+        matches `query_stars`'s own `include_archived=False` default.
+        """
+        return [star for star in self._stars if not star.archived]
 
-            def _first_list_name(star: Star) -> tuple[bool, str]:
-                names = sorted(by_id[lid].name for lid in star.list_ids if lid in by_id)
-                return (not names, names[0] if names else "")
+    # Maps this TUI's single-value `_sort_mode` (persisted verbatim to
+    # `state/tui-state.toml`) onto `ghstars.core.discovery`'s bidirectional
+    # `SortMode`. The TUI only ever cycles through one direction per field
+    # today; core supports both so a future CLI/agent surface can ask for
+    # either.
+    _CORE_SORT: ClassVar[dict[str, SortMode]] = {
+        "starred_desc": "starred_desc",
+        "name": "name_asc",
+        "stargazer_desc": "stargazer_desc",
+        "language": "language_asc",
+        "list_count_desc": "list_count_desc",
+        "list_name": "list_name_asc",
+    }
 
-            return sorted(self._stars, key=_first_list_name)
-        return sorted(self._stars, key=lambda s: s.starred_at, reverse=True)
-
-    def _visible_stars(self) -> list[Star]:
-        """Apply the active List filter and search query to sorted Stars."""
-        stars = self._sorted_stars()
-        filter_key = self._filter_key or ""
-        if filter_key == "unclassified":
-            stars = [star for star in stars if not star.list_ids]
-        elif filter_key.startswith("category:"):
-            category = filter_key.removeprefix("category:")
-            ids = {lst.id for lst in self._lists if lst.category == category}
-            stars = [star for star in stars if set(star.list_ids) & ids]
-        elif filter_key.startswith("intent:"):
-            intent = filter_key.removeprefix("intent:")
-            ids = {lst.id for lst in self._lists if lst.intent == intent}
-            stars = [star for star in stars if set(star.list_ids) & ids]
-        elif filter_key.startswith("list:"):
-            list_id = filter_key.removeprefix("list:")
-            stars = [star for star in stars if list_id in star.list_ids]
-        elif filter_key.startswith("language:"):
-            language = filter_key.removeprefix("language:")
-            stars = [star for star in stars if star.language == language]
-        elif filter_key.startswith("license:"):
-            license_name = filter_key.removeprefix("license:")
-            stars = [star for star in stars if star.license == license_name]
-        elif filter_key.startswith("owner:"):
-            owner = filter_key.removeprefix("owner:")
-            stars = [star for star in stars if star.full_name.split("/", 1)[0] == owner]
-        elif filter_key == "forks":
-            stars = [star for star in stars if star.fork]
-        elif filter_key == "followed":
-            stars = [star for star in stars if star.follow]
-        elif filter_key.startswith("recent:"):
-            cutoff = datetime.now(UTC) - {
-                "1d": timedelta(days=1),
-                "1w": timedelta(weeks=1),
-                "1m": timedelta(days=30),
-                "3m": timedelta(days=90),
-                "1y": timedelta(days=365),
-            }.get(filter_key.removeprefix("recent:"), timedelta(0))
-            if filter_key == "recent:older_1y":
-                cutoff = datetime.now(UTC) - timedelta(days=365)
-                stars = [star for star in stars if star.starred_at < cutoff]
-            else:
-                stars = [star for star in stars if star.starred_at >= cutoff]
-
-        query = self._search_query.strip().lower()
-        if query:
-            stars = [
-                star
-                for star in stars
-                if query in star.full_name.lower()
-                or (star.description is not None and query in star.description.lower())
-            ]
-        return stars
+    def _visible_rows(self) -> list[StarRow]:
+        """Run the shared core discovery query against the TUI's active
+        Filter, search query, and sort mode. `ghstars.core.discovery`
+        excludes Archived Stars by default; the TUI keeps that default
+        (Scope B: no default-visible change here)."""
+        return query_stars(
+            self._stars,
+            self._lists,
+            filters=[self._filter_key] if self._filter_key else [],
+            search=self._search_query,
+            sort=self._CORE_SORT[self._sort_mode],
+        )
 
     def _date(self, value: datetime | None) -> str:
         return _format_date(value, self._config.date_format)
@@ -1649,19 +1619,20 @@ class TuiApp(App[None]):
     def _refresh_table(self) -> None:
         table = self.query_one("#stars-table", DataTable)
         table.clear()
-        visible_stars = self._visible_stars()
-        self._refresh_discovery_status(len(visible_stars))
+        rows = self._visible_rows()
+        self._refresh_discovery_status(len(rows))
         by_id = self._lists_by_id()
-        for star in visible_stars:
+        for result_row in rows:
+            star = result_row.star
             mark = "[x]" if star.full_name in self._selected else "[ ]"
             member_lists = [by_id[lid] for lid in star.list_ids if lid in by_id]
-            row: list[object] = [mark, star.full_name]
-            row.extend(
+            table_row: list[object] = [mark, star.full_name]
+            table_row.extend(
                 self._column_cell(name, star, member_lists)
                 for name in self._preset.columns
             )
             table.add_row(
-                *row,
+                *table_row,
                 height=self._preset.row_height,
                 key=star.full_name,
             )
@@ -1724,7 +1695,7 @@ class TuiApp(App[None]):
         self.query_one("#stars-table", DataTable).update_cell(full_name, "sel", mark)
 
     def action_select_all(self) -> None:
-        self._selected = {s.full_name for s in self._stars}
+        self._selected = {s.full_name for s in self._active_stars()}
         self._refresh_table()
 
     def action_clear_selection(self) -> None:
@@ -1910,20 +1881,19 @@ class TuiApp(App[None]):
             if kind in {"clear", "unclassified"}:
                 self._set_filter(None if kind == "clear" else kind)
                 return
+            facets: Facets = available_facets(self._active_stars(), self._lists)
             if kind == "category":
-                values = sorted({lst.category for lst in self._lists if lst.category})
                 palette = CategoryPalette.of(self)
                 options = [
                     (
                         f"category:{value}",
                         _styled_category(value, palette, self._config.category_colours),
                     )
-                    for value in values
+                    for value in facets.categories
                 ]
                 title = "Filter by Category"
             elif kind == "intent":
-                values = sorted({lst.intent for lst in self._lists if lst.intent})
-                options = [(f"intent:{value}", value) for value in values]
+                options = [(f"intent:{value}", value) for value in facets.intents]
                 title = "Filter by Intent"
             elif kind == "list":
                 palette = CategoryPalette.of(self)
@@ -1932,24 +1902,17 @@ class TuiApp(App[None]):
                         f"list:{lst.id}",
                         _styled_list(lst, palette, self._config.category_colours),
                     )
-                    for lst in sorted(self._lists, key=lambda item: item.name)
+                    for lst in facets.lists
                 ]
                 title = "Filter by List"
             elif kind == "language":
-                values = sorted(
-                    {star.language for star in self._stars if star.language}
-                )
-                options = [(f"language:{value}", value) for value in values]
+                options = [(f"language:{value}", value) for value in facets.languages]
                 title = "Filter by Language"
             elif kind == "license":
-                values = sorted({star.license for star in self._stars if star.license})
-                options = [(f"license:{value}", value) for value in values]
+                options = [(f"license:{value}", value) for value in facets.licenses]
                 title = "Filter by License"
             elif kind == "owner":
-                values = sorted(
-                    {star.full_name.split("/", 1)[0] for star in self._stars}
-                )
-                options = [(f"owner:{value}", value) for value in values]
+                options = [(f"owner:{value}", value) for value in facets.owners]
                 title = "Filter by Owner"
             elif kind == "forks":
                 options = [("forks", "Forks only")]
