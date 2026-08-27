@@ -37,11 +37,13 @@ from ghstars.core.sync import (
     sync,
 )
 from ghstars.core.tagging import (
+    BulkTagOutcome,
     StarArchivedError,
     StarListMembershipDriftError,
     StarNotFoundError,
     TagPushError,
     TagResult,
+    bulk_tag_stars,
     tag_star,
 )
 from ghstars.core.taxonomy import (
@@ -51,11 +53,18 @@ from ghstars.core.taxonomy import (
     parse_list_name,
     strip_lifecycle_siblings,
 )
-from ghstars.core.unstar import UnstarResult, unstar_star
+from ghstars.core.unstar import (
+    BulkUnstarOutcome,
+    UnstarResult,
+    bulk_unstar_stars,
+    unstar_star,
+)
 
 __all__ = [
     "DEFAULT_EXPORT_FIELDS",
     "LIFECYCLE_INTENTS",
+    "BulkTagOutcome",
+    "BulkUnstarOutcome",
     "CategoryNotFoundError",
     "DrainResult",
     "ExportConfig",
@@ -85,6 +94,8 @@ __all__ = [
     "UnstarResult",
     "archive_star",
     "build_status",
+    "bulk_tag_stars",
+    "bulk_unstar_stars",
     "classify_list",
     "drain_category",
     "load_export_config",

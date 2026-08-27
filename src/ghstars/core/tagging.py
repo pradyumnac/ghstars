@@ -5,6 +5,7 @@ from ghstars.core.models import List, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import apply_membership_diff
 from ghstars.core.taxonomy import classify_list, strip_lifecycle_siblings
+from ghstars.github import GitHubApiError
 
 # An optional Lists snapshot avoids redundant live fetches during bulk tagging.
 
@@ -166,3 +167,108 @@ def tag_star(
         )
         store.save_lists(lists)
     return TagResult(star=updated, removed_list_ids=removed_list_ids, lists=lists)
+
+
+class BulkTagOutcome(BaseModel):
+    """One repository's outcome from `bulk_tag_stars()`.
+
+    Exactly one of `result` and `error` is set. Reporting a full list of
+    outcomes -- one per requested `full_name`, in the same order -- lets
+    a caller tell which targets succeeded and which failed without a
+    batch-wide exception hiding the rest (ticket 31, Scope C).
+    """
+
+    full_name: str
+    result: TagResult | None = None
+    error: str | None = None
+
+
+def bulk_tag_stars(
+    client: GitHubClient,
+    store: StateStore,
+    full_names: list[str],
+    list_name: str,
+    *,
+    is_private: bool = False,
+) -> list[BulkTagOutcome]:
+    """Tag every repo in `full_names` into `list_name`, one `tag_star()`
+    call per repo, isolating each repo's failure from the others.
+
+    Moved from the TUI's `_apply_tag` (ticket 19, scope 5; ticket 31,
+    Scope C) so the CLI can reuse the same orchestration. Preserves that
+    method's exact trade-offs:
+
+    Catches every exception, not just the documented
+    `StarNotFoundError`/`StarArchivedError`/`GitHubApiError`. A caller
+    running this off the UI thread (or any thread) needs every repo's
+    unexpected failure (a `filelock.Timeout` from a concurrent
+    `ghstars` process holding the store's lock, for instance) reported
+    per-repo rather than escaping and losing the rest of the batch.
+
+    Bulk-tagging N Stars into the same List used to cost N redundant
+    `fetch_lists()` calls -- `tag_star()` re-fetched every List from
+    GitHub on every call, by design, to check live state before
+    creating a List. Fixed in ticket 19 (scope 5): `tag_star()` accepts
+    an optional pre-fetched `lists` snapshot, and returns the (possibly
+    List-creation-updated) snapshot it used on `TagResult.lists`. This
+    loop seeds `lists` as `None` for the first star (identical behavior
+    to before: a real fetch) and threads each result's `lists` into the
+    next call, so the whole batch shares at most one live
+    `fetch_lists()` round trip instead of paying it per star.
+    Trade-off: `tag_star()`'s drift check (ticket 16) for star N+1 sees
+    star N's own already-applied change correctly, but not a change
+    some other process makes directly to star N+1 while star N's push
+    is still in flight -- see the caveat on `tag_star()`'s own
+    docstring. A single-item call never threads `lists`, so it does not
+    have this gap.
+
+    `tag_star()` also pushes each star to GitHub immediately (ticket
+    16), which needs GitHub's node ID per star. For more than one
+    target, this resolves every target's node ID in one batched
+    `resolve_repository_node_ids()` call up front rather than paying
+    `tag_star()`'s internal one-round-trip-per-star resolution N times
+    -- see docs/explanation/known-limitations.md. A single target skips
+    this (no batching win for one repo). A `full_name` missing from the
+    batch result (lookup failed, or the repo was renamed/deleted) just
+    falls back to `tag_star()`'s own resolution for that one star --
+    isolated the same way a push failure already is below, not a
+    reason to fail the whole batch. The membership-update pushes
+    themselves stay sequential, one per star, preserving this
+    function's per-star failure isolation.
+    """
+    outcomes: list[BulkTagOutcome] = []
+    lists: list[List] | None = None
+    node_ids: dict[str, str] = {}
+    if len(full_names) > 1:
+        try:
+            node_ids = client.resolve_repository_node_ids(full_names)
+        except Exception:  # noqa: BLE001 -- batching is an optimization.
+            node_ids = {}
+    for full_name in full_names:
+        try:
+            result = tag_star(
+                client,
+                store,
+                full_name,
+                list_name,
+                is_private=is_private,
+                lists=lists,
+                node_id=node_ids.get(full_name),
+            )
+        except (
+            StarNotFoundError,
+            StarArchivedError,
+            StarListMembershipDriftError,
+            TagPushError,
+            GitHubApiError,
+        ) as exc:
+            outcomes.append(BulkTagOutcome(full_name=full_name, error=str(exc)))
+            continue
+        except Exception as exc:  # noqa: BLE001 -- see docstring above
+            outcomes.append(
+                BulkTagOutcome(full_name=full_name, error=f"unexpected error: {exc}")
+            )
+            continue
+        lists = result.lists
+        outcomes.append(BulkTagOutcome(full_name=full_name, result=result))
+    return outcomes

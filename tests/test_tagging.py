@@ -4,13 +4,14 @@ import pytest
 from conftest import StarFactory
 
 from ghstars.core.fake_client import FakeGitHubClient
-from ghstars.core.models import List
+from ghstars.core.models import List, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.tagging import (
     StarArchivedError,
     StarListMembershipDriftError,
     StarNotFoundError,
     TagPushError,
+    bulk_tag_stars,
     tag_star,
 )
 
@@ -341,3 +342,117 @@ def test_tag_star_pushes_via_a_pre_resolved_node_id_when_supplied(
     )
 
     assert result.star.list_ids == ["L_1"]
+
+
+def test_bulk_tag_stars_tags_every_target(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    target = List(id="L_target", name="Explore: Foo", slug="explore-foo")
+    star_a = make_star("example-owner/a")
+    star_b = make_star("example-owner/b")
+    store = StateStore(tmp_path)
+    store.save_stars([star_a, star_b])
+    store.save_lists([target])
+    client = FakeGitHubClient(stars=[star_a, star_b], lists=[target])
+
+    outcomes = bulk_tag_stars(
+        client, store, ["example-owner/a", "example-owner/b"], "Explore: Foo"
+    )
+
+    assert [o.full_name for o in outcomes] == ["example-owner/a", "example-owner/b"]
+    assert all(o.error is None for o in outcomes)
+    assert all(
+        o.result is not None and o.result.star.list_ids == ["L_target"]
+        for o in outcomes
+    )
+    stars = {s.full_name: s for s in store.load_stars()}
+    assert stars["example-owner/a"].list_ids == ["L_target"]
+    assert stars["example-owner/b"].list_ids == ["L_target"]
+
+
+def test_bulk_tag_stars_isolates_one_targets_failure_from_the_rest(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """A bad target (no local Star record) fails on its own -- the good
+    targets still get tagged and reported, not swallowed by the first
+    failure."""
+    target = List(id="L_target", name="Explore: Foo", slug="explore-foo")
+    star_a = make_star("example-owner/a")
+    star_c = make_star("example-owner/c")
+    store = StateStore(tmp_path)
+    store.save_stars([star_a, star_c])
+    store.save_lists([target])
+    client = FakeGitHubClient(stars=[star_a, star_c], lists=[target])
+
+    outcomes = bulk_tag_stars(
+        client,
+        store,
+        ["example-owner/a", "example-owner/missing", "example-owner/c"],
+        "Explore: Foo",
+    )
+
+    by_name = {o.full_name: o for o in outcomes}
+    assert by_name["example-owner/a"].error is None
+    assert by_name["example-owner/a"].result is not None
+    assert by_name["example-owner/c"].error is None
+    assert by_name["example-owner/c"].result is not None
+    assert by_name["example-owner/missing"].result is None
+    assert by_name["example-owner/missing"].error is not None
+    stars = {s.full_name: s for s in store.load_stars()}
+    assert stars["example-owner/a"].list_ids == ["L_target"]
+    assert stars["example-owner/c"].list_ids == ["L_target"]
+
+
+def test_bulk_tag_stars_falls_back_to_per_item_resolution_when_batch_resolve_fails(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """A failing batched `resolve_repository_node_ids()` call is only an
+    optimization -- the batch as a whole still succeeds, falling back to
+    `tag_star()`'s own per-item resolution."""
+
+    class _BatchResolveFailsClient(FakeGitHubClient):
+        def resolve_repository_node_ids(self, full_names: list[str]) -> dict[str, str]:
+            raise RuntimeError("boom: batch lookup unavailable")
+
+    target = List(id="L_target", name="Explore: Foo", slug="explore-foo")
+    star_a = make_star("example-owner/a")
+    star_b = make_star("example-owner/b")
+    store = StateStore(tmp_path)
+    store.save_stars([star_a, star_b])
+    store.save_lists([target])
+    client = _BatchResolveFailsClient(stars=[star_a, star_b], lists=[target])
+
+    outcomes = bulk_tag_stars(
+        client, store, ["example-owner/a", "example-owner/b"], "Explore: Foo"
+    )
+
+    assert all(o.error is None for o in outcomes)
+    stars = {s.full_name: s for s in store.load_stars()}
+    assert stars["example-owner/a"].list_ids == ["L_target"]
+    assert stars["example-owner/b"].list_ids == ["L_target"]
+
+
+def test_bulk_tag_stars_skips_the_batch_lookup_for_a_single_target(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    class _SpyClient(FakeGitHubClient):
+        def __init__(self, stars: list[Star], lists: list[List]) -> None:
+            super().__init__(stars=stars, lists=lists)
+            self.batch_lookup_calls: list[list[str]] = []
+
+        def resolve_repository_node_ids(self, full_names: list[str]) -> dict[str, str]:
+            self.batch_lookup_calls.append(list(full_names))
+            return super().resolve_repository_node_ids(full_names)
+
+    target = List(id="L_target", name="Explore: Foo", slug="explore-foo")
+    star_a = make_star("example-owner/a")
+    store = StateStore(tmp_path)
+    store.save_stars([star_a])
+    store.save_lists([target])
+    client = _SpyClient(stars=[star_a], lists=[target])
+
+    outcomes = bulk_tag_stars(client, store, ["example-owner/a"], "Explore: Foo")
+
+    assert client.batch_lookup_calls == []
+    assert outcomes[0].result is not None
+    assert outcomes[0].result.star.list_ids == ["L_target"]
