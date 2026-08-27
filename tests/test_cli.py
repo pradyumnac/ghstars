@@ -584,7 +584,7 @@ def test_sync_cmd_fails_gracefully_when_lock_is_held(
 
     result = runner.invoke(app, ["sync"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == 3
     assert "could not acquire the local state lock" in result.output
 
 
@@ -600,7 +600,7 @@ def test_unstar_cmd_fails_gracefully_when_lock_is_held(
 
     result = runner.invoke(app, ["unstar", "example-owner/x"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == 3
     assert "unstarred example-owner/x on GitHub" in result.output
     assert "could not acquire the local state lock" in result.output
 
@@ -617,5 +617,5 @@ def test_category_rename_cmd_fails_gracefully_when_lock_is_held(
 
     result = runner.invoke(app, ["category", "rename", "Old", "New"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == 3
     assert "could not acquire the local state lock" in result.output

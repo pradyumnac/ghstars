@@ -5,7 +5,7 @@ from filelock import Timeout
 
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
-from ghstars.cli.errors import fail
+from ghstars.cli.errors import CODE_NETWORK_FAILURE, CODE_STATE_LOCK_HELD, fail
 from ghstars.core import unstar_star
 from ghstars.github import GitHubApiError
 
@@ -28,14 +28,17 @@ def unstar_cmd(
     try:
         result = unstar_star(client, store, repo)
     except GitHubApiError as exc:
-        fail(str(exc))
+        fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output, target=repo)
     except Timeout:
         # Report remote success separately from local lock failure.
         fail(
             f"unstarred {repo} on GitHub, but could not acquire the local "
             "state lock to archive it locally — another ghstars command "
             "may be running. Run `ghstars sync` once it finishes to pick "
-            "up the change."
+            "up the change.",
+            code=CODE_STATE_LOCK_HELD,
+            json_output=json_output,
+            target=repo,
         )
 
     if json_output:

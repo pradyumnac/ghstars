@@ -18,6 +18,10 @@ signatures in `.scratch/ghstars-v1/issues/31-core-consolidation.md`'s
 
 **Status:** ready-for-agent
 
+**Execution:** Work the scopes sequentially, in one session. Do not fan out
+subagents. Run Scope 6 first, because Scope 0's second review depends on
+`GHSTARS_HOME`.
+
 ## Scope 0 — Agent-consumption readiness review
 
 The first review ran on 2026-08-27, against the CLI as it stood before ticket 31.
@@ -76,6 +80,18 @@ here.
 | 11 | `diff` stays in the agent contract. It returns git's exit codes verbatim. The agent calls the zero-argument form and detects change by empty output. |
 | 12 | Filters combine with AND. An agent can pass more than one. |
 | 13 | `--fields` and `--details` both survive. `--fields` selects an arbitrary subset and overrides the named sets. |
+| 14 | The default row cap is 50. `--limit` overrides it. Ticket 32 Scope 3 later moves the 50 into `cli.toml`. |
+| 15 | Exit codes are 1 for a terminal failure, 3 for a retryable failure, and 4 for a partial failure. Typer keeps 2 for a usage error. |
+| 16 | The basic Star set is `full_name`, `list_names`, `starred_at`, `stargazer_count`. The detailed set is every field on `Star` plus `list_names`. Nothing is subtracted. |
+| 17 | `--details` prints a key-value record block in text mode, not a table. Decision 8's aligned-table rule applies to the basic set only. |
+| 18 | The output of `list --json` changes twice: the field set narrows, and a bare array becomes an envelope. Take both as a hard break. Print no deprecation warning. No release exists, and ticket 13 has not started. |
+| 19 | Every list-returning command emits the same envelope shape under `--json`: `total`, `offset`, `limit`, `rows`. `list`, `lists`, and `retriage` all use it. |
+| 20 | `--offset` exists on `list` only. It slices local state after the sort. It never calls GitHub. `lists` and `retriage` return bounded output and get no cap and no offset. |
+| 21 | Paging is deterministic for one state file. A `sync` between two paged calls shifts every later offset. Document that rule, and tell ticket 14 to finish paging before it syncs. |
+| 22 | The `archived` field appears in the output only when the caller passes `--include-archived`. The default output never carries it. |
+| 23 | The ADR for the JSON and exit-code contract stays at status `proposed`. Do not accept it in this ticket. Implement the contract as the ADR proposes it, and name every error code. |
+| 24 | Scope 0's second review runs against the live account, under an isolated `GHSTARS_HOME`. Read paths only, no mutation. It needs the user's approval on the day. |
+| 25 | The facet command is `ghstars facets`. It returns the six facet groups from `core.discovery.available_facets()`. |
 
 ### Second review
 
@@ -84,6 +100,9 @@ here.
 - [ ] Test the complete agent flow: inspect state, discover Stars, sync when
       required, classify one or many Stars, review Retriage Queue entries,
       unstar explicit Stars, export data, and inspect history through `diff`.
+      Run it against the live account under an isolated `GHSTARS_HOME`
+      (Decision 24). Use read paths only. Get the user's approval first --
+      HANDOFF.md forbids a real sync without it.
 - [ ] Check JSON schema stability, exit codes, standard output purity, standard
       error use, partial failures, and error messages.
 - [ ] Check that large outputs are bounded and can be paged without losing a
@@ -112,8 +131,16 @@ here.
 - [ ] `ghstars list` exposes every core Sort, in both directions.
 - [ ] `--include-archived` opts back into Archived Stars. The default excludes
       them.
+- [ ] The `archived` field appears in the output only when the caller passes
+      `--include-archived` (Decision 22). Without the field, an Archived Star
+      and an active Star look the same, and an agent tags an Archived Star and
+      gets `StarArchivedError`.
 - [ ] A command or an option returns the available facet values, so an agent can
-      learn what it can filter on.
+      learn what it can filter on. A facet value comes from
+      `core.discovery.available_facets()`: Categories, Intents, Lists,
+      languages, licenses, and owners, all read from the user's own data.
+- [ ] Name the command `ghstars facets` (Decision 25). It supports `--json`
+      like every other read command.
 - [ ] `--json` output holds machine data only. Human status text goes to
       standard error, or does not print.
 - [ ] The CLI implements no Filter, Sort, or search rule of its own. It calls
@@ -126,39 +153,79 @@ here.
 
 - [ ] Two field sets exist for each record type: basic and detailed. Basic is
       the default.
+- [ ] The basic Star set is `full_name`, `list_names`, `starred_at`,
+      `stargazer_count` (Decision 16). At the 50-row cap it costs about 6.1 KB
+      per call, measured against the user's 1550-Star state.
+- [ ] The detailed Star set is every field on `Star` plus `list_names`. It
+      costs about 24.5 KB at the 50-row cap.
+- [ ] Add a `"star_row"` entry to `FIELD_REGISTRY` for both sets. `fields.py`'s
+      module docstring asks this ticket to make that call.
 - [ ] `--details` selects the detailed set.
 - [ ] JSON mode and text mode return the same fields for the same set. Only the
       format differs.
-- [ ] Basic text output is an aligned table, not space-joined values.
+- [ ] Basic text output is an aligned table, not space-joined values. The
+      shared renderer serves `list`, `lists`, and `retriage`, so all three get
+      the table.
+- [ ] `--details` prints a key-value record block in text mode, not a table
+      (Decision 17). A 16-column table does not fit a terminal.
 - [ ] `--fields` still selects an arbitrary subset, and overrides both named
       sets.
 - [ ] A Star row carries its resolved List names. An agent never joins ids
       itself.
-- [ ] `list` applies a default row cap. Hardcode the default in this ticket.
+- [ ] `list` caps rows at 50. Hardcode the 50 in this ticket.
 - [ ] `--limit` overrides the cap per call.
+- [ ] `--offset` pages `list` only (Decision 20). It slices local state after
+      the sort, and never calls GitHub.
+- [ ] Under `--json`, `list`, `lists`, and `retriage` all emit one envelope
+      shape: `total`, `offset`, `limit`, `rows` (Decision 19). A bounded
+      command reports its own count in `total`.
+- [ ] The break to `list --json` is hard: the field set narrows and the shape
+      changes, with no deprecation warning (Decision 18).
 - [ ] `--json`, `--fields`, and `--details` work with every discovery option.
 - [ ] Pagination or the limit is deterministic. A repeated call returns the same
       rows in the same order.
+- [ ] Document that paging is stable only while local state is (Decision 21). A
+      `sync` between two paged calls shifts every later offset.
 - [ ] Record in `CONTEXT.md` that a field-set change and a ticket 14 agent-skill
       change must land together. There is no schema version.
+- [ ] Leave the `export`, `list`, and `retriage` basic sets as they are. This
+      ticket changes the `star` entry only.
 
 ## Scope 3 — Error contract
 
 No dependency on ticket 31.
 
-- [ ] Under `--json`, a failure emits a JSON error object on standard error. The
+- [x] Under `--json`, a failure emits a JSON error object on standard error. The
       object holds a stable machine code, a human message, and the failing
       target where one exists.
-- [ ] Define the machine codes. Cover at least: no local record, Star Archived,
+
+      **Delivered:** `fail()` in `cli/errors.py`. Every command's `except`
+      block calls it with an explicit `code=` and `json_output=`; see ADR
+      0010 for the full call-site table.
+- [x] Define the machine codes. Cover at least: no local record, Star Archived,
       List-membership drift, tag push failed, rate limit exceeded, state lock
       held, network failure, invalid input, and unknown field.
-- [ ] Exit codes separate a retryable failure from a terminal one. Reserve a
-      documented range for each class.
-- [ ] Typer's exit code 2 stays for a usage error.
+
+      **Delivered:** all nine, plus `tool_unavailable` for `diff`'s
+      git-binary-missing path (`cli/errors.py` `CODE_*` constants).
+- [x] Exit codes separate a retryable failure from a terminal one: 1 is
+      terminal, 3 is retryable, 4 is a partial failure (Decision 15). Three
+      flat codes, no reserved ranges. The agent reads the JSON machine code for
+      detail.
+- [x] Typer's exit code 2 stays for a usage error.
 - [ ] A bulk call that fails for some targets and succeeds for others reports
       each target and exits with a documented partial-failure code.
-- [ ] Write an ADR for the CLI JSON and exit-code contract. Record the machine
-      codes, the exit-code ranges, and the rule that there is no schema version.
+
+      `EXIT_PARTIAL` (4) is defined in `cli/errors.py`; no command emits it
+      yet — bulk `tag`/`unstar` land in Scope 4.
+- [x] Write an ADR for the CLI JSON and exit-code contract. Record the machine
+      codes, the three exit codes, and the rule that there is no schema
+      version. Leave the ADR at status `proposed` (Decision 23). Do not accept
+      it in this ticket. Implement the contract exactly as the ADR proposes
+      it.
+
+      **Delivered:** `docs/adr/0010-cli-json-and-exit-code-contract.md`,
+      status `proposed`.
 
 ## Scope 4 — Explicit bulk actions
 
@@ -190,7 +257,10 @@ network call.
 
 - [ ] `status --json` reports active Star count, Archived Star count, List
       count, Unclassified count, pending-edit count, Retriage Queue count, last
-      sync time, and verify results.
+      sync time, and verify results. `StatusReport` carries 5 of the 8 today,
+      so this widens the model.
+- [ ] "Pending-edit count" counts Stars whose `pending_list_ids` is not null.
+      Record that it stays zero while ADR 0004 keeps pending staging dormant.
 - [ ] A separate CLI action returns the live API rate limit as JSON.
 - [ ] The live rate-limit action does not run a full sync.
 - [ ] `sync --json` reports the ordered sync stages and the final sync result in
@@ -205,16 +275,31 @@ network call.
 
 No dependency on ticket 31.
 
-- [ ] `GHSTARS_HOME` overrides the hardcoded home directory for state and
+- [x] `GHSTARS_HOME` overrides the hardcoded home directory for state and
       config. A live test can then use an isolated directory.
-- [ ] Bare `ghstars diff` shows a summary instead of a full patch. This changes
+
+      **Delivered:** `get_ghstars_home()` in `cli/deps.py` reads the
+      `GHSTARS_HOME` environment variable and falls back to
+      `DEFAULT_GHSTARS_HOME`. Every path getter in that module calls it.
+- [x] Rename the existing module constant `GHSTARS_HOME` in `cli/deps.py` to
+      `DEFAULT_GHSTARS_HOME`. The constant and the environment variable must
+      not share a name.
+- [x] Amend ADR 0002. It states one fixed `~/.ghstars/` tree, and the
+      environment override changes that.
+- [x] Bare `ghstars diff` shows a summary instead of a full patch. This changes
       the human default.
-- [ ] `--patch` shows the full patch.
-- [ ] `diff` returns git's exit codes verbatim. Document them. The exit code
+
+      **Delivered:** bare `diff` runs `git diff --stat`.
+- [x] `--patch` shows the full patch.
+- [x] `diff` returns git's exit codes verbatim. Document them. The exit code
       never says whether anything changed.
-- [ ] The agent contract for `diff` is the zero-argument form only. The agent
+
+      **Documented:** in `diff_cmd`'s docstring (`cli/commands/diff.py`) --
+      `git diff`/`git diff --stat` always exit 0, whether or not anything
+      changed; full documentation lands in Scope 7's `docs/reference/cli.md`.
+- [x] The agent contract for `diff` is the zero-argument form only. The agent
       detects a change by empty output.
-- [ ] Argument pass-through to git stays available for a human caller, and stays
+- [x] Argument pass-through to git stays available for a human caller, and stays
       outside the agent contract.
 
 ## Scope 7 — Completion gate for ticket 14

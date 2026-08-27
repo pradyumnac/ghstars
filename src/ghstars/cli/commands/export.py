@@ -5,7 +5,7 @@ import typer
 
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
-from ghstars.cli.errors import fail
+from ghstars.cli.errors import CODE_INVALID_INPUT, fail
 from ghstars.core import CoreConfigError, load_core_config, run_export
 
 
@@ -28,7 +28,7 @@ def export_cmd(
     try:
         config = load_core_config(cli.get_core_config_path()).export
     except CoreConfigError as exc:
-        fail(str(exc))
+        fail(str(exc), code=CODE_INVALID_INPUT, json_output=json_output)
 
     if not config.exports:
         if json_output:

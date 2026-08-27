@@ -69,7 +69,7 @@ def test_diff_never_runs_git_init_on_state(
     assert not (store.base_dir / ".git").exists()
 
 
-def test_diff_shows_working_tree_changes_when_state_is_git_tracked(
+def test_diff_shows_a_summary_by_default_when_state_is_git_tracked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store = StateStore(tmp_path / "state")
@@ -81,6 +81,41 @@ def test_diff_shows_working_tree_changes_when_state_is_git_tracked(
     _use_store(monkeypatch, store)
 
     result = runner.invoke(app, ["diff"])
+
+    assert result.exit_code == 0
+    assert "stars.json" in result.output
+    assert "1 file changed" in result.output
+    assert "a/b-renamed" not in result.output
+
+
+def test_diff_reports_no_changes_as_empty_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path / "state")
+    _init_git_repo(store.base_dir)
+    (store.base_dir / "stars.json").write_text('[{"full_name": "a/b"}]')
+    _git(store.base_dir, "add", "stars.json")
+    _git(store.base_dir, "commit", "-q", "-m", "initial classification")
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(app, ["diff"])
+
+    assert result.exit_code == 0
+    assert result.output == ""
+
+
+def test_diff_patch_shows_the_full_patch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path / "state")
+    _init_git_repo(store.base_dir)
+    (store.base_dir / "stars.json").write_text('[{"full_name": "a/b"}]')
+    _git(store.base_dir, "add", "stars.json")
+    _git(store.base_dir, "commit", "-q", "-m", "initial classification")
+    (store.base_dir / "stars.json").write_text('[{"full_name": "a/b-renamed"}]')
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(app, ["diff", "--patch"])
 
     assert result.exit_code == 0
     assert "a/b-renamed" in result.output
@@ -135,11 +170,11 @@ def test_diff_passes_extra_args_through_to_git(
     (store.base_dir / "stars.json").write_text('[{"full_name": "a/b-renamed"}]')
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["diff", "--stat"])
+    result = runner.invoke(app, ["diff", "--patch", "--numstat"])
 
     assert result.exit_code == 0
     assert "stars.json" in result.output
-    assert "1 file changed" in result.output
+    assert "a/b-renamed" not in result.output
 
 
 def test_diff_reports_git_not_installed_without_crashing(
@@ -208,7 +243,7 @@ def test_diff_scopes_to_state_dir_when_the_repo_is_rooted_above_it(
     store = StateStore(root / "state")
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["diff"])
+    result = runner.invoke(app, ["diff", "--patch"])
 
     assert result.exit_code == 0
     assert "stars.json" in result.output

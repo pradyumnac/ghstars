@@ -14,3 +14,4 @@ Rationale lives in each file under `docs/adr/`; this is an index only.
 | [0007](0007-never-classified-stars-are-never-auto-tagged.md) | accepted | done | Never-classified Stars are never auto-tagged; "Unclassified" is a local, derived view |
 | [0008](0008-tui-config-and-state-are-disjoint.md) | accepted | done | TUI config and TUI state hold disjoint fields |
 | [0009](0009-three-tier-config-split.md) | accepted | done | Three-tier config split |
+| [0010](0010-cli-json-and-exit-code-contract.md) | proposed | n/a | CLI JSON and exit-code error contract |

@@ -5,7 +5,15 @@ from filelock import Timeout
 
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
-from ghstars.cli.errors import fail
+from ghstars.cli.errors import (
+    CODE_LIST_MEMBERSHIP_DRIFT,
+    CODE_NETWORK_FAILURE,
+    CODE_NO_LOCAL_RECORD,
+    CODE_STAR_ARCHIVED,
+    CODE_STATE_LOCK_HELD,
+    CODE_TAG_PUSH_FAILED,
+    fail,
+)
 from ghstars.core import (
     StarArchivedError,
     StarListMembershipDriftError,
@@ -43,20 +51,37 @@ def tag_cmd(
     try:
         result = tag_star(client, store, repo, list_name, is_private=private)
     except StarNotFoundError:
-        fail(f"no local record for {repo!r}. Run `ghstars sync` first.")
+        fail(
+            f"no local record for {repo!r}. Run `ghstars sync` first.",
+            code=CODE_NO_LOCAL_RECORD,
+            json_output=json_output,
+            target=repo,
+        )
     except StarArchivedError:
-        fail(f"{repo!r} is Archived (unstarred) locally — nothing to tag.")
+        fail(
+            f"{repo!r} is Archived (unstarred) locally — nothing to tag.",
+            code=CODE_STAR_ARCHIVED,
+            json_output=json_output,
+            target=repo,
+        )
     except StarListMembershipDriftError as exc:
-        fail(str(exc))
+        fail(
+            str(exc),
+            code=CODE_LIST_MEMBERSHIP_DRIFT,
+            json_output=json_output,
+            target=repo,
+        )
     except TagPushError as exc:
-        fail(str(exc))
+        fail(str(exc), code=CODE_TAG_PUSH_FAILED, json_output=json_output, target=repo)
     except GitHubApiError as exc:
-        fail(str(exc))
+        fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output, target=repo)
     except Timeout:
         # Report lock contention without a traceback; no state was written.
         fail(
             "could not acquire the local state lock — another ghstars "
-            "command may be running. Try again."
+            "command may be running. Try again.",
+            code=CODE_STATE_LOCK_HELD,
+            json_output=json_output,
         )
 
     if json_output:

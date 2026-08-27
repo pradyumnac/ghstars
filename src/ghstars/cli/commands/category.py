@@ -6,7 +6,13 @@ from filelock import Timeout
 
 from ghstars import cli
 from ghstars.cli import category_app  # imported by name for mypy; see commands/sync.py
-from ghstars.cli.errors import fail
+from ghstars.cli.errors import (
+    CODE_INVALID_INPUT,
+    CODE_NETWORK_FAILURE,
+    CODE_NO_LOCAL_RECORD,
+    CODE_STATE_LOCK_HELD,
+    fail,
+)
 from ghstars.core import (
     CategoryNotFoundError,
     InvalidCategoryNameError,
@@ -16,17 +22,22 @@ from ghstars.core import (
 from ghstars.github import GitHubApiError
 
 
-def _category_not_found(category: str) -> NoReturn:
+def _category_not_found(category: str, *, json_output: bool) -> NoReturn:
     fail(
         f"no Explore/Current/Retired List found for category {category!r}. "
-        "Run `ghstars sync` first, or check for a typo."
+        "Run `ghstars sync` first, or check for a typo.",
+        code=CODE_NO_LOCAL_RECORD,
+        json_output=json_output,
+        target=category,
     )
 
 
-def _lock_timeout() -> NoReturn:
+def _lock_timeout(*, json_output: bool) -> NoReturn:
     fail(
         "could not acquire the local state lock — another ghstars "
-        "command may be running. Try again."
+        "command may be running. Try again.",
+        code=CODE_STATE_LOCK_HELD,
+        json_output=json_output,
     )
 
 
@@ -53,13 +64,13 @@ def category_rename_cmd(
     try:
         result = rename_category(client, store, old, new)
     except InvalidCategoryNameError as exc:
-        fail(str(exc))
+        fail(str(exc), code=CODE_INVALID_INPUT, json_output=json_output)
     except CategoryNotFoundError:
-        _category_not_found(old)
+        _category_not_found(old, json_output=json_output)
     except GitHubApiError as exc:
-        fail(str(exc))
+        fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output)
     except Timeout:
-        _lock_timeout()
+        _lock_timeout(json_output=json_output)
 
     if json_output:
         typer.echo(json.dumps(result.model_dump(mode="json")))
@@ -106,13 +117,13 @@ def category_drain_cmd(
             client, store, from_category, to_category, is_private=private
         )
     except InvalidCategoryNameError as exc:
-        fail(str(exc))
+        fail(str(exc), code=CODE_INVALID_INPUT, json_output=json_output)
     except CategoryNotFoundError:
-        _category_not_found(from_category)
+        _category_not_found(from_category, json_output=json_output)
     except GitHubApiError as exc:
-        fail(str(exc))
+        fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output)
     except Timeout:
-        _lock_timeout()
+        _lock_timeout(json_output=json_output)
 
     if json_output:
         typer.echo(json.dumps(result.model_dump(mode="json")))

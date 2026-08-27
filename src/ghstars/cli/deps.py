@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,20 @@ from ghstars.github import RealGitHubClient
 # The test for a new setting: would every consumer of `ghstars.core` want
 # it? Core. Would only the CLI ever read it? CLI. Would only the TUI ever
 # read it? TUI. Never put the same fact in two of these files.
-GHSTARS_HOME = Path.home() / ".ghstars"
+DEFAULT_GHSTARS_HOME = Path.home() / ".ghstars"
+
+
+def get_ghstars_home() -> Path:
+    """`~/.ghstars/`, overridable via the `GHSTARS_HOME` environment variable.
+
+    Ticket 30 adds this override so a live test (or an agent) can point at
+    an isolated tree instead of the user's real account state (ADR 0002
+    amendment). Every path getter in this module calls this function
+    instead of reading `DEFAULT_GHSTARS_HOME` directly, so the override
+    reaches state, config, and every derived path together.
+    """
+    override = os.environ.get("GHSTARS_HOME")
+    return Path(override) if override else DEFAULT_GHSTARS_HOME
 
 
 def get_client() -> GitHubClient:
@@ -29,7 +43,7 @@ def get_client() -> GitHubClient:
 
 
 def get_store() -> StateStore:
-    return StateStore(GHSTARS_HOME / "state")
+    return StateStore(get_ghstars_home() / "state")
 
 
 def ensure_config_dir() -> Path:
@@ -42,7 +56,7 @@ def ensure_config_dir() -> Path:
     still undefined. Just the empty directory, mirroring how StateStore
     already auto-creates state/ on construction.
     """
-    path = GHSTARS_HOME / "config"
+    path = get_ghstars_home() / "config"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -61,7 +75,7 @@ def get_core_config_path() -> Path:
     `check_stale_export_config()` for the retired standalone
     `export.toml`.
     """
-    return GHSTARS_HOME / "config" / "ghstars.toml"
+    return get_ghstars_home() / "config" / "ghstars.toml"
 
 
 def get_cli_config_path() -> Path:
@@ -73,7 +87,7 @@ def get_cli_config_path() -> Path:
     this getter exists ahead of it so the three-tier layout is in place
     before that setting needs a home.
     """
-    return GHSTARS_HOME / "config" / "cli.toml"
+    return get_ghstars_home() / "config" / "cli.toml"
 
 
 def check_stale_export_config() -> None:
@@ -88,7 +102,7 @@ def check_stale_export_config() -> None:
     `CoreConfigError`. So ghstars warns once per invocation, on stderr,
     rather than pretending the file isn't there.
     """
-    stale = GHSTARS_HOME / "config" / "export.toml"
+    stale = get_ghstars_home() / "config" / "export.toml"
     if stale.exists():
         print(
             f"warning: {stale} is no longer read. Export config now "
@@ -109,7 +123,7 @@ def get_tui_config_path() -> Path:
     0002) — `tui.toml` stays stow-managed dotfiles, hand-edited by
     the user.
     """
-    return GHSTARS_HOME / "config" / "tui.toml"
+    return get_ghstars_home() / "config" / "tui.toml"
 
 
 def get_tui_state_path() -> Path:
@@ -120,4 +134,4 @@ def get_tui_state_path() -> Path:
     at quit (spec story 71). A missing file means every default
     applies, same rule as `get_tui_config_path()`.
     """
-    return GHSTARS_HOME / "state" / "tui-state.toml"
+    return get_ghstars_home() / "state" / "tui-state.toml"

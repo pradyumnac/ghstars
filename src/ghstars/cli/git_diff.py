@@ -54,12 +54,18 @@ def git_unavailable_reason(state_dir: Path) -> str | None:
 
 
 def run_git_diff(
-    state_dir: Path, *, log: bool, extra_args: list[str]
+    state_dir: Path, *, log: bool, patch: bool = False, extra_args: list[str]
 ) -> subprocess.CompletedProcess[str]:
-    """Run `git diff` (or `git log -p` with `log=True`) against `state_dir`.
+    """Run `git diff`/`git log -p`/`git diff --stat` against `state_dir`.
 
     Read-only: only ever `diff`/`log`, plus caller-supplied `extra_args`
     (revisions, paths, `--stat`, etc.) passed straight through to git.
+
+    Three modes, in priority order: `log=True` runs `git log -p` (commit
+    history with patches); otherwise `patch=True` runs the full `git diff`;
+    otherwise (the default) runs `git diff --stat`, a summary (ticket 30 --
+    the agent contract detects a change by non-empty output, and a summary
+    keeps that output bounded).
 
     The repo backing `state_dir` may be rooted above it (a user tracking
     all of `~/.ghstars/` from one repo, per `git_unavailable_reason`'s
@@ -69,7 +75,12 @@ def run_git_diff(
     scopes the command to `state_dir` itself via `-- .` (resolved relative
     to `-C state_dir`).
     """
-    git_args = ["log", "-p"] if log else ["diff"]
+    if log:
+        git_args = ["log", "-p"]
+    elif patch:
+        git_args = ["diff"]
+    else:
+        git_args = ["diff", "--stat"]
     git_args += extra_args
     if "--" not in extra_args:
         git_args += ["--", "."]

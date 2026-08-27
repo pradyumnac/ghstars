@@ -13,7 +13,7 @@ from ghstars.cli.deps import (
     get_tui_config_path,
     get_tui_state_path,
 )
-from ghstars.cli.errors import fail
+from ghstars.cli.errors import CODE_UNKNOWN_FIELD, fail
 from ghstars.cli.git_diff import git_unavailable_reason
 from ghstars.core.fields import select_fields
 
@@ -71,7 +71,12 @@ def _render_records[ModelT: BaseModel](
         selected = [f.strip() for f in fields.split(",") if f.strip()]
         unknown = [f for f in selected if f not in field_names]
         if unknown:
-            fail(f"unknown field(s): {', '.join(unknown)}")
+            fail(
+                f"unknown field(s): {', '.join(unknown)}",
+                code=CODE_UNKNOWN_FIELD,
+                json_output=json_output,
+                target=", ".join(unknown),
+            )
 
     if json_output:
         # An empty --fields (e.g. --fields "" or --fields ",") filters to

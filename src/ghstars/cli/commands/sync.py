@@ -10,7 +10,12 @@ from rich.console import Console
 # Import `app` directly for decorator typing; use `cli` for patchable dependencies.
 from ghstars import cli
 from ghstars.cli import app
-from ghstars.cli.errors import fail
+from ghstars.cli.errors import (
+    CODE_NETWORK_FAILURE,
+    CODE_RATE_LIMIT_EXCEEDED,
+    CODE_STATE_LOCK_HELD,
+    fail,
+)
 from ghstars.core import RateLimitExceededError, sync
 from ghstars.github import GitHubApiError
 
@@ -62,13 +67,17 @@ def sync_cmd(
                     store,
                     on_stage=lambda stage: spinner.update(f"{stage}..."),
                 )
-    except (RateLimitExceededError, GitHubApiError) as exc:
-        fail(str(exc))
+    except RateLimitExceededError as exc:
+        fail(str(exc), code=CODE_RATE_LIMIT_EXCEEDED, json_output=json_output)
+    except GitHubApiError as exc:
+        fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output)
     except Timeout:
         # Report lock contention without a traceback; no state was written.
         fail(
             "could not acquire the local state lock — another ghstars "
-            "command may be running. Try again."
+            "command may be running. Try again.",
+            code=CODE_STATE_LOCK_HELD,
+            json_output=json_output,
         )
 
     if json_output:

@@ -124,7 +124,7 @@ def test_load_core_config_rejects_unknown_top_level_table(tmp_path: Path) -> Non
 def test_check_stale_export_config_warns_once_when_file_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(deps_module, "GHSTARS_HOME", tmp_path)
+    monkeypatch.setattr(deps_module, "DEFAULT_GHSTARS_HOME", tmp_path)
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "export.toml").write_text("[[exports]]\n")
 
@@ -138,7 +138,7 @@ def test_check_stale_export_config_warns_once_when_file_present(
 def test_check_stale_export_config_silent_when_file_absent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(deps_module, "GHSTARS_HOME", tmp_path)
+    monkeypatch.setattr(deps_module, "DEFAULT_GHSTARS_HOME", tmp_path)
 
     deps_module.check_stale_export_config()
 
@@ -150,18 +150,18 @@ def test_check_stale_export_config_silent_when_file_absent(
 
 
 def test_get_core_config_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(deps_module, "GHSTARS_HOME", tmp_path)
+    monkeypatch.setattr(deps_module, "DEFAULT_GHSTARS_HOME", tmp_path)
 
     assert deps_module.get_core_config_path() == tmp_path / "config" / "ghstars.toml"
 
 
 def test_get_cli_config_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(deps_module, "GHSTARS_HOME", tmp_path)
+    monkeypatch.setattr(deps_module, "DEFAULT_GHSTARS_HOME", tmp_path)
 
     assert deps_module.get_cli_config_path() == tmp_path / "config" / "cli.toml"
 
 
 def test_get_tui_config_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(deps_module, "GHSTARS_HOME", tmp_path)
+    monkeypatch.setattr(deps_module, "DEFAULT_GHSTARS_HOME", tmp_path)
 
     assert deps_module.get_tui_config_path() == tmp_path / "config" / "tui.toml"
