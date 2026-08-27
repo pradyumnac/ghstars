@@ -61,9 +61,15 @@ freezes either one.
       `Star.list_ids`, and apply one answer everywhere.
 - [ ] Record what changed for `export` output. Its selection path changes even
       when its results do not.
-- [ ] Decide whether the TUI adopts bulk unstar or keeps refusing it. The TUI
+- [x] Decide whether the TUI adopts bulk unstar or keeps refusing it. The TUI
       refuses bulk unstar today on blast-radius grounds. Ticket 30 gives the CLI
       bulk unstar. Record the reason for whichever answer you choose.
+
+      **Decision:** the TUI keeps refusing bulk unstar. Its existing reasoning
+      stands — unstarring several repos from one confirm dialog is a much
+      larger blast radius than bulk-tagging into the same List. Ticket 30 gives
+      the CLI bulk unstar deliberately, gated by its confirmation rule. The two
+      surfaces disagree on purpose; this is not a parity gap to close.
 
 ## Scope C — One mutation orchestrator
 
