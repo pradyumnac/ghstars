@@ -67,11 +67,37 @@ freezes either one.
       `DEFAULT_INCLUDE_ARCHIVED` in `core/discovery.py`. `_reload_local_state`
       in the TUI no longer filters Archived Stars itself; the query does.
 
-- [ ] Fold `ghstars.core.export`'s Star selection onto the core query. Decide
+- [x] Fold `ghstars.core.export`'s Star selection onto the core query. Decide
       whether membership resolves through `List.items` or through
       `Star.list_ids`, and apply one answer everywhere.
-- [ ] Record what changed for `export` output. Its selection path changes even
+- [x] Record what changed for `export` output. Its selection path changes even
       when its results do not.
+
+      **Decision:** `Star.list_ids` is the one source of truth, matching what
+      `query_stars` (Scope A) already uses. `select_stars()` in
+      `core/export.py` no longer scans `List.items` directly; it calls
+      `query_stars(stars, lists, filters=[f"list:{lst.id}"],
+      include_archived=True)` once per List its `ExportEntry` matched, and
+      unions the results (deduped by `full_name`). One call per List, not one
+      call with several `list:` Filters, because `query_stars`'s Filter
+      grammar AND-combines Filters and cannot express "belongs to any of
+      these Lists" (an OR across Lists) in a single call.
+      `include_archived=True` preserves `export`'s historical behaviour of
+      including Archived Stars, which the TUI/CLI query default excludes --
+      only the membership source changed, not what counts as in-scope.
+
+      **What changed for output:** in practice, nothing, for any state
+      `sync()` has produced. `reconcile_list_membership` (`core/sync.py`)
+      keeps `List.items` and every Star's `list_ids` in agreement after every
+      sync, so the old `List.items` scan and the new `list_ids` resolution
+      agree on every reachable state. The change only bites on an
+      unreconciled state that should not exist post-sync (e.g. hand-edited
+      `state/lists.json`) -- there, `export` now trusts the Star's own
+      `list_ids`, the same source every other surface trusts, instead of a
+      List's possibly-stale `items` mirror. Proven by
+      `test_select_stars_resolves_membership_through_star_list_ids` in
+      `tests/test_export.py`, which deliberately diverges the two fixtures
+      and asserts `list_ids` wins.
 - [x] Decide whether the TUI adopts bulk unstar or keeps refusing it. The TUI
       refuses bulk unstar today on blast-radius grounds. Ticket 30 gives the CLI
       bulk unstar. Record the reason for whichever answer you choose.

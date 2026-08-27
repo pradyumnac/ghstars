@@ -45,6 +45,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, model_validator
 
+from ghstars.core.discovery import query_stars
 from ghstars.core.fields import FIELD_REGISTRY, select_fields
 from ghstars.core.models import Intent, List, Star
 from ghstars.core.state_store import atomic_write
@@ -136,16 +137,37 @@ def select_stars(
     across runs -- diffable in the user's own downstream git repo) and
     the names of any malformed Lists that looked related but were
     excluded (see module docstring).
+
+    List-to-Star membership resolves through `Star.list_ids`, via
+    `core.discovery.query_stars()`'s `list:<id>` Filter -- the same
+    membership source `query_stars` (ticket 31 Scope A) already uses for
+    the TUI and CLI. This used to scan `List.items` directly. `sync()`'s
+    `reconcile_list_membership` (see `core/sync.py`) keeps `List.items`
+    and every Star's `list_ids` in agreement, so the two sources usually
+    match -- but "usually" is exactly the two-selection-paths bug ticket
+    31 calls out (see the module docstring). `list_ids` is now the one
+    source of truth; `export` selects through it like everything else.
+
+    `query_stars`'s Filter grammar AND-combines Filters, so it cannot
+    express "belongs to any of these Lists" (an OR across the matched
+    Lists) in a single call -- one call is issued per matched List and
+    the results are unioned here instead, deduped by `full_name`.
+    `include_archived=True` is passed through so this keeps its
+    historical behaviour of exporting Archived Stars (unlike the TUI/CLI
+    query default) -- selection source changed, not what gets selected.
     """
     matched_lists = [lst for lst in lists if _matches(entry, lst)]
     skipped = sorted(
         {lst.name for lst in lists if lst.malformed and _looks_related(entry, lst)}
     )
-    item_names = {name for lst in matched_lists for name in lst.items}
-    selected = sorted(
-        (star for star in stars if star.full_name in item_names),
-        key=lambda star: star.full_name,
-    )
+    selected_by_name: dict[str, Star] = {}
+    for lst in matched_lists:
+        rows = query_stars(
+            stars, lists, filters=[f"list:{lst.id}"], include_archived=True
+        )
+        for row in rows:
+            selected_by_name[row.star.full_name] = row.star
+    selected = sorted(selected_by_name.values(), key=lambda star: star.full_name)
     return selected, skipped
 
 
