@@ -247,6 +247,27 @@ def test_select_stars_resolves_membership_through_star_list_ids(
     assert [s.full_name for s in selected] == ["fresh/only-in-list-ids"]
 
 
+def test_select_stars_includes_archived_stars(make_star: StarFactory) -> None:
+    """`select_stars` calls `query_stars(..., include_archived=True)`,
+    preserving export's historical behavior of including Archived Stars --
+    unlike the TUI/CLI discovery default, which excludes them. Guards
+    against that keyword silently being dropped in a later refactor that
+    tries to unify export's query call with the default one.
+    """
+    lst = _list(
+        "Current: Tool", id="L_cur", intent="Current", category="Tool", items=[]
+    )
+    active = make_star("a/active", list_ids=["L_cur"], archived=False)
+    archived = make_star("b/archived", list_ids=["L_cur"], archived=True)
+    entry = ExportEntry(
+        name="x", list_name="Current: Tool", output="x.yaml", format="yaml"
+    )
+
+    selected, _ = select_stars(entry, lists=[lst], stars=[active, archived])
+
+    assert [s.full_name for s in selected] == ["a/active", "b/archived"]
+
+
 # --- run_export ------------------------------------------------------------
 
 
