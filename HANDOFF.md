@@ -72,7 +72,10 @@ JSON purity, validation errors, explicit network calls, unstar confirmation,
 and local-only history inspection. The detailed measurements and command
 inventory are in ticket 30's "Live review result" section.
 
-Next up: **ticket 14**, the accompanying agent skill. Ticket 32 Scope 3 is also
+Next up: **ticket 14**, the accompanying agent skill. Its "Agent workflow
+parity matrix" is the scope ledger across the skill, CLI, and TUI. The target is
+full parity with every stable non-interactive CLI operation; interactive TUI
+presentation remains intentionally excluded. Ticket 32 Scope 3 is also
 unblocked. Each ticket carries its own checklist and status.
 
 ## Ticket 30 — parallel execution plan
