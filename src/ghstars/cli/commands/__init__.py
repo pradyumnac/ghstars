@@ -14,6 +14,7 @@ from ghstars.cli.commands import (  # noqa: F401
     category,
     diff,
     export,
+    facets,
     list_lists,
     retriage,
     status,

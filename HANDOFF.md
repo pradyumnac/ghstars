@@ -2,7 +2,32 @@
 
 ## Next work
 
-Ticket 31 is done. See `.scratch/ghstars-v1/issues/30-cli-feature-parity-for-agent-use.md`
+Ticket 31 is done. Ticket 30 is in progress, worked sequentially per its own
+execution note:
+
+- Scope 3 (error contract) and Scope 6 (environment and history) — done,
+  landed in commit `17508c2` ("issue #30 scope 3 done - wip commit mid
+  session", 2026-08-27; the message undersold itself, Scope 6 shipped in the
+  same commit). Independently re-verified against their acceptance criteria
+  on 2026-08-28, not just the ticket's self-report: no gaps, full suite
+  passed (373 passed).
+- Scope 1 (discovery surface) — done, 2026-08-28. `ghstars list` now calls
+  `core.discovery.query_stars()` for every Filter/search/sort/
+  `--include-archived`; new `ghstars facets` command wraps
+  `core.discovery.available_facets()`. See the ticket's own Scope 1
+  checkboxes for the delivered-note detail. Full suite passes (385 passed,
+  12 new tests in `tests/test_cli_list.py` and `tests/test_cli_facets.py`);
+  `ruff check` and `mypy src/` both clean.
+
+Next up per the ticket's sequential execution order: **Scope 2** (output
+contract). It depends on ticket 31 Scope A and Scope D, both already
+delivered, and consumes Scope 1's now-wired `query_stars()` call. Notably it
+adds the `"star_row"` entry to `FIELD_REGISTRY` that `core/fields.py`'s
+docstring explicitly deferred to this ticket, and the 50-row default cap
+plus `--limit`/`--offset` that `list_cmd` does not yet have — today's `list`
+still returns every matching row, unbounded.
+
+See `.scratch/ghstars-v1/issues/30-cli-feature-parity-for-agent-use.md`
 (unblocked) and `.scratch/ghstars-v1/issues/32-three-tier-config.md` (Scope 3
 remaining, blocked on ticket 30) for open scopes. Both carry their own
 checkbox state — check there, not here.

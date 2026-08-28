@@ -122,29 +122,74 @@ here.
 > delivered core query signature and Filter grammar. Update a criterion if the
 > signature differs.
 
-- [ ] `ghstars list` exposes every core Filter as an option: Category, Intent,
+- [x] `ghstars list` exposes every core Filter as an option: Category, Intent,
       List, Language, License, Owner, Fork, Followed, Unclassified, and
       starred-date recency.
-- [ ] More than one Filter can apply in one call. The CLI combines them with
+
+      **Delivered:** `list_cmd` in `cli/commands/list_lists.py` — repeatable
+      `--category`/`--intent`/`--list`/`--language`/`--license`/`--owner`,
+      plus boolean `--fork`/`--followed`/`--unclassified` and `--recent
+      <window>`. Every option builds a `core.discovery` Filter string;
+      `list_cmd` contains no Filter logic of its own.
+- [x] More than one Filter can apply in one call. The CLI combines them with
       AND, through core.
-- [ ] `ghstars list` exposes the core search.
-- [ ] `ghstars list` exposes every core Sort, in both directions.
-- [ ] `--include-archived` opts back into Archived Stars. The default excludes
+
+      **Delivered:** every option appends to one `filters: list[str]` passed
+      to `query_stars(..., filters=filters)`, which AND-combines
+      (`core/discovery.py`, unchanged). Tested by
+      `test_list_two_filters_and_combine` in `tests/test_cli_list.py`.
+- [x] `ghstars list` exposes the core search.
+
+      **Delivered:** `--search`, passed straight through to
+      `query_stars(..., search=search)`.
+- [x] `ghstars list` exposes every core Sort, in both directions.
+
+      **Delivered:** `--sort`, validated against `core.discovery.SortMode`'s
+      twelve values (`_SORT_MODES` in `list_lists.py`) before the call; an
+      unrecognised value hard-fails via `fail()` with `CODE_INVALID_INPUT`
+      rather than silently falling back, since `query_stars` itself would
+      raise `ValueError` for an unknown `SortMode` cast.
+- [x] `--include-archived` opts back into Archived Stars. The default excludes
       them.
-- [ ] The `archived` field appears in the output only when the caller passes
+
+      **Delivered:** `--include-archived`, passed to
+      `query_stars(..., include_archived=include_archived)`.
+- [x] The `archived` field appears in the output only when the caller passes
       `--include-archived` (Decision 22). Without the field, an Archived Star
       and an active Star look the same, and an agent tags an Archived Star and
       gets `StarArchivedError`.
-- [ ] A command or an option returns the available facet values, so an agent can
+
+      **Delivered:** `list_cmd` appends `"archived"` to the default field list
+      only when `--include-archived` is set; an explicit `--fields archived`
+      still works either way, since that is the caller's own choice. Tested
+      by `test_list_include_archived_adds_the_archived_field_to_default_output`.
+- [x] A command or an option returns the available facet values, so an agent can
       learn what it can filter on. A facet value comes from
       `core.discovery.available_facets()`: Categories, Intents, Lists,
       languages, licenses, and owners, all read from the user's own data.
-- [ ] Name the command `ghstars facets` (Decision 25). It supports `--json`
+- [x] Name the command `ghstars facets` (Decision 25). It supports `--json`
       like every other read command.
-- [ ] `--json` output holds machine data only. Human status text goes to
+
+      **Delivered:** `cli/commands/facets.py`, new `ghstars facets` command,
+      wraps `core.discovery.available_facets()` verbatim. `--json` emits one
+      object with all six groups (Lists as full dumped `List` records, so an
+      agent gets both `id` and `name` to pass to `--list`); text mode prints
+      one labelled line per non-empty group.
+- [x] `--json` output holds machine data only. Human status text goes to
       standard error, or does not print.
-- [ ] The CLI implements no Filter, Sort, or search rule of its own. It calls
+
+      **Delivered:** both `list --json` and `facets --json` emit exactly one
+      JSON document to standard out and nothing else; `list` reuses the
+      existing `cli._render_records` JSON path unchanged.
+- [x] The CLI implements no Filter, Sort, or search rule of its own. It calls
       core.
+
+      **Delivered:** `list_cmd` builds Filter-key strings and calls
+      `query_stars()`/`available_facets()`; it contains no filtering, sorting,
+      or search logic. Confirmed by reading `list_lists.py` and `facets.py`
+      end to end — the only conditional logic outside filter-string assembly
+      is the sort-mode validation and the `archived`-field default toggle,
+      neither of which is a Filter/Sort/search rule.
 
 ## Scope 2 — Output contract
 
