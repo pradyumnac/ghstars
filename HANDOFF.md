@@ -2,8 +2,8 @@
 
 ## Next work
 
-Ticket 31 is done. Ticket 30 is in progress, worked sequentially per its own
-execution note:
+Tickets 30 and 31 are done. Ticket 30's Scope 0 second review returned go on
+2026-08-28, so ticket 14 may start.
 
 - Scope 3 (error contract) and Scope 6 (environment and history) — done,
   landed in commit `17508c2` ("issue #30 scope 3 done - wip commit mid
@@ -66,16 +66,14 @@ Ruff and mypy also pass.
   ticket's own Scope 7 checkboxes for
   the delivered-note detail.
 
-Next up per the ticket's sequential execution order: **Scope 0**'s second
-review — live-account, read-only, under an isolated `GHSTARS_HOME`
-(Decision 24). Needs the user's explicit approval on the day; do not run
-a real sync, unstar, or List mutation against the live account without
-it (see Safety, below).
+Ticket 30's approved live review used an isolated `GHSTARS_HOME` and made no
+GitHub mutation. It verified 1,550 Stars, 8 Lists, bounded deterministic pages,
+JSON purity, validation errors, explicit network calls, unstar confirmation,
+and local-only history inspection. The detailed measurements and command
+inventory are in ticket 30's "Live review result" section.
 
-See `.scratch/ghstars-v1/issues/30-cli-feature-parity-for-agent-use.md`
-(unblocked) and `.scratch/ghstars-v1/issues/32-three-tier-config.md` (Scope 3
-remaining, blocked on ticket 30) for open scopes. Both carry their own
-checkbox state — check there, not here.
+Next up: **ticket 14**, the accompanying agent skill. Ticket 32 Scope 3 is also
+unblocked. Each ticket carries its own checklist and status.
 
 ## Ticket 30 — parallel execution plan
 

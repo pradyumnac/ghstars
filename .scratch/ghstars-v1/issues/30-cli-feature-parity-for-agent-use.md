@@ -16,7 +16,7 @@ on top of it.
 signatures in `.scratch/ghstars-v1/issues/31-core-consolidation.md`'s
 "Delivered" notes before you rely on it.
 
-**Status:** ready-for-agent
+**Status:** done — Scope 0 second review returned go on 2026-08-28.
 
 **Execution:** Work the scopes sequentially, in one session. Do not fan out
 subagents. Run Scope 6 first, because Scope 0's second review depends on
@@ -96,26 +96,82 @@ here.
 
 ### Second review
 
-- [ ] Inventory each command again and classify it as ready, needs work, or
+- [x] Inventory each command again and classify it as ready, needs work, or
       unsuitable for agent use.
-- [ ] Test the complete agent flow: inspect state, discover Stars, sync when
+- [x] Test the complete agent flow: inspect state, discover Stars, sync when
       required, classify one or many Stars, review Retriage Queue entries,
       unstar explicit Stars, export data, and inspect history through `diff`.
       Run it against the live account under an isolated `GHSTARS_HOME`
       (Decision 24). Use read paths only. Get the user's approval first --
       HANDOFF.md forbids a real sync without it.
-- [ ] Check JSON schema stability, exit codes, standard output purity, standard
+- [x] Check JSON schema stability, exit codes, standard output purity, standard
       error use, partial failures, and error messages.
-- [ ] Check that large outputs are bounded and can be paged without losing a
+- [x] Check that large outputs are bounded and can be paged without losing a
       stable order.
-- [ ] Check that every network call is explicit and every mutation names its
+- [x] Check that every network call is explicit and every mutation names its
       targets.
-- [ ] Check that a destructive action requires a confirmation contract that also
+- [x] Check that a destructive action requires a confirmation contract that also
       works without a terminal.
-- [ ] Measure the command count and the output size for the tested agent flows.
-- [ ] Record a go or no-go verdict here. List every blocker and link each
+- [x] Measure the command count and the output size for the tested agent flows.
+- [x] Record a go or no-go verdict here. List every blocker and link each
       blocker to an acceptance criterion.
-- [ ] Do not start ticket 14 until the final verdict is go.
+- [x] Do not start ticket 14 until the final verdict is go.
+
+#### Live review result — 2026-08-28
+
+**Verdict: go. Blockers: none. Ticket 14 may start.**
+
+The user approved the live review. It ran against the active GitHub account
+under an isolated, mode-0700 `GHSTARS_HOME` in `/tmp`. The review made no
+GitHub mutation. The only network operations were the explicit `ratelimit` and
+`sync` commands. The fresh isolated state held no pending edits, so `sync` had
+nothing to push.
+
+Command inventory:
+
+| Command | Classification | Evidence |
+| --- | --- | --- |
+| `status` | ready | Offline JSON before and after sync; all nine fields present; verify passed. |
+| `stars` | ready | Basic and detailed 50-row pages were bounded, stable, and non-overlapping. |
+| `github-lists` | ready | Eight bounded rows in the shared envelope. |
+| `facets` | ready | Six groups in one 21,634-byte JSON document. |
+| `retriage` | ready | Empty shared envelope from isolated state. |
+| `sync` | ready | Five ordered stages, final counts, and no failed tag pushes. |
+| `ratelimit` | ready | One 47-byte JSON document; no sync side effect. |
+| `tag` | ready | Explicit targets only; unit tests cover single, bulk, partial, and error paths. No live mutation was allowed. |
+| `unstar` | ready | Missing `--yes` rejected single and bulk calls before client creation; unit tests cover confirmed paths. |
+| `category rename` / `drain` | ready | Explicit Categories only; unit tests cover success, drift, error, and lock paths. No live mutation was allowed. |
+| `export` | ready | Empty isolated config returned `[]` without writing an output. Configured paths are covered by unit tests. |
+| `diff` | ready | Empty tracked state returned no output; a local state-only change returned a 66-byte summary. |
+| `tui` | unsuitable | Interactive by design and outside the agent contract. |
+
+There are 12 non-group top-level commands, two Category actions, and one
+`category` group. Thirteen actions are non-interactive agent interfaces; `tui`
+is the only unsuitable action.
+
+Live measurements:
+
+| Flow | Exit | stdout | stderr | Result |
+| --- | ---: | ---: | ---: | --- |
+| Empty `status --json` | 0 | 209 B | 0 B | Valid offline report. |
+| `ratelimit --json` | 0 | 47 B | 0 B | API status was healthy. |
+| `sync --json` | 0 | 195 B | 0 B | 1,550 Stars, 8 Lists, 0 failed pushes. |
+| Populated `status --json` | 0 | 240 B | 0 B | Verify passed. |
+| `facets --json` | 0 | 21,634 B | 0 B | Six facet groups. |
+| Basic Star page | 0 | 7,152 B | 0 B | 50 of 1,550 rows. |
+| Second basic Star page | 0 | 7,096 B | 0 B | 50 rows, no overlap with page one. |
+| Detailed Star page | 0 | 28,353 B | 0 B | 50 rows. |
+| `github-lists --json` | 0 | 1,017 B | 0 B | 8 rows. |
+| `retriage --json` | 0 | 53 B | 0 B | 0 rows. |
+| `export --json` | 0 | 3 B | 0 B | Empty array. |
+
+Repeated page-one output was byte-identical while state stayed unchanged.
+Invalid limits and unknown fields emitted one JSON error on standard error,
+left standard output empty, and exited 1 with `invalid_input` or
+`unknown_field`. Single and bulk `unstar` calls without `--yes` did the same
+with `invalid_input`; neither created a client or mutated GitHub. Partial and
+retryable bulk outcomes remain covered by the 429-test automated suite because
+the read-only live-review rule forbids creating those outcomes on the account.
 
 ## Scope 1 — Discovery surface
 

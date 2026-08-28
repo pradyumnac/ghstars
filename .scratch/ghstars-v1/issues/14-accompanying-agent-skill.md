@@ -93,9 +93,9 @@ records that rule in `CONTEXT.md`.
 
 ### Gates on this ticket
 
-- [ ] Do not start until Scope 0's second review returns a go verdict. That
-      review runs against the live account under an isolated `GHSTARS_HOME`,
-      with the user's approval (Decision 24).
+- [x] Do not start until Scope 0's second review returns a go verdict. The
+      approved live review returned go on 2026-08-28 under an isolated
+      `GHSTARS_HOME` (Decision 24).
 - [ ] Read `docs/reference/cli.md` from ticket 30 Scope 7 first. It is the
       source for every command, option, field set, error code, and exit code.
 - [ ] The ADR for the JSON and exit-code contract stays at status `proposed`
