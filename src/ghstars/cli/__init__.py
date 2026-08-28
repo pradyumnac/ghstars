@@ -50,16 +50,39 @@ def _render_records[ModelT: BaseModel](
     records: list[ModelT],
     *,
     field_names: set[str],
-    default_fields: list[str],
+    basic_fields: list[str],
+    detailed_fields: list[str],
     empty_message: str,
     json_output: bool,
     fields: str | None,
+    details: bool = False,
+    total: int | None = None,
+    offset: int = 0,
+    limit: int | None = None,
 ) -> None:
-    """Shared `--json`/`--fields` rendering for list-returning commands.
+    """Shared `--json`/`--fields`/`--details` rendering for every
+    list-returning command (ticket 30 Scope 2).
 
-    Contract (spec stories 28-30): `--json` gives structured output.
-    `--fields` selects a subset, validated against `field_names`; an
-    unknown field hard-fails via `fail()`. Otherwise, print plain text.
+    `--json` emits one envelope: `{"total", "offset", "limit", "rows"}`
+    (Decision 19). `total` is the caller's own count of matching records
+    before any page was sliced off -- `records` here is already the page
+    to render, so a caller with pagination (`ghstars list`) passes its own
+    pre-slice count; a caller without it (`lists`, `retriage`) leaves
+    `total` as `None`, in which case it defaults to `len(records)`.
+    `offset`/`limit` default to `0`/`None`, matching an unbounded,
+    unpaged command (Decision 20).
+
+    `--fields` selects an arbitrary subset, validated against
+    `field_names`, and overrides `basic_fields`/`detailed_fields` alike.
+    `--details` selects `detailed_fields` over `basic_fields` when
+    `--fields` is absent (Decision 8/17). JSON and text render the same
+    selected fields, in the same order -- only the format differs
+    (`select_fields` is the one field-selection code path for both).
+
+    Text mode: the basic set prints as an aligned table (Decision 8);
+    `--details` prints one key-value block per record, blank-line
+    separated, since a wide detailed set does not fit a table column
+    (Decision 17).
 
     Shared by `ghstars.cli.commands.list_lists` (`list`, `lists`) and
     `ghstars.cli.commands.retriage` (`retriage`) -- kept here, not in any
@@ -78,21 +101,53 @@ def _render_records[ModelT: BaseModel](
                 target=", ".join(unknown),
             )
 
+    # An empty --fields (e.g. --fields "" or --fields ",") strips to no
+    # field names; treat that the same as --fields being absent, not as
+    # an explicit empty selection.
+    display_fields = selected or (detailed_fields if details else basic_fields)
+    rows = [select_fields(record, display_fields) for record in records]
+
     if json_output:
-        # An empty --fields (e.g. --fields "" or --fields ",") filters to
-        # nothing after stripping; treat it as "no restriction", matching
-        # `display_fields = selected or default_fields` below.
-        rows = [select_fields(record, selected or None) for record in records]
-        typer.echo(json.dumps(rows))
+        envelope = {
+            "total": total if total is not None else len(records),
+            "offset": offset,
+            "limit": limit,
+            "rows": rows,
+        }
+        typer.echo(json.dumps(envelope))
         return
 
     if not records:
         typer.echo(empty_message)
         return
 
-    display_fields = selected or default_fields
-    for record in records:
-        typer.echo(" ".join(str(getattr(record, f)) for f in display_fields))
+    if details:
+        for index, row in enumerate(rows):
+            if index:
+                typer.echo("")
+            for field in display_fields:
+                typer.echo(f"{field}: {row[field]}")
+        return
+
+    widths = {
+        field: max(len(field), *(len(str(row[field])) for row in rows))
+        for field in display_fields
+    }
+
+    def _padded(cell: str, field: str, is_last: bool) -> str:
+        return cell if is_last else cell.ljust(widths[field])
+
+    last = display_fields[-1]
+    typer.echo(
+        "  ".join(_padded(field, field, field == last) for field in display_fields)
+    )
+    for row in rows:
+        typer.echo(
+            "  ".join(
+                _padded(str(row[field]), field, field == last)
+                for field in display_fields
+            )
+        )
 
 
 # Import commands last so their decorators register all CLI commands.

@@ -21,8 +21,23 @@ def _star() -> Star:
     )
 
 
-def test_registry_has_all_four_record_types() -> None:
-    assert set(FIELD_REGISTRY) == {"star", "list", "retriage", "export"}
+def test_registry_has_all_five_record_types() -> None:
+    assert set(FIELD_REGISTRY) == {"star", "star_row", "list", "retriage", "export"}
+
+
+def test_star_row_basic_matches_decision_16() -> None:
+    assert FIELD_REGISTRY["star_row"].basic == (
+        "full_name",
+        "list_names",
+        "starred_at",
+        "stargazer_count",
+    )
+
+
+def test_star_row_detailed_set_covers_every_star_field_plus_list_names() -> None:
+    assert set(FIELD_REGISTRY["star_row"].detailed) == set(Star.model_fields) | {
+        "list_names"
+    }
 
 
 def test_star_basic_matches_prior_default_star_fields() -> None:

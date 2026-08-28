@@ -196,45 +196,127 @@ here.
 > Depends on ticket 31 Scope A and Scope D. Re-check every criterion here
 > against the delivered field registry.
 
-- [ ] Two field sets exist for each record type: basic and detailed. Basic is
+- [x] Two field sets exist for each record type: basic and detailed. Basic is
       the default.
-- [ ] The basic Star set is `full_name`, `list_names`, `starred_at`,
+
+      **Delivered:** all five `FIELD_REGISTRY` entries already carry
+      `basic`/`detailed` (ticket 31 Scope D); `--details` (new) selects
+      `detailed`, absent by default, on `list`, `lists`, and `retriage`.
+- [x] The basic Star set is `full_name`, `list_names`, `starred_at`,
       `stargazer_count` (Decision 16). At the 50-row cap it costs about 6.1 KB
       per call, measured against the user's 1550-Star state.
-- [ ] The detailed Star set is every field on `Star` plus `list_names`. It
+
+      **Delivered:** `FIELD_REGISTRY["star_row"].basic` in `core/fields.py`.
+- [x] The detailed Star set is every field on `Star` plus `list_names`. It
       costs about 24.5 KB at the 50-row cap.
-- [ ] Add a `"star_row"` entry to `FIELD_REGISTRY` for both sets. `fields.py`'s
+
+      **Delivered:** `FIELD_REGISTRY["star_row"].detailed` — `(*Star.model_fields, "list_names")`.
+- [x] Add a `"star_row"` entry to `FIELD_REGISTRY` for both sets. `fields.py`'s
       module docstring asks this ticket to make that call.
-- [ ] `--details` selects the detailed set.
-- [ ] JSON mode and text mode return the same fields for the same set. Only the
+
+      **Delivered:** `core/fields.py`. `StarRowFields(Star)` adds a
+      `list_names` field so `select_fields()` has one `BaseModel` to select
+      from, per that module's docstring's own suggestion; `ghstars list`
+      builds one instance per rendered row:
+      `StarRowFields(**row.star.model_dump(), list_names=row.list_names)`.
+      The old `"star"` entry (bare `Star`, no `list_names`) is left in
+      place, unused by any command now, since `"export"` documents its
+      history against it and nothing required removing it.
+- [x] `--details` selects the detailed set.
+
+      **Delivered:** new `--details` flag on `list`, `lists`, and
+      `retriage`; `cli._render_records`'s `details` parameter.
+- [x] JSON mode and text mode return the same fields for the same set. Only the
       format differs.
-- [ ] Basic text output is an aligned table, not space-joined values. The
+
+      **Delivered:** `_render_records` computes `display_fields` once
+      (explicit `--fields`, else `detailed_fields` if `--details` else
+      `basic_fields`) and calls `select_fields()` once per record
+      regardless of `--json`; only the final rendering step branches.
+- [x] Basic text output is an aligned table, not space-joined values. The
       shared renderer serves `list`, `lists`, and `retriage`, so all three get
       the table.
-- [ ] `--details` prints a key-value record block in text mode, not a table
+
+      **Delivered:** `_render_records`'s non-`--details` text branch
+      computes a per-column width and left-justifies a header row plus one
+      row per record (trailing column unpadded, to avoid dangling
+      whitespace). Tested by `test_list_plain_text_prints_an_aligned_table`.
+- [x] `--details` prints a key-value record block in text mode, not a table
       (Decision 17). A 16-column table does not fit a terminal.
-- [ ] `--fields` still selects an arbitrary subset, and overrides both named
+
+      **Delivered:** `_render_records`'s `--details` text branch prints
+      `field: value` per line, one blank line between records. Tested by
+      `test_list_details_plain_text_prints_key_value_blocks`.
+- [x] `--fields` still selects an arbitrary subset, and overrides both named
       sets.
-- [ ] A Star row carries its resolved List names. An agent never joins ids
+
+      **Delivered:** unchanged validation path in `_render_records`;
+      explicit `--fields` short-circuits the `--details`/basic choice.
+      Tested by `test_list_explicit_fields_overrides_details`.
+- [x] A Star row carries its resolved List names. An agent never joins ids
       itself.
-- [ ] `list` caps rows at 50. Hardcode the 50 in this ticket.
-- [ ] `--limit` overrides the cap per call.
-- [ ] `--offset` pages `list` only (Decision 20). It slices local state after
+
+      **Delivered:** `StarRowFields.list_names`, populated from
+      `query_stars()`'s own resolved `StarRow.list_names` (ticket 31 Scope
+      A) — `list_cmd` performs no id/name join of its own.
+- [x] `list` caps rows at 50. Hardcode the 50 in this ticket.
+
+      **Delivered:** `DEFAULT_LIST_LIMIT = 50` in `list_lists.py`,
+      `--limit`'s default.
+- [x] `--limit` overrides the cap per call.
+
+      **Delivered:** `--limit` option on `list_cmd`, passed straight
+      through to the local slice.
+- [x] `--offset` pages `list` only (Decision 20). It slices local state after
       the sort, and never calls GitHub.
-- [ ] Under `--json`, `list`, `lists`, and `retriage` all emit one envelope
+
+      **Delivered:** `--offset` on `list_cmd` only; `matched[offset:offset+limit]`
+      slices the already filtered/searched/sorted `query_stars()` result —
+      no network call. `lists`/`retriage` get neither flag.
+- [x] Under `--json`, `list`, `lists`, and `retriage` all emit one envelope
       shape: `total`, `offset`, `limit`, `rows` (Decision 19). A bounded
       command reports its own count in `total`.
-- [ ] The break to `list --json` is hard: the field set narrows and the shape
+
+      **Delivered:** `_render_records`'s JSON branch always emits
+      `{"total", "offset", "limit", "rows"}`. `list` passes its pre-slice
+      match count as `total` and its own `offset`/`limit`; `lists`/`retriage`
+      leave `total`/`offset`/`limit` at their defaults (`len(records)`, `0`,
+      `None`) since they are unbounded and unpaged.
+- [x] The break to `list --json` is hard: the field set narrows and the shape
       changes, with no deprecation warning (Decision 18).
-- [ ] `--json`, `--fields`, and `--details` work with every discovery option.
-- [ ] Pagination or the limit is deterministic. A repeated call returns the same
+
+      **Delivered:** no compatibility shim, no deprecation warning — old
+      bare-array output and the old `full_name, language, stargazer_count`
+      basic set are both gone from `list --json`.
+- [x] `--json`, `--fields`, and `--details` work with every discovery option.
+
+      **Delivered:** `--details`/`--fields`/`--json` are independent of the
+      Scope 1 discovery options (Filter/search/sort/`--include-archived`) —
+      they act only on the rows `query_stars()` already returned.
+- [x] Pagination or the limit is deterministic. A repeated call returns the same
       rows in the same order.
-- [ ] Document that paging is stable only while local state is (Decision 21). A
+
+      **Delivered:** `query_stars()`'s own sort is deterministic (ticket 31
+      Scope A); the offset/limit slice is a pure function of that ordered
+      list. Tested by `test_list_offset_pages_past_already_seen_rows`
+      (two paged calls over the same unsynced state agree).
+- [x] Document that paging is stable only while local state is (Decision 21). A
       `sync` between two paged calls shifts every later offset.
-- [ ] Record in `CONTEXT.md` that a field-set change and a ticket 14 agent-skill
+
+      **Delivered:** documented in `list_cmd`'s own docstring.
+- [x] Record in `CONTEXT.md` that a field-set change and a ticket 14 agent-skill
       change must land together. There is no schema version.
-- [ ] Leave the `export`, `list`, and `retriage` basic sets as they are. This
+
+      **Delivered:** new "CLI field-set stability" section in `CONTEXT.md`.
+- [x] Leave the `export`, `list`, and `retriage` basic sets as they are. This
       ticket changes the `star` entry only.
+
+      **Delivered:** `FIELD_REGISTRY["export"]`, `["list"]`, and
+      `["retriage"]`'s `basic`/`detailed` tuples are byte-for-byte
+      unchanged (`tests/test_fields.py`'s pre-existing
+      `test_*_basic_matches_prior_default_*_fields` tests still pass
+      unmodified); only a new `"star_row"` entry was added, and the old
+      `"star"` entry was left as-is.
 
 ## Scope 3 — Error contract
 

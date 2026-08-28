@@ -80,14 +80,19 @@ def test_retriage_json_lists_queue_contents(
     result = runner.invoke(app, ["retriage", "--json"])
 
     assert result.exit_code == 0
-    assert json.loads(result.output) == [
-        {
-            "star_full_name": "example-owner/x",
-            "attempted_list_ids": ["L_1"],
-            "conflict_detected_at": "2026-08-16T00:00:00Z",
-            "resolved": False,
-        }
-    ]
+    assert json.loads(result.output) == {
+        "total": 1,
+        "offset": 0,
+        "limit": None,
+        "rows": [
+            {
+                "star_full_name": "example-owner/x",
+                "attempted_list_ids": ["L_1"],
+                "conflict_detected_at": "2026-08-16T00:00:00Z",
+                "resolved": False,
+            }
+        ],
+    }
 
 
 def test_retriage_json_is_an_empty_list_when_the_queue_is_empty(
@@ -99,7 +104,12 @@ def test_retriage_json_is_an_empty_list_when_the_queue_is_empty(
     result = runner.invoke(app, ["retriage", "--json"])
 
     assert result.exit_code == 0
-    assert json.loads(result.output) == []
+    assert json.loads(result.output) == {
+        "total": 0,
+        "offset": 0,
+        "limit": None,
+        "rows": [],
+    }
 
 
 def test_retriage_json_empty_fields_string_means_no_restriction(
@@ -122,14 +132,37 @@ def test_retriage_json_empty_fields_string_means_no_restriction(
     result = runner.invoke(app, ["retriage", "--json", "--fields", ""])
 
     assert result.exit_code == 0
-    assert json.loads(result.output) == [
-        {
-            "star_full_name": "example-owner/x",
-            "attempted_list_ids": ["L_1"],
-            "conflict_detected_at": "2026-08-16T00:00:00Z",
-            "resolved": False,
-        }
-    ]
+    assert json.loads(result.output) == {
+        "total": 1,
+        "offset": 0,
+        "limit": None,
+        "rows": [
+            {
+                "star_full_name": "example-owner/x",
+                "attempted_list_ids": ["L_1"],
+                "conflict_detected_at": "2026-08-16T00:00:00Z",
+                "resolved": False,
+            }
+        ],
+    }
+
+
+def test_retriage_details_flag_selects_the_detailed_field_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    entry = RetriageEntry(
+        star_full_name="example-owner/x",
+        attempted_list_ids=["L_1"],
+        conflict_detected_at=NOW,
+    )
+    store.save_retriage([entry])
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(app, ["retriage", "--json", "--details"])
+
+    [row] = json.loads(result.output)["rows"]
+    assert set(row) == set(RetriageEntry.model_fields)
 
 
 def test_retriage_plain_text_reports_no_conflicts_when_the_queue_is_empty(

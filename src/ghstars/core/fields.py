@@ -18,9 +18,17 @@ Ticket 30 consumes both -- `basic` is today's plain-text/default JSON
 shape, `detailed` is what an opt-in `--details`-style flag would widen to.
 This ticket only makes both sets exist and be correct; it adds no CLI flag.
 
-Four keys, four record types:
+Five keys, four record types:
 
-- `"star"`      -- `ghstars.core.models.Star`, as rendered by `ghstars list`.
+- `"star"`      -- `ghstars.core.models.Star`. Unused by any command as of
+                   ticket 30 Scope 2 (`ghstars list` moved to `"star_row"`
+                   below); kept because `"export"` still wraps plain `Star`
+                   and the two entries' history is worth keeping distinct.
+- `"star_row"`  -- `StarRowFields` (`Star` plus resolved `list_names`), as
+                   rendered by `ghstars list` (ticket 30 Scope 2). Decision
+                   16: basic is `full_name, list_names, starred_at,
+                   stargazer_count`; detailed is every `Star` field plus
+                   `list_names`.
 - `"list"`      -- `ghstars.core.models.List`, as rendered by `ghstars lists`.
 - `"retriage"`  -- `ghstars.core.models.RetriageEntry`, as rendered by
                    `ghstars retriage`.
@@ -28,7 +36,7 @@ Four keys, four record types:
                    and written by `run_export`.
 
 `"star"` and `"export"` both wrap the same model (`Star`) but keep separate
-entries because their `basic` sets always disagreed (`ghstars list`'s
+entries because their `basic` sets always disagreed (`ghstars list`'s old
 `full_name, language, stargazer_count` vs. export's
 `full_name, html_url, description`) -- collapsing them would silently
 change one surface's default output. Their `detailed` sets are identical
@@ -36,25 +44,18 @@ change one surface's default output. Their `detailed` sets are identical
 
 ## Star vs. StarRow
 
-Ticket 31 Scope A (`ghstars.core.discovery.query_stars`/`StarRow`) has not
-landed on `main` yet at the time this ticket lands -- it is in flight in a
-parallel worktree. `StarRow` is `Star` plus a resolved `list_names` field;
-it does not exist as an importable model here. The `"star"`/`"export"`
-entries in this registry are therefore defined against plain `Star`, not
-`StarRow`.
-
-When Scope A lands and ticket 30 wires `ghstars list` through
-`query_stars()`, add a `"star_row"` entry here (or extend `"star"`'s
-`detailed` set, if `StarRow` ends up field-compatible) whose `detailed`
-tuple includes `list_names` -- `Star` itself carries no List-name field,
-only `list_ids`, so a `Star`-only `detailed` set can never show List
-membership by name. Do not guess at `StarRow`'s exact field layout here;
-let ticket 30 add that entry once `StarRow` exists to introspect.
+`ghstars.core.discovery.StarRow` is a frozen dataclass pairing a `Star`
+with `list_names`, deliberately not a field on `Star` itself (a query-time
+join, not a persisted fact -- see that module's docstring). `select_fields`
+needs a `BaseModel` to call `.model_dump()` on, so `StarRowFields` (defined
+in this module) subclasses `Star` and adds `list_names`, purely as a
+field-selectable view for the CLI layer. A caller builds one per `StarRow`
+it renders: `StarRowFields(**row.star.model_dump(), list_names=row.list_names)`.
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ghstars.core.models import List, RetriageEntry, Star
 
@@ -66,10 +67,30 @@ class FieldSet(BaseModel):
     detailed: tuple[str, ...]
 
 
+class StarRowFields(Star):
+    """`Star` plus its resolved `list_names`, flattened for field selection.
+
+    `core.discovery.StarRow` deliberately keeps `list_names` off `Star`
+    itself (see that module's docstring) -- it is a query-time join, not a
+    persisted fact. This subclass exists only so `select_fields()` has one
+    field-selectable record to hand `ghstars list` (ticket 30 Scope 2),
+    without adding a second field-selection code path or bolting the join
+    onto the persisted model.
+    """
+
+    list_names: list[str] = Field(default_factory=list)
+
+
 FIELD_REGISTRY: dict[str, FieldSet] = {
     "star": FieldSet(
         basic=("full_name", "language", "stargazer_count"),
         detailed=tuple(Star.model_fields.keys()),
+    ),
+    "star_row": FieldSet(
+        # Decision 16 (ticket 30): full_name, list_names, starred_at,
+        # stargazer_count. Detailed is every Star field plus list_names.
+        basic=("full_name", "list_names", "starred_at", "stargazer_count"),
+        detailed=(*Star.model_fields.keys(), "list_names"),
     ),
     "list": FieldSet(
         basic=("name", "intent", "category", "is_private", "malformed"),

@@ -6,14 +6,19 @@ from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
 from ghstars.cli.errors import CODE_INVALID_INPUT, fail
 from ghstars.core.discovery import SortMode, query_stars
-from ghstars.core.fields import FIELD_REGISTRY
-from ghstars.core.models import List, Star
+from ghstars.core.fields import FIELD_REGISTRY, StarRowFields
+from ghstars.core.models import List
 
-STAR_FIELDS = set(Star.model_fields.keys())
-DEFAULT_STAR_FIELDS = list(FIELD_REGISTRY["star"].basic)
+STAR_ROW_FIELDS = set(FIELD_REGISTRY["star_row"].detailed)
+BASIC_STAR_ROW_FIELDS = list(FIELD_REGISTRY["star_row"].basic)
+DETAILED_STAR_ROW_FIELDS = list(FIELD_REGISTRY["star_row"].detailed)
 
-LIST_FIELDS = set(List.model_fields.keys())
-DEFAULT_LISTS_FIELDS = list(FIELD_REGISTRY["list"].basic)
+LIST_FIELDS = set(FIELD_REGISTRY["list"].detailed)
+BASIC_LISTS_FIELDS = list(FIELD_REGISTRY["list"].basic)
+DETAILED_LISTS_FIELDS = list(FIELD_REGISTRY["list"].detailed)
+
+# Ticket 30 Decision 14. Ticket 32 Scope 3 later moves this into `cli.toml`.
+DEFAULT_LIST_LIMIT = 50
 
 _CATEGORY_OPTION = typer.Option(
     None, "--category", help="Only Stars in a List of this Category. Repeatable."
@@ -83,6 +88,15 @@ def list_cmd(
     include_archived: bool = typer.Option(
         False, "--include-archived", help="Include Archived Stars, excluded by default."
     ),
+    limit: int = typer.Option(
+        DEFAULT_LIST_LIMIT, "--limit", help="Maximum rows to return."
+    ),
+    offset: int = typer.Option(
+        0, "--offset", help="Skip this many matching rows before applying --limit."
+    ),
+    details: bool = typer.Option(
+        False, "--details", help="Use the detailed field set instead of the basic one."
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
     fields: str | None = typer.Option(
         None, "--fields", help="Comma-separated field names to include."
@@ -93,6 +107,12 @@ def list_cmd(
 
     Filters combine with AND. Every repeated `--category`/`--intent`/etc.
     option adds one more AND'd Filter, matching `core.discovery`'s grammar.
+
+    Capped at `--limit` rows (default 50), starting at `--offset`
+    (Decisions 2/14/20). Paging is deterministic only while local state is:
+    a `ghstars sync` between two paged calls can insert or remove rows
+    ahead of a later offset and shift it (Decision 21). Run `ghstars sync`
+    first, then page through one static snapshot.
     """
     if sort not in _SORT_MODES:
         fail(
@@ -120,7 +140,7 @@ def list_cmd(
         filters.append(f"recent:{recent}")
 
     store = cli.get_store()
-    rows = query_stars(
+    matched = query_stars(
         store.load_stars(),
         store.load_lists(),
         filters=filters,
@@ -128,36 +148,54 @@ def list_cmd(
         sort=cast(SortMode, sort),
         include_archived=include_archived,
     )
-    stars = [row.star for row in rows]
+    total = len(matched)
+    page = matched[offset : offset + limit]
+    star_rows = [
+        StarRowFields(**row.star.model_dump(), list_names=row.list_names)
+        for row in page
+    ]
 
-    default_fields = DEFAULT_STAR_FIELDS
-    if include_archived and "archived" not in default_fields:
-        default_fields = [*DEFAULT_STAR_FIELDS, "archived"]
+    basic_fields = BASIC_STAR_ROW_FIELDS
+    if include_archived and "archived" not in basic_fields:
+        basic_fields = [*BASIC_STAR_ROW_FIELDS, "archived"]
 
     cli._render_records(
-        stars,
-        field_names=STAR_FIELDS,
-        default_fields=default_fields,
+        star_rows,
+        field_names=STAR_ROW_FIELDS,
+        basic_fields=basic_fields,
+        detailed_fields=DETAILED_STAR_ROW_FIELDS,
         empty_message="No stars synced yet. Run `ghstars sync` first.",
         json_output=json_output,
         fields=fields,
+        details=details,
+        total=total,
+        offset=offset,
+        limit=limit,
     )
 
 
 @app.command("lists")
 def lists_cmd(
+    details: bool = typer.Option(
+        False, "--details", help="Use the detailed field set instead of the basic one."
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
     fields: str | None = typer.Option(
         None, "--fields", help="Comma-separated field names to include."
     ),
 ) -> None:
-    """List locally synced GitHub Lists, with parsed Intent/Category."""
-    lists = cli.get_store().load_lists()
+    """List locally synced GitHub Lists, with parsed Intent/Category.
+
+    Bounded output: no `--limit`, no `--offset` (Decision 20).
+    """
+    lists: list[List] = cli.get_store().load_lists()
     cli._render_records(
         lists,
         field_names=LIST_FIELDS,
-        default_fields=DEFAULT_LISTS_FIELDS,
+        basic_fields=BASIC_LISTS_FIELDS,
+        detailed_fields=DETAILED_LISTS_FIELDS,
         empty_message="No Lists synced yet. Run `ghstars sync` first.",
         json_output=json_output,
         fields=fields,
+        details=details,
     )

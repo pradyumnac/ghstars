@@ -15,17 +15,29 @@ execution note:
   `core.discovery.query_stars()` for every Filter/search/sort/
   `--include-archived`; new `ghstars facets` command wraps
   `core.discovery.available_facets()`. See the ticket's own Scope 1
-  checkboxes for the delivered-note detail. Full suite passes (385 passed,
-  12 new tests in `tests/test_cli_list.py` and `tests/test_cli_facets.py`);
-  `ruff check` and `mypy src/` both clean.
+  checkboxes for the delivered-note detail.
+- Scope 2 (output contract) — done, 2026-08-28. New `FIELD_REGISTRY["star_row"]`
+  entry (`core/fields.py`, `StarRowFields`); `list`/`lists`/`retriage` all
+  gained `--details` and now emit one `--json` envelope shape
+  (`{"total", "offset", "limit", "rows"}` — Decision 19, a hard break from
+  the old bare array, no deprecation shim); `list` gained `--limit`
+  (default 50, `DEFAULT_LIST_LIMIT`) and `--offset`. Plain-text basic output
+  is now an aligned table; `--details` text is a key-value block per record.
+  `CONTEXT.md` records the field-set/ticket-14 coupling (Decision 9/18).
+  See the ticket's own Scope 2 checkboxes for the delivered-note detail.
 
-Next up per the ticket's sequential execution order: **Scope 2** (output
-contract). It depends on ticket 31 Scope A and Scope D, both already
-delivered, and consumes Scope 1's now-wired `query_stars()` call. Notably it
-adds the `"star_row"` entry to `FIELD_REGISTRY` that `core/fields.py`'s
-docstring explicitly deferred to this ticket, and the 50-row default cap
-plus `--limit`/`--offset` that `list_cmd` does not yet have — today's `list`
-still returns every matching row, unbounded.
+Full suite passes (398 passed — 12 new tests from Scope 1, 13 more from
+Scope 2, across `tests/test_cli_list.py`, `tests/test_cli_lists.py`,
+`tests/test_cli_facets.py`, `tests/test_fields.py`, `tests/test_cli.py`);
+`ruff check` and `mypy src/` both clean.
+
+Next up per the ticket's sequential execution order: **Scope 4** (explicit
+bulk actions — `tag`/`unstar` take more than one repository name, bulk
+`unstar` confirmation). It depends on ticket 31 Scope C, already delivered
+(`bulk_tag_stars()`/`bulk_unstar_stars()` in `core/tagging.py`/`core/unstar.py`).
+Scope 5 (operational JSON) has no ticket-31 dependency either and could run
+before or after Scope 4 — the ticket's execution note only pins Scope 6 and
+Scope 3 to run before everything else, which is already done.
 
 See `.scratch/ghstars-v1/issues/30-cli-feature-parity-for-agent-use.md`
 (unblocked) and `.scratch/ghstars-v1/issues/32-three-tier-config.md` (Scope 3

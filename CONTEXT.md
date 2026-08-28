@@ -62,3 +62,11 @@ screen. The form body scrolls under fixed key help.
 A local-only holding area for a Star whose pending List-membership change
 conflicted with a GitHub change since the last sync. It never syncs to GitHub.
 _Avoid_: Staging list, conflict list.
+
+## CLI field-set stability
+
+`ghstars list`, `lists`, and `retriage`'s `--json` field sets (`core.fields.
+FIELD_REGISTRY`) carry no schema version (ADR 0010, Decision 9/18 in ticket
+30). A field-set change and the corresponding ticket 14 agent-skill change
+must land in the same change -- there is no version negotiation for the
+skill to fall back on if the two drift apart.
