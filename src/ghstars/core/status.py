@@ -15,8 +15,12 @@ class StatusReport(BaseModel):
     """
 
     last_sync_at: datetime | None
-    retriage_queue_count: int
+    active_star_count: int
+    archived_star_count: int
+    list_count: int
     unclassified_count: int
+    pending_edit_count: int
+    retriage_queue_count: int
     verify_ok: bool
     verify_problems: list[str] = []
 
@@ -85,6 +89,11 @@ def build_status(store: StateStore) -> StatusReport:
     the user opts into like any other, so it plays no special role
     here.
 
+    "Pending-edit count": Stars whose `pending_list_ids` is not `None`
+    (ticket 30 Scope 5). Stays `0` while ADR 0004 keeps pending-tag
+    staging dormant -- no code path sets `pending_list_ids` today, so
+    this count is a forward-looking field, not dead weight.
+
     Retriage Queue count: unresolved entries only (`resolved=False`),
     matching what `ghstars retriage` itself is for -- open conflicts to
     revisit, not a lifetime history.
@@ -95,9 +104,14 @@ def build_status(store: StateStore) -> StatusReport:
 
     last_sync_at = max((star.last_checked for star in stars), default=None)
 
+    active_star_count = sum(1 for star in stars if not star.archived)
+    archived_star_count = sum(1 for star in stars if star.archived)
+
     unclassified_count = sum(
         1 for star in stars if not star.archived and not star.list_ids
     )
+
+    pending_edit_count = sum(1 for star in stars if star.pending_list_ids is not None)
 
     retriage_queue_count = sum(1 for entry in retriage if not entry.resolved)
 
@@ -105,8 +119,12 @@ def build_status(store: StateStore) -> StatusReport:
 
     return StatusReport(
         last_sync_at=last_sync_at,
-        retriage_queue_count=retriage_queue_count,
+        active_star_count=active_star_count,
+        archived_star_count=archived_star_count,
+        list_count=len(lists),
         unclassified_count=unclassified_count,
+        pending_edit_count=pending_edit_count,
+        retriage_queue_count=retriage_queue_count,
         verify_ok=not problems,
         verify_problems=problems,
     )

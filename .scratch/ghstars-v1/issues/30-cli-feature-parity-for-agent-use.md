@@ -431,21 +431,53 @@ No dependency on ticket 31.
 Keep `ghstars status` offline. Put live API data behind a separate explicit
 network call.
 
-- [ ] `status --json` reports active Star count, Archived Star count, List
+- [x] `status --json` reports active Star count, Archived Star count, List
       count, Unclassified count, pending-edit count, Retriage Queue count, last
       sync time, and verify results. `StatusReport` carries 5 of the 8 today,
       so this widens the model.
-- [ ] "Pending-edit count" counts Stars whose `pending_list_ids` is not null.
+
+      **Delivered:** `StatusReport` in `core/status.py` gained
+      `active_star_count`, `archived_star_count`, `list_count`, and
+      `pending_edit_count`; `build_status()` computes all four from local
+      state only. `cli/commands/status.py`'s text mode prints all eight.
+- [x] "Pending-edit count" counts Stars whose `pending_list_ids` is not null.
       Record that it stays zero while ADR 0004 keeps pending staging dormant.
-- [ ] A separate CLI action returns the live API rate limit as JSON.
-- [ ] The live rate-limit action does not run a full sync.
-- [ ] `sync --json` reports the ordered sync stages and the final sync result in
+
+      **Delivered:** `build_status()`'s `pending_edit_count`; documented in
+      `build_status`'s own docstring, referencing ADR 0004.
+- [x] A separate CLI action returns the live API rate limit as JSON.
+
+      **Delivered:** new `ghstars ratelimit` command
+      (`cli/commands/ratelimit.py`), wraps `GitHubClient.check_rate_limit()`
+      verbatim; `--json` emits `{"remaining", "limit", "ok"}`.
+- [x] The live rate-limit action does not run a full sync.
+
+      **Delivered:** `ratelimit_cmd` calls only `check_rate_limit()`, never
+      `sync()`. Tested by `test_ratelimit_cmd_never_runs_a_full_sync`.
+- [x] `sync --json` reports the ordered sync stages and the final sync result in
       one valid JSON document.
-- [ ] JSON sync output includes failed tag pushes and the final Star and List
+
+      **Delivered:** `sync_cmd` now records every `on_stage` label into a
+      local `stages` list (both the `--debug` and spinner branches) and
+      emits `{"stages": [...], **result.model_dump()}` under `--json`.
+      Tested by `test_sync_cmd_json_reports_ordered_stages_and_final_result`.
+- [x] JSON sync output includes failed tag pushes and the final Star and List
       counts.
-- [ ] Human sync progress does not corrupt JSON output.
-- [ ] A test proves that `status` does not create a GitHub client or make a
+
+      **Delivered:** unchanged from `SyncResult` — `star_count`,
+      `list_count`, `failed_tag_pushes` already spread into the same
+      payload alongside `stages`.
+- [x] Human sync progress does not corrupt JSON output.
+
+      **Delivered:** unchanged — the spinner/`--debug` stage lines still go
+      to `Console(stderr=True)`/`typer.echo(..., err=True)`; only stdout
+      carries the `--json` document.
+- [x] A test proves that `status` does not create a GitHub client or make a
       network call.
+
+      **Delivered:** `test_status_never_creates_a_github_client`
+      (`tests/test_cli_status.py`) monkeypatches `cli.get_client` to raise
+      if called.
 
 ## Scope 6 — Environment and history
 

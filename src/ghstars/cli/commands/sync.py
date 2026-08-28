@@ -32,7 +32,15 @@ def sync_cmd(
         "per-item progress) to stderr. Also honors GHSTARS_DEBUG=1.",
     ),
 ) -> None:
-    """Fetch stars and Lists from GitHub into local state."""
+    """Fetch stars and Lists from GitHub into local state.
+
+    `--json` emits one document holding the ordered stage labels
+    `sync()` reported (`"stages"`) alongside the final `SyncResult`
+    fields -- `star_count`, `list_count`, `failed_tag_pushes` (ticket 30
+    Scope 5). Human progress (the spinner, or `--debug`'s stage lines)
+    always goes to standard error, so it never corrupts the JSON on
+    standard out.
+    """
     client = cli.get_client()
     store = cli.get_store()
     # Treat any non-empty `GHSTARS_DEBUG` value as true without strict parsing.
@@ -53,20 +61,23 @@ def sync_cmd(
 
     # Write progress to stderr so JSON output remains clean.
     console = Console(stderr=True)
+    stages: list[str] = []
     try:
         if debug:
             # Use plain stage lines so debug logs do not collide with the spinner.
             def _on_stage(stage: str) -> None:
+                stages.append(stage)
                 typer.echo(f"{stage}...", err=True)
 
             result = sync(client, store, on_stage=_on_stage)
         else:
             with console.status("Starting sync...", spinner="dots") as spinner:
-                result = sync(
-                    client,
-                    store,
-                    on_stage=lambda stage: spinner.update(f"{stage}..."),
-                )
+
+                def _on_stage(stage: str) -> None:
+                    stages.append(stage)
+                    spinner.update(f"{stage}...")
+
+                result = sync(client, store, on_stage=_on_stage)
     except RateLimitExceededError as exc:
         fail(str(exc), code=CODE_RATE_LIMIT_EXCEEDED, json_output=json_output)
     except GitHubApiError as exc:
@@ -81,7 +92,8 @@ def sync_cmd(
         )
 
     if json_output:
-        typer.echo(json.dumps(result.model_dump(mode="json")))
+        payload = {"stages": stages, **result.model_dump(mode="json")}
+        typer.echo(json.dumps(payload))
         return
     typer.echo(f"Synced {result.star_count} star(s), {result.list_count} list(s).")
     if result.failed_tag_pushes:

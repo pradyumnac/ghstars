@@ -36,15 +36,30 @@ execution note:
   `EXIT_PARTIAL`(4)/`EXIT_TERMINAL`(1) for all-succeeded/mixed/all-failed.
   See the ticket's own Scope 4 checkboxes for the delivered-note detail.
 
-Full suite passes (408 passed — 12 new tests from Scope 1, 13 more from
-Scope 2, 10 more from Scope 4, across `tests/test_cli_list.py`,
-`tests/test_cli_lists.py`, `tests/test_cli_facets.py`, `tests/test_fields.py`,
-`tests/test_cli.py`, `tests/test_cli_bulk.py`); `ruff check` and `mypy src/`
-both clean.
+- Scope 5 (operational JSON) — done, 2026-08-28. `StatusReport`
+  (`core/status.py`) widened from 5 to 8 fields: `active_star_count`,
+  `archived_star_count`, `list_count`, `pending_edit_count` added
+  alongside the existing `last_sync_at`/`unclassified_count`/
+  `retriage_queue_count`/`verify_ok`/`verify_problems`; `status` stays
+  offline (`test_status_never_creates_a_github_client`). New `ghstars
+  ratelimit` command (`cli/commands/ratelimit.py`) wraps
+  `GitHubClient.check_rate_limit()` alone, never a full `sync()`. `sync
+  --json` now emits `{"stages": [...], "star_count", "list_count",
+  "failed_tag_pushes"}` — `sync_cmd` records every `on_stage` label into a
+  list and spreads it alongside the existing `SyncResult` fields; human
+  progress (spinner/`--debug` lines) still goes to stderr only. See the
+  ticket's own Scope 5 checkboxes for the delivered-note detail.
 
-Next up per the ticket's sequential execution order: **Scope 5** (operational
-JSON — widen `status --json`, a live rate-limit action, `sync --json`'s
-ordered stages). It has no ticket-31 dependency.
+Full suite passes (413 passed — 5 new tests from Scope 5, across
+`tests/test_cli_status.py` and `tests/test_cli.py`); `ruff check` and
+`mypy src/` both clean.
+
+Next up per the ticket's sequential execution order: **Scope 7** (the
+completion gate) — write `docs/reference/cli.md`, re-check every
+ticket-31-referencing criterion against delivered signatures, and run the
+flagged command-name-clash review (`list` vs `lists`) before closing the
+ticket. Then **Scope 0**'s second review, which needs the user's live-account
+approval on the day.
 
 **Flagged during Scope 2/4, not yet acted on:** the user pointed out `list`
 (Stars) vs. `lists` (GitHub Lists) reads as a typo of one command, not two

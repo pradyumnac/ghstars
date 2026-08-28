@@ -37,8 +37,12 @@ def test_status_json_reports_empty_state_before_any_sync(
     assert result.exit_code == 0
     assert json.loads(result.output) == {
         "last_sync_at": None,
-        "retriage_queue_count": 0,
+        "active_star_count": 0,
+        "archived_star_count": 0,
+        "list_count": 0,
         "unclassified_count": 0,
+        "pending_edit_count": 0,
+        "retriage_queue_count": 0,
         "verify_ok": True,
         "verify_problems": [],
     }
@@ -54,8 +58,12 @@ def test_status_plain_text_reports_never_synced(
 
     assert result.exit_code == 0
     assert "Last sync: never" in result.output
-    assert "Retriage Queue: 0" in result.output
+    assert "Active stars: 0" in result.output
+    assert "Archived stars: 0" in result.output
+    assert "Lists: 0" in result.output
     assert "Unclassified: 0" in result.output
+    assert "Pending edits: 0" in result.output
+    assert "Retriage Queue: 0" in result.output
     assert "Verify: ok" in result.output
 
 
@@ -96,10 +104,51 @@ def test_status_json_counts_mixed_classified_unclassified_and_retriage(
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["last_sync_at"] == later.isoformat().replace("+00:00", "Z")
+    assert payload["active_star_count"] == 2
+    assert payload["archived_star_count"] == 0
+    assert payload["list_count"] == 1
     assert payload["retriage_queue_count"] == 1
     assert payload["unclassified_count"] == 1
+    assert payload["pending_edit_count"] == 0
     assert payload["verify_ok"] is True
     assert payload["verify_problems"] == []
+
+
+def test_status_json_counts_archived_stars_and_pending_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    active = make_star("example-owner/active")
+    archived = make_star("example-owner/archived", archived=True)
+    pending = make_star(
+        "example-owner/pending", list_ids=["L_tool"], pending_list_ids=["L_other"]
+    )
+    store = StateStore(tmp_path)
+    store.save_stars([active, archived, pending])
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(app, ["status", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["active_star_count"] == 2
+    assert payload["archived_star_count"] == 1
+    assert payload["pending_edit_count"] == 1
+
+
+def test_status_never_creates_a_github_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+
+    def _boom() -> None:
+        raise AssertionError("status must not create a GitHubClient")
+
+    monkeypatch.setattr(cli_module, "get_client", _boom)
+
+    result = runner.invoke(app, ["status", "--json"])
+
+    assert result.exit_code == 0
 
 
 def test_status_verify_fails_on_dangling_list_id_reference(

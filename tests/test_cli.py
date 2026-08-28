@@ -22,7 +22,7 @@ from typer.testing import CliRunner
 import ghstars.cli as cli_module
 from ghstars.cli import app
 from ghstars.core.fake_client import FakeGitHubClient
-from ghstars.core.models import List, RetriageEntry
+from ghstars.core.models import List, RateLimitStatus, RetriageEntry
 from ghstars.core.state_store import StateStore
 
 runner = CliRunner()
@@ -605,6 +605,69 @@ def test_sync_cmd_debug_env_var_non_boolean_value_still_enables_debug(
 
         assert result.exit_code == 0
         assert fetcher_logger.level == logging.DEBUG
+
+
+def test_sync_cmd_json_reports_ordered_stages_and_final_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+    _use_client(monkeypatch, FakeGitHubClient(stars=[make_star()]))
+
+    result = runner.invoke(app, ["sync", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["stages"] == [
+        "Checking rate limit",
+        "Fetching starred repos",
+        "Fetching Lists",
+        "Pushing pending tag changes",
+        "Saving local state",
+    ]
+    assert payload["star_count"] == 1
+    assert payload["list_count"] == 0
+    assert payload["failed_tag_pushes"] == []
+
+
+def test_ratelimit_cmd_json_reports_the_live_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+    _use_client(
+        monkeypatch,
+        FakeGitHubClient(
+            rate_limit=RateLimitStatus(remaining=4999, limit=5000, ok=True)
+        ),
+    )
+
+    result = runner.invoke(app, ["ratelimit", "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {
+        "remaining": 4999,
+        "limit": 5000,
+        "ok": True,
+    }
+
+
+def test_ratelimit_cmd_never_runs_a_full_sync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+    _use_client(
+        monkeypatch,
+        FakeGitHubClient(rate_limit=RateLimitStatus(remaining=1, limit=5000, ok=True)),
+    )
+
+    result = runner.invoke(app, ["ratelimit", "--json"])
+
+    assert result.exit_code == 0
+    # `fetch_stars`/`fetch_lists` were never called; state stays empty.
+    assert store.load_stars() == []
+    assert store.load_lists() == []
 
 
 def test_sync_cmd_fails_gracefully_when_lock_is_held(
