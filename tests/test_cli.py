@@ -631,7 +631,7 @@ def test_unstar_cmd_fails_gracefully_when_lock_is_held(
     _use_store(monkeypatch, store)
     _use_client(monkeypatch, FakeGitHubClient(stars=[star]))
 
-    result = runner.invoke(app, ["unstar", "example-owner/x"])
+    result = runner.invoke(app, ["unstar", "example-owner/x", "--yes"])
 
     assert result.exit_code == 3
     assert "unstarred example-owner/x on GitHub" in result.output

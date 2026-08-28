@@ -25,19 +25,35 @@ execution note:
   is now an aligned table; `--details` text is a key-value block per record.
   `CONTEXT.md` records the field-set/ticket-14 coupling (Decision 9/18).
   See the ticket's own Scope 2 checkboxes for the delivered-note detail.
+- Scope 4 (explicit bulk actions) — done, 2026-08-28. `tag`/`unstar` both
+  gained a repeatable `--repo` option for extra targets, layered on
+  `bulk_tag_stars()`/`bulk_unstar_stars()` (ticket 31 Scope C); single-target
+  `tag` keeps its exact prior code path and JSON shape untouched. `unstar`
+  now requires `--yes` unconditionally, single or bulk — no interactive
+  prompt at all, since a tty-gated prompt would fail Scope 0's "works
+  without a terminal" criterion, so `--yes` is the whole confirmation
+  contract. Bulk JSON is `{"targets", "results": [...]}` with exit `0`/
+  `EXIT_PARTIAL`(4)/`EXIT_TERMINAL`(1) for all-succeeded/mixed/all-failed.
+  See the ticket's own Scope 4 checkboxes for the delivered-note detail.
 
-Full suite passes (398 passed — 12 new tests from Scope 1, 13 more from
-Scope 2, across `tests/test_cli_list.py`, `tests/test_cli_lists.py`,
-`tests/test_cli_facets.py`, `tests/test_fields.py`, `tests/test_cli.py`);
-`ruff check` and `mypy src/` both clean.
+Full suite passes (408 passed — 12 new tests from Scope 1, 13 more from
+Scope 2, 10 more from Scope 4, across `tests/test_cli_list.py`,
+`tests/test_cli_lists.py`, `tests/test_cli_facets.py`, `tests/test_fields.py`,
+`tests/test_cli.py`, `tests/test_cli_bulk.py`); `ruff check` and `mypy src/`
+both clean.
 
-Next up per the ticket's sequential execution order: **Scope 4** (explicit
-bulk actions — `tag`/`unstar` take more than one repository name, bulk
-`unstar` confirmation). It depends on ticket 31 Scope C, already delivered
-(`bulk_tag_stars()`/`bulk_unstar_stars()` in `core/tagging.py`/`core/unstar.py`).
-Scope 5 (operational JSON) has no ticket-31 dependency either and could run
-before or after Scope 4 — the ticket's execution note only pins Scope 6 and
-Scope 3 to run before everything else, which is already done.
+Next up per the ticket's sequential execution order: **Scope 5** (operational
+JSON — widen `status --json`, a live rate-limit action, `sync --json`'s
+ordered stages). It has no ticket-31 dependency.
+
+**Flagged during Scope 2/4, not yet acted on:** the user pointed out `list`
+(Stars) vs. `lists` (GitHub Lists) reads as a typo of one command, not two
+distinct nouns — confusing for a human or an agent parsing a bare command
+name. Ticket 30's own Scope 7 now carries a checklist item to review every
+command name for this kind of clash in one pass before the ticket closes,
+rather than renaming piecemeal mid-ticket (a rename is the same
+skill-coupling hazard `CONTEXT.md`'s field-set note describes). Do not
+rename anything until that Scope 7 pass.
 
 See `.scratch/ghstars-v1/issues/30-cli-feature-parity-for-agent-use.md`
 (unblocked) and `.scratch/ghstars-v1/issues/32-three-tier-config.md` (Scope 3

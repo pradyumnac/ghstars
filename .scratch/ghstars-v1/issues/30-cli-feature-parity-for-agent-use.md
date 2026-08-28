@@ -362,18 +362,67 @@ No dependency on ticket 31.
 Use explicit repository names for every bulk mutation. A Filter can discover
 names, but it must never select a mutation target.
 
-- [ ] `tag` accepts more than one explicit repository name in one call.
-- [ ] `unstar` accepts more than one explicit repository name in one call.
-- [ ] Both bulk commands return one result per repository. A failure for one
+- [x] `tag` accepts more than one explicit repository name in one call.
+
+      **Delivered:** repeatable `--repo` option on `tag_cmd`
+      (`cli/commands/tag.py`), added to `[repo, *extra_repos]`; `repo` stays
+      the first positional argument unchanged.
+- [x] `unstar` accepts more than one explicit repository name in one call.
+
+      **Delivered:** repeatable `--repo` option on `unstar_cmd`
+      (`cli/commands/unstar.py`), same pattern as `tag`.
+- [x] Both bulk commands return one result per repository. A failure for one
       repository never hides the result for another.
-- [ ] Every `unstar` requires confirmation, single or bulk. This reverses the
+
+      **Delivered:** both bulk branches call `bulk_tag_stars()`/
+      `bulk_unstar_stars()` (ticket 31 Scope C), already isolate one
+      target's failure from the rest, and render one row per outcome under
+      `--json` (`"results": [...]`) or one line per outcome in text mode.
+- [x] Every `unstar` requires confirmation, single or bulk. This reverses the
       earlier rule that single-Star `unstar` keeps its behavior.
-- [ ] A non-interactive `unstar` requires an explicit `--yes` flag.
-- [ ] Bulk unstar prints the complete target list before it mutates anything.
-- [ ] No Filter, search term, standard input stream, wildcard, or implicit
+
+      **Delivered:** the `--yes` check in `unstar_cmd` runs before any
+      branch on target count — single and bulk share one gate.
+- [x] A non-interactive `unstar` requires an explicit `--yes` flag.
+
+      **Delivered:** no interactive prompt exists at all — a prompt gated
+      on a terminal would not satisfy Scope 0's "works without a terminal"
+      criterion, so `--yes` is the whole confirmation contract, not a
+      fallback for one. Missing `--yes` hard-fails via `fail()` with
+      `CODE_INVALID_INPUT` before calling `get_client()`/mutating anything.
+      Tested by `test_unstar_without_yes_fails_and_never_mutates` and
+      `test_unstar_bulk_without_yes_never_mutates_any_target`
+      (`tests/test_cli_bulk.py`).
+- [x] Bulk unstar prints the complete target list before it mutates anything.
+
+      **Delivered:** `unstar_cmd` echoes `"Targets: ..."` (stdout in text
+      mode, stderr under `--json`, keeping stdout pure per the existing
+      `--json`-is-machine-data-only rule) before calling
+      `bulk_unstar_stars()`, for more-than-one target. The `--yes`-missing
+      error message itself also lists every target, so the target list is
+      visible even on the declined path. Tested by
+      `test_unstar_bulk_prints_targets_before_mutating`.
+- [x] No Filter, search term, standard input stream, wildcard, or implicit
       selection can choose a mutation target.
-- [ ] Bulk action JSON reports success or failure for each explicit target.
-- [ ] Single-Star `tag` keeps its current behavior.
+
+      **Delivered:** both commands take only explicit positional/`--repo`
+      arguments; neither reads standard input or accepts a Filter option.
+- [x] Bulk action JSON reports success or failure for each explicit target.
+
+      **Delivered:** `{"targets": [...], "results": [{"full_name",
+      "tagged"|"unstarred", ..., "error"}, ...]}` for both commands; exit
+      code is `0` (all succeeded), `EXIT_PARTIAL` (some succeeded, some
+      failed), or `EXIT_TERMINAL` (all failed). Tested by
+      `test_unstar_bulk_json_reports_success_and_failure_per_target`,
+      `test_unstar_bulk_all_fail_exits_terminal`, and
+      `test_tag_bulk_isolates_one_targets_failure`.
+- [x] Single-Star `tag` keeps its current behavior.
+
+      **Delivered:** the pre-existing single-target `tag_star()` call and
+      its exact `except`/`fail()` chain are untouched, still reached only
+      when `extra_repos` is empty; JSON shape unchanged
+      (`{"full_name", "list_ids", "removed_list_ids"}`). Tested by
+      `test_tag_single_target_unchanged_json_shape`.
 
 ## Scope 5 — Operational JSON
 
@@ -438,6 +487,18 @@ No dependency on ticket 31.
       each one matches the delivered core signature.
 - [ ] The agent skill must call these deterministic interfaces. It must not
       reproduce discovery or mutation logic itself.
+- [ ] Review every command name for semantic clash before closing this ticket.
+      Flagged 2026-08-28: `list` (Stars, one repo per row, filtered/paged) and
+      `lists` (GitHub Lists, bounded, no paging) read as a typo of each other,
+      not two distinct nouns — an agent (or a human) parsing a command name
+      out of context cannot tell which noun it addresses. `facets` and
+      `retriage` don't have this problem; `list`/`lists` do, and possibly
+      `category rename`/`drain` vs. top-level commands is worth a glance too.
+      Rationalize the whole command-name set in one pass here, not
+      piecemeal — a rename after ticket 14's skill exists doubles the
+      surface that has to change in lockstep (see Scope 2's `CONTEXT.md`
+      note on field-set/skill coupling; a command-name change is the same
+      kind of coupling).
 
 ## Non-goals
 

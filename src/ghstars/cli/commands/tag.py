@@ -12,6 +12,8 @@ from ghstars.cli.errors import (
     CODE_STAR_ARCHIVED,
     CODE_STATE_LOCK_HELD,
     CODE_TAG_PUSH_FAILED,
+    EXIT_PARTIAL,
+    EXIT_TERMINAL,
     fail,
 )
 from ghstars.core import (
@@ -19,9 +21,17 @@ from ghstars.core import (
     StarListMembershipDriftError,
     StarNotFoundError,
     TagPushError,
+    bulk_tag_stars,
     tag_star,
 )
 from ghstars.github import GitHubApiError
+
+_REPO_OPTION = typer.Option(
+    None,
+    "--repo",
+    help="Additional repo to tag into the same List. Repeatable (ticket 30 "
+    "Scope 4 bulk tag).",
+)
 
 
 @app.command("tag")
@@ -32,6 +42,7 @@ def tag_cmd(
     list_name: str = typer.Argument(
         ..., help="Name of the List to add it to, e.g. 'Explore: Tool'."
     ),
+    extra_repos: list[str] | None = _REPO_OPTION,
     private: bool = typer.Option(
         False,
         "--private",
@@ -39,15 +50,67 @@ def tag_cmd(
     ),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
-    """Add a repo to a List and push it to GitHub immediately (ticket 16).
+    """Add one or more repos to a List and push it to GitHub immediately
+    (ticket 16; bulk added ticket 30 Scope 4).
 
     A new List is created for real immediately (spec story 48); the
     Star<->List membership itself is pushed in the same call, right
     after checking that local state agrees with GitHub's current
     membership for this repo (see `tag_star`'s docstring).
+
+    A single target (no `--repo`) keeps its exact prior behavior: any
+    failure hard-fails the whole call via `fail()`, with the specific
+    machine code for what went wrong. More than one target isolates each
+    repo's failure from the others (`bulk_tag_stars()`) and reports one
+    result per target instead.
     """
     client = cli.get_client()
     store = cli.get_store()
+
+    if extra_repos:
+        full_names = [repo, *extra_repos]
+        outcomes = bulk_tag_stars(client, store, full_names, list_name, is_private=private)
+        successes = sum(1 for outcome in outcomes if outcome.error is None)
+
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "targets": full_names,
+                        "results": [
+                            {
+                                "full_name": outcome.full_name,
+                                "tagged": outcome.error is None,
+                                "list_ids": (
+                                    outcome.result.star.list_ids
+                                    if outcome.result is not None
+                                    else None
+                                ),
+                                "removed_list_ids": (
+                                    outcome.result.removed_list_ids
+                                    if outcome.result is not None
+                                    else None
+                                ),
+                                "error": outcome.error,
+                            }
+                            for outcome in outcomes
+                        ],
+                    }
+                )
+            )
+        else:
+            for outcome in outcomes:
+                if outcome.error is None:
+                    typer.echo(f"Tagged {outcome.full_name} into {list_name!r}.")
+                else:
+                    typer.echo(
+                        f"Failed to tag {outcome.full_name}: {outcome.error}"
+                    )
+
+        if successes == len(outcomes):
+            return
+        raise typer.Exit(code=EXIT_TERMINAL if successes == 0 else EXIT_PARTIAL)
+
     try:
         result = tag_star(client, store, repo, list_name, is_private=private)
     except StarNotFoundError:
