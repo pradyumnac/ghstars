@@ -54,7 +54,7 @@ Each `[[export.exports]]` entry takes these fields.
 | `intent` | no | Combine with `category` to match one Intent only, e.g. `"Explore"`. Not valid with `list_name`. |
 | `output` | yes | The file path to write. |
 | `format` | yes | `"yaml"`, `"json"`, or `"csv"`. |
-| `fields` | no | Star fields to include, in order. Defaults to `full_name`, `html_url`, `description`. Run `ghstars list --fields` to see every available field. |
+| `fields` | no | Star fields to include, in order. Defaults to `full_name`, `html_url`, `description`. Run `ghstars stars --fields` to see every available field. |
 
 Set exactly one of `list_name` or `category` per entry. `ghstars export`
 rejects a config file that sets both, or neither, on the same entry.
@@ -69,7 +69,7 @@ one export entry, like any other.
 ## A malformed List is never guessed at
 
 A List whose name only partly matches the `{Intent}: {Category}`
-pattern is malformed (see `CONTEXT.md` and `ghstars lists --fields
+pattern is malformed (see `CONTEXT.md` and `ghstars github-lists --fields
 malformed`). `ghstars export` never exports a malformed List under a
 guessed Intent or Category.
 

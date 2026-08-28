@@ -12,8 +12,8 @@ uv tool install ghstars
 
 ## Authenticate
 
-ghstars uses your existing `gh` CLI login. Reads (`sync`, `list`,
-`lists`) work on `gh`'s default scopes. `ghstars tag` also creates
+ghstars uses your existing `gh` CLI login. Reads (`sync`, `stars`,
+`github-lists`) work on `gh`'s default scopes. `ghstars tag` also creates
 GitHub Lists. That needs the `user` scope. Grant it once:
 
 ```bash

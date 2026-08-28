@@ -54,21 +54,23 @@ Full suite passes (413 passed — 5 new tests from Scope 5, across
 `tests/test_cli_status.py` and `tests/test_cli.py`); `ruff check` and
 `mypy src/` both clean.
 
-Next up per the ticket's sequential execution order: **Scope 7** (the
-completion gate) — write `docs/reference/cli.md`, re-check every
-ticket-31-referencing criterion against delivered signatures, and run the
-flagged command-name-clash review (`list` vs `lists`) before closing the
-ticket. Then **Scope 0**'s second review, which needs the user's live-account
-approval on the day.
+- Scope 7 (completion gate) — done, 2026-08-28. `docs/reference/cli.md`
+  documents every stable command, option, field set, JSON schema,
+  machine error code, exit code, and the partial-failure rule. Every
+  ticket-31-referencing criterion in ticket 30 was re-checked against
+  the delivered core signatures (`query_stars`, `available_facets`,
+  `bulk_tag_stars`, `bulk_unstar_stars`) — no discrepancy found. The
+  flagged command-name clash was resolved: `list` → `stars`, `lists` →
+  `github-lists` (both renamed, not one — user's call; ticket 30
+  Decision 26). Full suite (413 passed), `ruff check`, `mypy src/` all
+  clean after the rename. See the ticket's own Scope 7 checkboxes for
+  the delivered-note detail.
 
-**Flagged during Scope 2/4, not yet acted on:** the user pointed out `list`
-(Stars) vs. `lists` (GitHub Lists) reads as a typo of one command, not two
-distinct nouns — confusing for a human or an agent parsing a bare command
-name. Ticket 30's own Scope 7 now carries a checklist item to review every
-command name for this kind of clash in one pass before the ticket closes,
-rather than renaming piecemeal mid-ticket (a rename is the same
-skill-coupling hazard `CONTEXT.md`'s field-set note describes). Do not
-rename anything until that Scope 7 pass.
+Next up per the ticket's sequential execution order: **Scope 0**'s second
+review — live-account, read-only, under an isolated `GHSTARS_HOME`
+(Decision 24). Needs the user's explicit approval on the day; do not run
+a real sync, unstar, or List mutation against the live account without
+it (see Safety, below).
 
 See `.scratch/ghstars-v1/issues/30-cli-feature-parity-for-agent-use.md`
 (unblocked) and `.scratch/ghstars-v1/issues/32-three-tier-config.md` (Scope 3

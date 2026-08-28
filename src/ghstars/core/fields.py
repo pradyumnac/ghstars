@@ -21,22 +21,25 @@ This ticket only makes both sets exist and be correct; it adds no CLI flag.
 Five keys, four record types:
 
 - `"star"`      -- `ghstars.core.models.Star`. Unused by any command as of
-                   ticket 30 Scope 2 (`ghstars list` moved to `"star_row"`
+                   ticket 30 Scope 2 (`ghstars stars` moved to `"star_row"`
                    below); kept because `"export"` still wraps plain `Star`
                    and the two entries' history is worth keeping distinct.
 - `"star_row"`  -- `StarRowFields` (`Star` plus resolved `list_names`), as
-                   rendered by `ghstars list` (ticket 30 Scope 2). Decision
+                   rendered by `ghstars stars` (ticket 30 Scope 2). Decision
                    16: basic is `full_name, list_names, starred_at,
                    stargazer_count`; detailed is every `Star` field plus
                    `list_names`.
-- `"list"`      -- `ghstars.core.models.List`, as rendered by `ghstars lists`.
+- `"list"`      -- `ghstars.core.models.List`, as rendered by
+                   `ghstars github-lists`. The registry key stays `"list"`
+                   (it names the model, not the command; ticket 30 Scope 7
+                   renamed the command, not this field-set registry).
 - `"retriage"`  -- `ghstars.core.models.RetriageEntry`, as rendered by
                    `ghstars retriage`.
 - `"export"`    -- `Star`, as selected by `ghstars.core.export.select_stars`
                    and written by `run_export`.
 
 `"star"` and `"export"` both wrap the same model (`Star`) but keep separate
-entries because their `basic` sets always disagreed (`ghstars list`'s old
+entries because their `basic` sets always disagreed (`ghstars stars`'s old
 `full_name, language, stargazer_count` vs. export's
 `full_name, html_url, description`) -- collapsing them would silently
 change one surface's default output. Their `detailed` sets are identical
@@ -73,7 +76,7 @@ class StarRowFields(Star):
     `core.discovery.StarRow` deliberately keeps `list_names` off `Star`
     itself (see that module's docstring) -- it is a query-time join, not a
     persisted fact. This subclass exists only so `select_fields()` has one
-    field-selectable record to hand `ghstars list` (ticket 30 Scope 2),
+    field-selectable record to hand `ghstars stars` (ticket 30 Scope 2),
     without adding a second field-selection code path or bolting the join
     onto the persisted model.
     """

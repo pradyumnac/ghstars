@@ -57,8 +57,8 @@ _SORT_MODES: set[str] = {
 }
 
 
-@app.command("list")
-def list_cmd(
+@app.command("stars")
+def stars_cmd(
     category: list[str] | None = _CATEGORY_OPTION,
     intent: list[str] | None = _INTENT_OPTION,
     list_id: list[str] | None = _LIST_OPTION,
@@ -102,8 +102,12 @@ def list_cmd(
         None, "--fields", help="Comma-separated field names to include."
     ),
 ) -> None:
-    """List locally synced stars, filtered, searched, and sorted through the
+    """List locally synced Stars, filtered, searched, and sorted through the
     same query core.discovery and the TUI use.
+
+    Named `stars`, not `list`, to keep it unambiguous next to the
+    `github-lists` command: this returns Star rows, that returns GitHub
+    List rows (ticket 30 Scope 7, Decision 26).
 
     Filters combine with AND. Every repeated `--category`/`--intent`/etc.
     option adds one more AND'd Filter, matching `core.discovery`'s grammar.
@@ -174,8 +178,8 @@ def list_cmd(
     )
 
 
-@app.command("lists")
-def lists_cmd(
+@app.command("github-lists")
+def github_lists_cmd(
     details: bool = typer.Option(
         False, "--details", help="Use the detailed field set instead of the basic one."
     ),
@@ -185,6 +189,10 @@ def lists_cmd(
     ),
 ) -> None:
     """List locally synced GitHub Lists, with parsed Intent/Category.
+
+    Named `github-lists`, not `lists`, to keep it unambiguous next to the
+    `stars` command: this returns GitHub List rows, that returns Star rows
+    (ticket 30 Scope 7, Decision 26).
 
     Bounded output: no `--limit`, no `--offset` (Decision 20).
     """

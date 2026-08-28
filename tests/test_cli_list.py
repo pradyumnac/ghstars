@@ -38,7 +38,7 @@ def test_list_json_envelope_is_empty_with_no_stars(
     store = StateStore(tmp_path)
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--json"])
+    result = runner.invoke(app, ["stars", "--json"])
 
     assert result.exit_code == 0
     assert json.loads(result.output) == {
@@ -58,7 +58,7 @@ def test_list_excludes_archived_stars_by_default(
     store.save_stars([active, archived])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--json", "--fields", "full_name"])
+    result = runner.invoke(app, ["stars", "--json", "--fields", "full_name"])
 
     assert _rows(result.output) == [{"full_name": "owner/active"}]
 
@@ -72,7 +72,7 @@ def test_list_include_archived_adds_the_archived_field_to_default_output(
     store.save_stars([active, archived])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--json", "--include-archived"])
+    result = runner.invoke(app, ["stars", "--json", "--include-archived"])
 
     full_names = {row["full_name"]: row["archived"] for row in _rows(result.output)}
     assert full_names == {"owner/active": False, "owner/archived": True}
@@ -91,7 +91,7 @@ def test_list_category_filter(
     _use_store(monkeypatch, store)
 
     result = runner.invoke(
-        app, ["list", "--json", "--category", "Tools", "--fields", "full_name"]
+        app, ["stars", "--json", "--category", "Tools", "--fields", "full_name"]
     )
 
     assert _rows(result.output) == [{"full_name": "owner/matching"}]
@@ -108,7 +108,7 @@ def test_list_two_filters_and_combine(
 
     result = runner.invoke(
         app,
-        ["list", "--json", "--language", "Python", "--fork", "--fields", "full_name"],
+        ["stars", "--json", "--language", "Python", "--fork", "--fields", "full_name"],
     )
 
     assert _rows(result.output) == [{"full_name": "owner/both"}]
@@ -122,7 +122,7 @@ def test_list_search_matches_case_insensitive_name(
     _use_store(monkeypatch, store)
 
     result = runner.invoke(
-        app, ["list", "--json", "--search", "ghstars", "--fields", "full_name"]
+        app, ["stars", "--json", "--search", "ghstars", "--fields", "full_name"]
     )
 
     assert _rows(result.output) == [{"full_name": "owner/GhStars"}]
@@ -142,7 +142,7 @@ def test_list_sort_stargazer_desc(
 
     result = runner.invoke(
         app,
-        ["list", "--json", "--sort", "stargazer_desc", "--fields", "full_name"],
+        ["stars", "--json", "--sort", "stargazer_desc", "--fields", "full_name"],
     )
 
     assert _rows(result.output) == [
@@ -157,7 +157,7 @@ def test_list_unknown_sort_mode_fails_with_invalid_input_code(
     store = StateStore(tmp_path)
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--json", "--sort", "bogus"])
+    result = runner.invoke(app, ["stars", "--json", "--sort", "bogus"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
@@ -175,7 +175,7 @@ def test_list_recent_filter(
     _use_store(monkeypatch, store)
 
     result = runner.invoke(
-        app, ["list", "--json", "--recent", "1d", "--fields", "full_name"]
+        app, ["stars", "--json", "--recent", "1d", "--fields", "full_name"]
     )
 
     assert _rows(result.output) == [{"full_name": "owner/recent"}]
@@ -190,7 +190,7 @@ def test_list_default_basic_fields_are_full_name_list_names_starred_at_stargazer
     store.save_stars([make_star("owner/repo", list_ids=["L_1"])])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--json"])
+    result = runner.invoke(app, ["stars", "--json"])
 
     [row] = _rows(result.output)
     assert set(row) == {"full_name", "list_names", "starred_at", "stargazer_count"}
@@ -204,7 +204,7 @@ def test_list_default_limit_is_50(
     store.save_stars([make_star(f"owner/repo-{i}") for i in range(60)])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--json"])
+    result = runner.invoke(app, ["stars", "--json"])
 
     payload = json.loads(result.output)
     assert payload == {"total": 60, "offset": 0, "limit": 50, "rows": payload["rows"]}
@@ -218,7 +218,7 @@ def test_list_limit_overrides_the_default_cap(
     store.save_stars([make_star(f"owner/repo-{i}") for i in range(10)])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--json", "--limit", "3"])
+    result = runner.invoke(app, ["stars", "--json", "--limit", "3"])
 
     payload = json.loads(result.output)
     assert payload["total"] == 10
@@ -240,11 +240,11 @@ def test_list_offset_pages_past_already_seen_rows(
     _use_store(monkeypatch, store)
 
     first_page = runner.invoke(
-        app, ["list", "--json", "--limit", "2", "--fields", "full_name"]
+        app, ["stars", "--json", "--limit", "2", "--fields", "full_name"]
     )
     second_page = runner.invoke(
         app,
-        ["list", "--json", "--limit", "2", "--offset", "2", "--fields", "full_name"],
+        ["stars", "--json", "--limit", "2", "--offset", "2", "--fields", "full_name"],
     )
 
     assert _rows(first_page.output) == [
@@ -261,7 +261,7 @@ def test_list_details_flag_selects_the_detailed_field_set(
     store.save_stars([make_star("owner/repo")])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--json", "--details"])
+    result = runner.invoke(app, ["stars", "--json", "--details"])
 
     [row] = _rows(result.output)
     assert "list_names" in row
@@ -277,7 +277,7 @@ def test_list_explicit_fields_overrides_details(
     _use_store(monkeypatch, store)
 
     result = runner.invoke(
-        app, ["list", "--json", "--details", "--fields", "full_name"]
+        app, ["stars", "--json", "--details", "--fields", "full_name"]
     )
 
     assert _rows(result.output) == [{"full_name": "owner/repo"}]
@@ -290,7 +290,7 @@ def test_list_plain_text_prints_an_aligned_table(
     store.save_stars([make_star("owner/repo")])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--fields", "full_name,stargazer_count"])
+    result = runner.invoke(app, ["stars", "--fields", "full_name,stargazer_count"])
 
     lines = result.output.splitlines()
     assert lines[0].split() == ["full_name", "stargazer_count"]
@@ -304,7 +304,7 @@ def test_list_details_plain_text_prints_key_value_blocks(
     store.save_stars([make_star("owner/repo")])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["list", "--details", "--fields", "full_name,language"])
+    result = runner.invoke(app, ["stars", "--details", "--fields", "full_name,language"])
 
     assert result.output.splitlines() == [
         "full_name: owner/repo",

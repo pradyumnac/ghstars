@@ -27,7 +27,7 @@ def test_lists_json_envelope_has_no_cap_and_no_offset(
     store.save_lists([tools])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["lists", "--json"])
+    result = runner.invoke(app, ["github-lists", "--json"])
 
     assert result.exit_code == 0
     assert json.loads(result.output) == {
@@ -54,7 +54,7 @@ def test_lists_details_flag_selects_the_detailed_field_set(
     store.save_lists([tools])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["lists", "--json", "--details"])
+    result = runner.invoke(app, ["github-lists", "--json", "--details"])
 
     [row] = json.loads(result.output)["rows"]
     assert set(row) == set(List.model_fields)

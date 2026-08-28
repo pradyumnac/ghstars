@@ -12,7 +12,7 @@ def facets_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
     """Show the Category, Intent, List, language, license, and owner values
-    an agent can filter `ghstars list` on, read from the caller's own
+    an agent can filter `ghstars stars` on, read from the caller's own
     synced data (Decision 25).
     """
     store = cli.get_store()

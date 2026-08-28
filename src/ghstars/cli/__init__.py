@@ -66,8 +66,8 @@ def _render_records[ModelT: BaseModel](
     `--json` emits one envelope: `{"total", "offset", "limit", "rows"}`
     (Decision 19). `total` is the caller's own count of matching records
     before any page was sliced off -- `records` here is already the page
-    to render, so a caller with pagination (`ghstars list`) passes its own
-    pre-slice count; a caller without it (`lists`, `retriage`) leaves
+    to render, so a caller with pagination (`ghstars stars`) passes its own
+    pre-slice count; a caller without it (`github-lists`, `retriage`) leaves
     `total` as `None`, in which case it defaults to `len(records)`.
     `offset`/`limit` default to `0`/`None`, matching an unbounded,
     unpaged command (Decision 20).

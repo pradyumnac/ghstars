@@ -65,8 +65,15 @@ _Avoid_: Staging list, conflict list.
 
 ## CLI field-set stability
 
-`ghstars list`, `lists`, and `retriage`'s `--json` field sets (`core.fields.
-FIELD_REGISTRY`) carry no schema version (ADR 0010, Decision 9/18 in ticket
-30). A field-set change and the corresponding ticket 14 agent-skill change
-must land in the same change -- there is no version negotiation for the
-skill to fall back on if the two drift apart.
+`ghstars stars`, `github-lists`, and `retriage`'s `--json` field sets
+(`core.fields.FIELD_REGISTRY`) carry no schema version (ADR 0010, Decision
+9/18 in ticket 30). A field-set change and the corresponding ticket 14
+agent-skill change must land in the same change -- there is no version
+negotiation for the skill to fall back on if the two drift apart.
+
+`stars` and `github-lists` were `list` and `lists` until ticket 30 Scope 7
+renamed them to resolve a command-name clash (Decision 26) -- the
+`FIELD_REGISTRY` keys `"star_row"`/`"list"` and internal Python
+identifiers (`--list` Filter option, `List` model, `list_names` field)
+were not touched. Those name the domain entity "List", not the command,
+and are not ambiguous the way two adjacent bare CLI command names were.

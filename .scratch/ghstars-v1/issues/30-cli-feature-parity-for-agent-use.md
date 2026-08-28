@@ -92,6 +92,7 @@ here.
 | 23 | The ADR for the JSON and exit-code contract stays at status `proposed`. Do not accept it in this ticket. Implement the contract as the ADR proposes it, and name every error code. |
 | 24 | Scope 0's second review runs against the live account, under an isolated `GHSTARS_HOME`. Read paths only, no mutation. It needs the user's approval on the day. |
 | 25 | The facet command is `ghstars facets`. It returns the six facet groups from `core.discovery.available_facets()`. |
+| 26 | Scope 7's command-name-clash review: rename both `list` and `lists`, not just one, so neither name needs the other for contrast. `list` → `stars` (Stars is the tool's own primary entity). `lists` → `github-lists` (explicit that it names GitHub's List feature). The `--list` Filter option, `FIELD_REGISTRY["list"]`, the `List` model, `list_names`, and `payload["lists"]` in `facets --json` are unaffected — they name the List domain entity, not a command, and are not ambiguous the way two adjacent bare command names were. |
 
 ### Second review
 
@@ -340,11 +341,17 @@ No dependency on ticket 31.
       flat codes, no reserved ranges. The agent reads the JSON machine code for
       detail.
 - [x] Typer's exit code 2 stays for a usage error.
-- [ ] A bulk call that fails for some targets and succeeds for others reports
+- [x] A bulk call that fails for some targets and succeeds for others reports
       each target and exits with a documented partial-failure code.
 
-      `EXIT_PARTIAL` (4) is defined in `cli/errors.py`; no command emits it
-      yet — bulk `tag`/`unstar` land in Scope 4.
+      **Delivered:** `EXIT_PARTIAL` (4) is defined in `cli/errors.py`.
+      Re-checked in Scope 7: bulk `tag`/`unstar` (Scope 4) both now emit
+      it — `tag.py:112`/`unstar.py:142` raise
+      `EXIT_TERMINAL if successes == 0 else EXIT_PARTIAL`. This box was
+      left unchecked when Scope 3 landed, before Scope 4 existed; the
+      note above was accurate at the time and is now stale. Corrected
+      here rather than rewritten in place, so the ticket's own history
+      stays legible.
 - [x] Write an ADR for the CLI JSON and exit-code contract. Record the machine
       codes, the three exit codes, and the rule that there is no schema
       version. Leave the ADR at status `proposed` (Decision 23). Do not accept
@@ -512,14 +519,40 @@ No dependency on ticket 31.
 
 ## Scope 7 — Completion gate for ticket 14
 
-- [ ] Write `docs/reference/cli.md`. Document every stable command, option,
+- [x] Write `docs/reference/cli.md`. Document every stable command, option,
       field set, JSON schema, machine error code, exit code, and
       partial-failure rule.
-- [ ] Re-read every criterion in this ticket that references ticket 31. Confirm
+
+      **Delivered:** `docs/reference/cli.md` — every command
+      (`stars`, `github-lists`, `facets`, `retriage`, `tag`, `unstar`,
+      `category rename`/`drain`, `status`, `ratelimit`, `sync`, `export`,
+      `diff`, `tui`), the error contract (all ten machine codes plus the
+      exit-code table), the output contract (envelope shape, field sets
+      per record type, paging determinism), and a dedicated "Command
+      names" section recording Decision 26's rename and why the other
+      `list`-adjacent identifiers were left alone.
+- [x] Re-read every criterion in this ticket that references ticket 31. Confirm
       each one matches the delivered core signature.
-- [ ] The agent skill must call these deterministic interfaces. It must not
+
+      **Delivered:** re-checked `query_stars()` (filters/search/sort/
+      include_archived/offset/limit — `core/discovery.py`),
+      `available_facets()`, `bulk_tag_stars()`, and `bulk_unstar_stars()`
+      against every call site in `cli/commands/list_lists.py`,
+      `facets.py`, `tag.py`, and `unstar.py`. All four signatures match
+      what Scopes 1/2/4's own Delivered notes already claimed — no
+      discrepancy found.
+- [x] The agent skill must call these deterministic interfaces. It must not
       reproduce discovery or mutation logic itself.
-- [ ] Review every command name for semantic clash before closing this ticket.
+
+      **Delivered:** this is a constraint on ticket 14, not code to write
+      here. Recorded verbatim at the top of `docs/reference/cli.md` so
+      ticket 14 inherits it from the reference doc it will read first.
+      Confirmed nothing in ticket 30's own CLI layer reproduces
+      discovery/mutation logic either — re-read `list_lists.py` and
+      `tag.py`/`unstar.py` end to end; both call straight into
+      `ghstars.core` and contain no Filter/Sort/search/orchestration
+      logic of their own (matches Scope 1's own delivered note).
+- [x] Review every command name for semantic clash before closing this ticket.
       Flagged 2026-08-28: `list` (Stars, one repo per row, filtered/paged) and
       `lists` (GitHub Lists, bounded, no paging) read as a typo of each other,
       not two distinct nouns — an agent (or a human) parsing a command name
@@ -531,6 +564,28 @@ No dependency on ticket 31.
       surface that has to change in lockstep (see Scope 2's `CONTEXT.md`
       note on field-set/skill coupling; a command-name change is the same
       kind of coupling).
+
+      **Delivered:** Decision 26. Renamed `list` → `stars`, `lists` →
+      `github-lists` (both, not one, so neither name depends on the
+      other for contrast; user's own call, 2026-08-28). Reviewed
+      `category rename`/`drain` against every top-level command — no
+      clash: `category` is a distinct subcommand group and the two verbs
+      read unambiguously as Category operations. Every other command
+      name (`sync`, `tag`, `unstar`, `status`, `ratelimit`, `export`,
+      `diff`, `tui`, `facets`, `retriage`) is a single word with nothing
+      adjacent to clash against. Updated every call site: command
+      decorators and docstrings in `list_lists.py`; cross-references in
+      `cli/__init__.py`, `core/fields.py`, `core/status.py`,
+      `commands/facets.py`; test invocations in `tests/test_cli_list.py`
+      (18 sites) and `tests/test_cli_lists.py` (2 sites); prose in
+      `README.md`, `CONTEXT.md`, `docs/how-to/export.md`. Left untouched,
+      deliberately: `FIELD_REGISTRY["list"]`/`FIELD_REGISTRY["star_row"]`
+      keys, the `--list` Filter option, the `List` model, `list_names`,
+      and `payload["lists"]` in `facets --json` — all name the List
+      domain entity, not a command, and none of them sit adjacent to
+      another bare command name the way `list`/`lists` did. Full suite
+      (413 passed), `ruff check`, and `mypy src/` all clean after the
+      rename.
 
 ## Non-goals
 

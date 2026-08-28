@@ -31,7 +31,7 @@ def verify_state(stars: list[Star], lists: list[List]) -> list[str]:
     Mirrors the old `gh-stars.py`'s `verify()` -- a flat list of problem
     strings, empty when everything checks out. Each check here targets
     corruption that would silently break other commands (a dangling
-    `Star.list_ids` reference would make `ghstars list --fields list_ids`
+    `Star.list_ids` reference would make `ghstars stars --fields list_ids`
     point at nothing; a duplicate id/full_name means state was written
     from something other than a clean `sync()` pass):
 
