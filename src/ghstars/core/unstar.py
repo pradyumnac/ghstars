@@ -1,10 +1,12 @@
 from datetime import UTC, datetime
 
+from filelock import Timeout
 from pydantic import BaseModel
 
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import archive_star, remove_star_from_lists
+from ghstars.github.client import GitHubApiError
 
 
 class UnstarResult(BaseModel):
@@ -71,6 +73,7 @@ class BulkUnstarOutcome(BaseModel):
     full_name: str
     result: UnstarResult | None = None
     error: str | None = None
+    error_code: str | None = None
 
 
 def bulk_unstar_stars(
@@ -91,8 +94,32 @@ def bulk_unstar_stars(
     for full_name in full_names:
         try:
             result = unstar_star(client, store, full_name)
+        except Timeout as exc:
+            outcomes.append(
+                BulkUnstarOutcome(
+                    full_name=full_name,
+                    error=str(exc),
+                    error_code="state_lock_held",
+                )
+            )
+            continue
+        except GitHubApiError as exc:
+            outcomes.append(
+                BulkUnstarOutcome(
+                    full_name=full_name,
+                    error=str(exc),
+                    error_code="network_failure",
+                )
+            )
+            continue
         except Exception as exc:  # noqa: BLE001 -- isolate one repo's failure
-            outcomes.append(BulkUnstarOutcome(full_name=full_name, error=str(exc)))
+            outcomes.append(
+                BulkUnstarOutcome(
+                    full_name=full_name,
+                    error=str(exc),
+                    error_code="unexpected_error",
+                )
+            )
             continue
         outcomes.append(BulkUnstarOutcome(full_name=full_name, result=result))
     return outcomes

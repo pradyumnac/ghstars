@@ -1,4 +1,4 @@
-"""Tests for `ghstars lists`'s output contract (ticket 30 Scope 2)."""
+"""Tests for `ghstars github-lists` output contract (ticket 30 Scope 2)."""
 
 import json
 from pathlib import Path
@@ -23,7 +23,9 @@ def test_lists_json_envelope_has_no_cap_and_no_offset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store = StateStore(tmp_path)
-    tools = List(id="L_1", name="Explore: Tools", slug="explore-tools", category="Tools")
+    tools = List(
+        id="L_1", name="Explore: Tools", slug="explore-tools", category="Tools"
+    )
     store.save_lists([tools])
     _use_store(monkeypatch, store)
 
@@ -50,7 +52,9 @@ def test_lists_details_flag_selects_the_detailed_field_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store = StateStore(tmp_path)
-    tools = List(id="L_1", name="Explore: Tools", slug="explore-tools", category="Tools")
+    tools = List(
+        id="L_1", name="Explore: Tools", slug="explore-tools", category="Tools"
+    )
     store.save_lists([tools])
     _use_store(monkeypatch, store)
 

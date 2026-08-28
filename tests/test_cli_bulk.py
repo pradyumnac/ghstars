@@ -148,6 +148,7 @@ def test_unstar_bulk_json_reports_success_and_failure_per_target(
     assert by_name["example-owner/a"]["unstarred"] is True
     assert by_name["example-owner/bad"]["unstarred"] is False
     assert by_name["example-owner/bad"]["error"] is not None
+    assert by_name["example-owner/bad"]["error_code"] == "unexpected_error"
     assert "Targets:" in result.stderr
 
 
@@ -185,9 +186,7 @@ def test_tag_single_target_unchanged_json_shape(
     _use_store(monkeypatch, store)
     _use_client(monkeypatch, FakeGitHubClient(stars=[star], lists=[]))
 
-    result = runner.invoke(
-        app, ["tag", "example-owner/x", "Explore: Tool", "--json"]
-    )
+    result = runner.invoke(app, ["tag", "example-owner/x", "Explore: Tool", "--json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -257,3 +256,4 @@ def test_tag_bulk_isolates_one_targets_failure(
     assert by_name["example-owner/a"]["tagged"] is True
     assert by_name["example-owner/missing"]["tagged"] is False
     assert by_name["example-owner/missing"]["error"] is not None
+    assert by_name["example-owner/missing"]["error_code"] == "no_local_record"

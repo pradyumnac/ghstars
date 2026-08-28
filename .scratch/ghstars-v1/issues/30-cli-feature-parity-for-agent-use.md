@@ -526,7 +526,7 @@ No dependency on ticket 31.
       **Delivered:** `docs/reference/cli.md` — every command
       (`stars`, `github-lists`, `facets`, `retriage`, `tag`, `unstar`,
       `category rename`/`drain`, `status`, `ratelimit`, `sync`, `export`,
-      `diff`, `tui`), the error contract (all ten machine codes plus the
+      `diff`, `tui`), the error contract (all eleven machine codes plus the
       exit-code table), the output contract (envelope shape, field sets
       per record type, paging determinism), and a dedicated "Command
       names" section recording Decision 26's rename and why the other

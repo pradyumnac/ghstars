@@ -22,8 +22,10 @@ from typer.testing import CliRunner
 import ghstars.cli as cli_module
 from ghstars.cli import app
 from ghstars.core.fake_client import FakeGitHubClient
+from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List, RateLimitStatus, RetriageEntry
 from ghstars.core.state_store import StateStore
+from ghstars.github import GitHubApiError
 
 runner = CliRunner()
 
@@ -33,7 +35,7 @@ def _use_store(monkeypatch: pytest.MonkeyPatch, store: StateStore) -> None:
     monkeypatch.setattr(cli_module, "ensure_config_dir", lambda: store.base_dir)
 
 
-def _use_client(monkeypatch: pytest.MonkeyPatch, client: FakeGitHubClient) -> None:
+def _use_client(monkeypatch: pytest.MonkeyPatch, client: GitHubClient) -> None:
     monkeypatch.setattr(cli_module, "get_client", lambda: client)
 
 
@@ -414,6 +416,18 @@ def test_tui_cmd_is_registered_on_the_top_level_app() -> None:
 
     assert result.exit_code == 0
     assert "tui" in result.output
+    assert "stars" in result.output
+    assert "github-lists" in result.output
+    assert "facets" in result.output
+    assert "ratelimit" in result.output
+
+
+def test_help_shows_current_export_config_path() -> None:
+    result = runner.invoke(app, ["export", "--help"])
+
+    assert result.exit_code == 0
+    assert "[export]" in result.output
+    assert "ghstars.toml" in result.output
 
 
 def test_category_rename_cmd_renames_the_lifecycle_variants(
@@ -650,6 +664,24 @@ def test_ratelimit_cmd_json_reports_the_live_status(
         "limit": 5000,
         "ok": True,
     }
+
+
+def test_ratelimit_cmd_reports_network_failure_as_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+
+    class _BrokenClient(FakeGitHubClient):
+        def check_rate_limit(self) -> RateLimitStatus:
+            raise GitHubApiError("network down")
+
+    _use_client(monkeypatch, _BrokenClient())
+    result = runner.invoke(app, ["ratelimit", "--json"])
+
+    assert result.exit_code == 3
+    assert result.stdout == ""
+    assert json.loads(result.stderr)["error"]["code"] == "network_failure"
 
 
 def test_ratelimit_cmd_never_runs_a_full_sync(

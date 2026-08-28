@@ -1,4 +1,4 @@
-"""Tests for `ghstars list`'s discovery surface (ticket 30 Scope 1) and
+"""Tests for `ghstars stars`' discovery surface (ticket 30 Scope 1) and
 output contract (ticket 30 Scope 2).
 
 `list` is wired through `core.discovery.query_stars()` -- it implements no
@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 import ghstars.cli as cli_module
 from ghstars.cli import app
+from ghstars.cli.commands import list_lists
 from ghstars.core.models import List
 from ghstars.core.state_store import StateStore
 
@@ -82,8 +83,12 @@ def test_list_category_filter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
     store = StateStore(tmp_path)
-    tools = List(id="L_1", name="Explore: Tools", slug="explore-tools", category="Tools")
-    other = List(id="L_2", name="Explore: Other", slug="explore-other", category="Other")
+    tools = List(
+        id="L_1", name="Explore: Tools", slug="explore-tools", category="Tools"
+    )
+    other = List(
+        id="L_2", name="Explore: Other", slug="explore-other", category="Other"
+    )
     store.save_lists([tools, other])
     matching = make_star("owner/matching", list_ids=["L_1"])
     non_matching = make_star("owner/non-matching", list_ids=["L_2"])
@@ -112,6 +117,42 @@ def test_list_two_filters_and_combine(
     )
 
     assert _rows(result.output) == [{"full_name": "owner/both"}]
+
+
+@pytest.mark.parametrize(
+    ("args", "expected_filter"),
+    [
+        (["--category", "Tools"], "category:Tools"),
+        (["--intent", "Explore"], "intent:Explore"),
+        (["--list", "L_1"], "list:L_1"),
+        (["--language", "Python"], "language:Python"),
+        (["--license", "MIT"], "license:MIT"),
+        (["--owner", "owner"], "owner:owner"),
+        (["--fork"], "forks"),
+        (["--followed"], "followed"),
+        (["--unclassified"], "unclassified"),
+        (["--recent", "1d"], "recent:1d"),
+    ],
+)
+def test_list_forwards_each_filter_to_core(
+    args: list[str],
+    expected_filter: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+    captured: dict[str, object] = {}
+
+    def _query(*_args: object, **kwargs: object) -> list[object]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(list_lists, "query_stars", _query)
+    result = runner.invoke(app, ["stars", "--json", *args])
+
+    assert result.exit_code == 0
+    assert captured["filters"] == [expected_filter]
 
 
 def test_list_search_matches_case_insensitive_name(
@@ -266,7 +307,60 @@ def test_list_details_flag_selects_the_detailed_field_set(
     [row] = _rows(result.output)
     assert "list_names" in row
     assert "html_url" in row
-    assert "archived" in row
+    assert "archived" not in row
+
+
+def test_list_archived_field_requires_include_archived(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("owner/repo")])
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(app, ["stars", "--json", "--fields", "archived"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "unknown_field"
+
+
+def test_list_invalid_page_values_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+
+    for option, value in (("--limit", "0"), ("--limit", "-1"), ("--offset", "-1")):
+        result = runner.invoke(app, ["stars", "--json", option, value])
+        assert result.exit_code == 1
+        assert json.loads(result.stderr)["error"]["code"] == "invalid_input"
+
+
+def test_list_invalid_recent_window_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path)
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(app, ["stars", "--json", "--recent", "typo"])
+
+    assert result.exit_code == 1
+    assert json.loads(result.stderr)["error"]["code"] == "invalid_input"
+
+
+def test_list_explicit_archived_field_requires_include_archived(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    store = StateStore(tmp_path)
+    store.save_stars([make_star("owner/repo")])
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(
+        app, ["stars", "--json", "--include-archived", "--fields", "archived"]
+    )
+
+    assert result.exit_code == 0
+    assert _rows(result.output) == [{"archived": False}]
 
 
 def test_list_explicit_fields_overrides_details(
@@ -304,7 +398,9 @@ def test_list_details_plain_text_prints_key_value_blocks(
     store.save_stars([make_star("owner/repo")])
     _use_store(monkeypatch, store)
 
-    result = runner.invoke(app, ["stars", "--details", "--fields", "full_name,language"])
+    result = runner.invoke(
+        app, ["stars", "--details", "--fields", "full_name,language"]
+    )
 
     assert result.output.splitlines() == [
         "full_name: owner/repo",

@@ -4,6 +4,8 @@ import typer
 
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
+from ghstars.cli.errors import CODE_NETWORK_FAILURE, fail
+from ghstars.github import GitHubApiError
 
 
 @app.command("ratelimit")
@@ -17,7 +19,10 @@ def ratelimit_cmd(
     `GitHubClient.check_rate_limit()` call `sync` itself makes before
     fetching anything.
     """
-    status = cli.get_client().check_rate_limit()
+    try:
+        status = cli.get_client().check_rate_limit()
+    except GitHubApiError as exc:
+        fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output)
 
     if json_output:
         typer.echo(json.dumps(status.model_dump(mode="json")))

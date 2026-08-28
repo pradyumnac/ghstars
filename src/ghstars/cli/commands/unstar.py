@@ -10,7 +10,9 @@ from ghstars.cli.errors import (
     CODE_NETWORK_FAILURE,
     CODE_STATE_LOCK_HELD,
     EXIT_PARTIAL,
+    EXIT_RETRYABLE,
     EXIT_TERMINAL,
+    RETRYABLE_CODES,
     fail,
 )
 from ghstars.core import bulk_unstar_stars, unstar_star
@@ -54,9 +56,7 @@ def unstar_cmd(
 
     if not yes:
         fail(
-            "unstar requires --yes to confirm. Targets: "
-            + ", ".join(full_names)
-            + ".",
+            "unstar requires --yes to confirm. Targets: " + ", ".join(full_names) + ".",
             code=CODE_INVALID_INPUT,
             json_output=json_output,
         )
@@ -72,7 +72,10 @@ def unstar_cmd(
             result = unstar_star(client, store, repo)
         except GitHubApiError as exc:
             fail(
-                str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output, target=repo
+                str(exc),
+                code=CODE_NETWORK_FAILURE,
+                json_output=json_output,
+                target=repo,
             )
         except Timeout:
             # Report remote success separately from local lock failure.
@@ -124,6 +127,7 @@ def unstar_cmd(
                                 else None
                             ),
                             "error": outcome.error,
+                            "error_code": outcome.error_code,
                         }
                         for outcome in outcomes
                     ],
@@ -139,4 +143,8 @@ def unstar_cmd(
 
     if successes == len(outcomes):
         return
+    if successes == 0 and all(
+        outcome.error_code in RETRYABLE_CODES for outcome in outcomes
+    ):
+        raise typer.Exit(code=EXIT_RETRYABLE)
     raise typer.Exit(code=EXIT_TERMINAL if successes == 0 else EXIT_PARTIAL)

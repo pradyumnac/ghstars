@@ -5,7 +5,7 @@ import typer
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
 from ghstars.cli.errors import CODE_INVALID_INPUT, fail
-from ghstars.core.discovery import SortMode, query_stars
+from ghstars.core.discovery import RECENCY_CUTOFFS, SortMode, query_stars
 from ghstars.core.fields import FIELD_REGISTRY, StarRowFields
 from ghstars.core.models import List
 
@@ -125,6 +125,27 @@ def stars_cmd(
             json_output=json_output,
             target=sort,
         )
+    if recent is not None and recent not in {*RECENCY_CUTOFFS, "older_1y"}:
+        fail(
+            f"unknown recency window: {recent!r}",
+            code=CODE_INVALID_INPUT,
+            json_output=json_output,
+            target=recent,
+        )
+    if limit <= 0:
+        fail(
+            "--limit must be greater than zero",
+            code=CODE_INVALID_INPUT,
+            json_output=json_output,
+            target=str(limit),
+        )
+    if offset < 0:
+        fail(
+            "--offset must not be negative",
+            code=CODE_INVALID_INPUT,
+            json_output=json_output,
+            target=str(offset),
+        )
 
     filters: list[str] = [
         *(f"category:{value}" for value in category or []),
@@ -163,11 +184,19 @@ def stars_cmd(
     if include_archived and "archived" not in basic_fields:
         basic_fields = [*BASIC_STAR_ROW_FIELDS, "archived"]
 
+    display_field_names = (
+        STAR_ROW_FIELDS if include_archived else STAR_ROW_FIELDS - {"archived"}
+    )
+    detailed_fields = (
+        DETAILED_STAR_ROW_FIELDS
+        if include_archived
+        else [field for field in DETAILED_STAR_ROW_FIELDS if field != "archived"]
+    )
     cli._render_records(
         star_rows,
-        field_names=STAR_ROW_FIELDS,
+        field_names=display_field_names,
         basic_fields=basic_fields,
-        detailed_fields=DETAILED_STAR_ROW_FIELDS,
+        detailed_fields=detailed_fields,
         empty_message="No stars synced yet. Run `ghstars sync` first.",
         json_output=json_output,
         fields=fields,

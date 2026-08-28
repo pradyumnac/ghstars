@@ -29,25 +29,39 @@ Use
 .B --debug
 for fetch and pagination details.
 .TP
-.B list
-List locally synced Stars.
+.B stars
+List locally synced Stars with filters, search, sorting, and paging.
 Use
 .B --json
 for structured output.
 Use
 .BI --fields " names"
 to select comma-separated fields.
+Use
+.B --details
+for the detailed field set.
 .TP
-.B lists
+.B github-lists
 List locally synced GitHub Lists with parsed Intent and Category values.
 The command supports
-.B --json
+.B --json ,
+.B --details ,
 and
 .BR --fields .
 .TP
+.B facets
+Show filter values from the local snapshot.
+Use
+.B --json
+for structured output.
+.TP
 .B status
-Report the last sync time, Retriage Queue count, Unclassified count, and offline verification result.
+Report local counts and offline verification results.
 The command never calls GitHub.
+.TP
+.B ratelimit
+Report the live GitHub API rate limit.
+This is the only network call made by this command and it never runs a sync.
 .TP
 .B retriage
 List local edits that lost a GitHub membership conflict.
@@ -64,8 +78,11 @@ when ghstars must create a private List.
 New Lists are public by default.
 .TP
 .BI unstar " OWNER/REPO"
-Unstar a repository on GitHub and mark its local record Archived.
+Unstar one or more explicitly named repositories on GitHub and mark their
+local records Archived.
 This command changes the GitHub account.
+.B --yes
+is required for every target.
 .TP
 .B category rename
 Rename one Category across its Explore, Current, and Retired Lists.
@@ -78,8 +95,10 @@ for new destination Lists.
 .TP
 .B export
 Write configured exports from the local snapshot.
-The command reads
-.IR ~/.ghstars/config/export.toml .
+The command reads the
+.B [export]
+table in
+.IR ~/.ghstars/config/ghstars.toml .
 .TP
 .B diff
 Show changes through the user's Git history under
@@ -110,18 +129,31 @@ TUI configuration.
 See
 .BR ghstars-tui (5).
 .TP
-.I ~/.ghstars/config/export.toml
-Export mappings.
+.I ~/.ghstars/config/ghstars.toml
+Core configuration, including the
+.B [export]
+table.
 .TP
 .I ~/.ghstars/state/
 Local Star, List, Retriage Queue, and TUI state.
 .SH ENVIRONMENT
 .TP
+.B GHSTARS_HOME
+Override the default
+.IR ~/.ghstars/
+state and config directory.
+.TP
 .B GHSTARS_DEBUG=1
 Enable sync debug output.
 .SH EXIT STATUS
-The command returns zero after success.
-It returns nonzero after validation, storage, authentication, or GitHub errors.
+Exit status 0 means success.
+Exit status 1 means a terminal failure.
+Exit status 2 means a Typer usage error.
+Exit status 3 means a retryable failure.
+Exit status 4 means a partial bulk failure.
+The
+.B diff
+command returns Git's exit status.
 .SH SEE ALSO
 .BR ghstars-tui (1),
 .BR ghstars-tui (5),

@@ -13,7 +13,9 @@ from ghstars.cli.errors import (
     CODE_STATE_LOCK_HELD,
     CODE_TAG_PUSH_FAILED,
     EXIT_PARTIAL,
+    EXIT_RETRYABLE,
     EXIT_TERMINAL,
+    RETRYABLE_CODES,
     fail,
 )
 from ghstars.core import (
@@ -69,7 +71,9 @@ def tag_cmd(
 
     if extra_repos:
         full_names = [repo, *extra_repos]
-        outcomes = bulk_tag_stars(client, store, full_names, list_name, is_private=private)
+        outcomes = bulk_tag_stars(
+            client, store, full_names, list_name, is_private=private
+        )
         successes = sum(1 for outcome in outcomes if outcome.error is None)
 
         if json_output:
@@ -92,6 +96,7 @@ def tag_cmd(
                                     else None
                                 ),
                                 "error": outcome.error,
+                                "error_code": outcome.error_code,
                             }
                             for outcome in outcomes
                         ],
@@ -103,12 +108,14 @@ def tag_cmd(
                 if outcome.error is None:
                     typer.echo(f"Tagged {outcome.full_name} into {list_name!r}.")
                 else:
-                    typer.echo(
-                        f"Failed to tag {outcome.full_name}: {outcome.error}"
-                    )
+                    typer.echo(f"Failed to tag {outcome.full_name}: {outcome.error}")
 
         if successes == len(outcomes):
             return
+        if successes == 0 and all(
+            outcome.error_code in RETRYABLE_CODES for outcome in outcomes
+        ):
+            raise typer.Exit(code=EXIT_RETRYABLE)
         raise typer.Exit(code=EXIT_TERMINAL if successes == 0 else EXIT_PARTIAL)
 
     try:

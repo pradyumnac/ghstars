@@ -40,6 +40,7 @@ CODE_NETWORK_FAILURE = "network_failure"
 CODE_INVALID_INPUT = "invalid_input"
 CODE_UNKNOWN_FIELD = "unknown_field"
 CODE_TOOL_UNAVAILABLE = "tool_unavailable"
+CODE_UNEXPECTED_ERROR = "unexpected_error"
 
 RETRYABLE_CODES = frozenset(
     {CODE_RATE_LIMIT_EXCEEDED, CODE_STATE_LOCK_HELD, CODE_NETWORK_FAILURE}

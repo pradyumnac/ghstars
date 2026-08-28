@@ -21,8 +21,7 @@ def diff_cmd(
     log: bool = typer.Option(
         False,
         "--log",
-        help="Show commit history (`git log -p`) instead of the working-tree "
-        "diff.",
+        help="Show commit history (`git log -p`) instead of the working-tree diff.",
     ),
     patch: bool = typer.Option(
         False,

@@ -11,16 +11,16 @@ execution note:
   same commit). Independently re-verified against their acceptance criteria
   on 2026-08-28, not just the ticket's self-report: no gaps, full suite
   passed (373 passed).
-- Scope 1 (discovery surface) — done, 2026-08-28. `ghstars list` now calls
+- Scope 1 (discovery surface) — done, 2026-08-28. `ghstars stars` now calls
   `core.discovery.query_stars()` for every Filter/search/sort/
   `--include-archived`; new `ghstars facets` command wraps
   `core.discovery.available_facets()`. See the ticket's own Scope 1
   checkboxes for the delivered-note detail.
 - Scope 2 (output contract) — done, 2026-08-28. New `FIELD_REGISTRY["star_row"]`
-  entry (`core/fields.py`, `StarRowFields`); `list`/`lists`/`retriage` all
+  entry (`core/fields.py`, `StarRowFields`); `stars`/`github-lists`/`retriage` all
   gained `--details` and now emit one `--json` envelope shape
   (`{"total", "offset", "limit", "rows"}` — Decision 19, a hard break from
-  the old bare array, no deprecation shim); `list` gained `--limit`
+  the old bare array, no deprecation shim); `stars` gained `--limit`
   (default 50, `DEFAULT_LIST_LIMIT`) and `--offset`. Plain-text basic output
   is now an aligned table; `--details` text is a key-value block per record.
   `CONTEXT.md` records the field-set/ticket-14 coupling (Decision 9/18).
@@ -33,7 +33,8 @@ execution note:
   prompt at all, since a tty-gated prompt would fail Scope 0's "works
   without a terminal" criterion, so `--yes` is the whole confirmation
   contract. Bulk JSON is `{"targets", "results": [...]}` with exit `0`/
-  `EXIT_PARTIAL`(4)/`EXIT_TERMINAL`(1) for all-succeeded/mixed/all-failed.
+  `EXIT_PARTIAL`(4), `EXIT_RETRYABLE`(3), or `EXIT_TERMINAL`(1), based on
+  the bulk outcome.
   See the ticket's own Scope 4 checkboxes for the delivered-note detail.
 
 - Scope 5 (operational JSON) — done, 2026-08-28. `StatusReport`
@@ -50,9 +51,8 @@ execution note:
   progress (spinner/`--debug` lines) still goes to stderr only. See the
   ticket's own Scope 5 checkboxes for the delivered-note detail.
 
-Full suite passes (413 passed — 5 new tests from Scope 5, across
-`tests/test_cli_status.py` and `tests/test_cli.py`); `ruff check` and
-`mypy src/` both clean.
+The full suite passes (429 tests), including the CLI contract fixes.
+Ruff and mypy also pass.
 
 - Scope 7 (completion gate) — done, 2026-08-28. `docs/reference/cli.md`
   documents every stable command, option, field set, JSON schema,
@@ -62,8 +62,8 @@ Full suite passes (413 passed — 5 new tests from Scope 5, across
   `bulk_tag_stars`, `bulk_unstar_stars`) — no discrepancy found. The
   flagged command-name clash was resolved: `list` → `stars`, `lists` →
   `github-lists` (both renamed, not one — user's call; ticket 30
-  Decision 26). Full suite (413 passed), `ruff check`, `mypy src/` all
-  clean after the rename. See the ticket's own Scope 7 checkboxes for
+  Decision 26). Full suite, Ruff, and mypy passed after the rename. See the
+  ticket's own Scope 7 checkboxes for
   the delivered-note detail.
 
 Next up per the ticket's sequential execution order: **Scope 0**'s second
@@ -144,9 +144,8 @@ No ticket covers these.
 
 - Do not run a real sync without explicit approval.
 - Do not run a real unstar or List mutation during development.
-- Use an isolated state directory for an approved live test. Override `HOME` to
-  get one; the ghstars home directory is hardcoded until ticket 30 adds
-  `GHSTARS_HOME`.
+- Use an isolated state directory for an approved live test. Set
+  `GHSTARS_HOME` to get one.
 - Keep normal GitHub authentication separate from test state.
 
 ## Checks
@@ -155,4 +154,4 @@ Run focused tests, the full test suite, and diagnostics before handoff.
 
 ## Task rail
 
-_No unfinished Task tool work._
+*No unfinished Task tool work.*

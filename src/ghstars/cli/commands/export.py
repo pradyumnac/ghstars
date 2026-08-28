@@ -13,10 +13,10 @@ from ghstars.core import CoreConfigError, load_core_config, run_export
 def export_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
-    """Write local Stars out to file(s), per the `[export]` table of
+    """Write local Stars out to file(s), per the `\\[export]` table of
     `~/.ghstars/config/ghstars.toml`.
 
-    Generic and config-driven (ticket 10): each entry in `[export]`
+    Generic and config-driven (ticket 10): each entry in `\\[export]`
     maps a List or Category to an output file + format. ghstars ships no
     hardcoded exporter for any particular downstream use case (e.g. a
     `tools.yaml` for a dotfiles pipeline) — those are example config, not

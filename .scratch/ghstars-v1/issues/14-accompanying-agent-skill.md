@@ -17,7 +17,8 @@ question as a follow-up when work starts.
 
 **Status:** ready-for-agent
 
-- [ ] Skill documents the deterministic/agentic division of labor for: sync, tag, retriage, unstar, category rename/drain, status, export, and diff
+- [ ] Skill documents the deterministic/agentic division of labor for sync,
+      tag, retriage, unstar, category rename/drain, status, export, and diff
 - [ ] Skill tells the user about relevant workflow friction as a plain observation
 - [ ] Skill does not persist, deduplicate, or apply observations
 - [ ] Skill structure mirrors the existing `github-stars` skill
@@ -42,7 +43,7 @@ Decisions 1 to 25.
 | `unstar` | Scope 4 | Covered |
 | `status` | Scope 5 | Covered |
 | `diff` | Scope 6 | Covered |
-| `list` | Scopes 1 and 2 | Covered |
+| `stars` | Scopes 1 and 2 | Covered |
 | `facets` | Scope 1 | New command |
 | `retriage` | None needed | Ready before ticket 30 |
 | `category rename` / `drain` | None needed | Ready before ticket 30 |

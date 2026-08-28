@@ -1,3 +1,4 @@
+from filelock import Timeout
 from pydantic import BaseModel
 
 from ghstars.core.github_client import GitHubClient
@@ -181,6 +182,7 @@ class BulkTagOutcome(BaseModel):
     full_name: str
     result: TagResult | None = None
     error: str | None = None
+    error_code: str | None = None
 
 
 def bulk_tag_stars(
@@ -255,18 +257,61 @@ def bulk_tag_stars(
                 lists=lists,
                 node_id=node_ids.get(full_name),
             )
-        except (
-            StarNotFoundError,
-            StarArchivedError,
-            StarListMembershipDriftError,
-            TagPushError,
-            GitHubApiError,
-        ) as exc:
-            outcomes.append(BulkTagOutcome(full_name=full_name, error=str(exc)))
+        except StarNotFoundError as exc:
+            outcomes.append(
+                BulkTagOutcome(
+                    full_name=full_name, error=str(exc), error_code="no_local_record"
+                )
+            )
+            continue
+        except StarArchivedError as exc:
+            outcomes.append(
+                BulkTagOutcome(
+                    full_name=full_name, error=str(exc), error_code="star_archived"
+                )
+            )
+            continue
+        except StarListMembershipDriftError as exc:
+            outcomes.append(
+                BulkTagOutcome(
+                    full_name=full_name,
+                    error=str(exc),
+                    error_code="list_membership_drift",
+                )
+            )
+            continue
+        except TagPushError as exc:
+            outcomes.append(
+                BulkTagOutcome(
+                    full_name=full_name, error=str(exc), error_code="tag_push_failed"
+                )
+            )
+            continue
+        except GitHubApiError as exc:
+            outcomes.append(
+                BulkTagOutcome(
+                    full_name=full_name,
+                    error=str(exc),
+                    error_code="network_failure",
+                )
+            )
+            continue
+        except Timeout as exc:
+            outcomes.append(
+                BulkTagOutcome(
+                    full_name=full_name,
+                    error=str(exc),
+                    error_code="state_lock_held",
+                )
+            )
             continue
         except Exception as exc:  # noqa: BLE001 -- see docstring above
             outcomes.append(
-                BulkTagOutcome(full_name=full_name, error=f"unexpected error: {exc}")
+                BulkTagOutcome(
+                    full_name=full_name,
+                    error=f"unexpected error: {exc}",
+                    error_code="unexpected_error",
+                )
             )
             continue
         lists = result.lists

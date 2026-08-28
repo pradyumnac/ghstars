@@ -1,6 +1,6 @@
 # CLI reference
 
-The stable, deterministic interface ticket 30 built for an agentic caller
+The stable, deterministic interface ticket 30 built for an automated caller
 (a future ticket 14 skill, or any other script). Every command documented
 here calls `ghstars.core` for its logic; the CLI layer only parses
 arguments, calls core, and renders the result. If a future agent skill
@@ -85,6 +85,7 @@ Machine codes:
 | `invalid_input` | no | Bad argument value that Typer's own usage-error path doesn't catch (e.g. an unknown `--sort` mode, a missing `--yes`). |
 | `unknown_field` | no | `--fields` named a field that doesn't exist on the record type. |
 | `tool_unavailable` | no | A required external tool (`git`) is missing or `state/` isn't git-tracked. |
+| `unexpected_error` | no | An unexpected per-target failure occurred during a bulk action. |
 
 ## Output contract
 
@@ -125,9 +126,10 @@ snapshot, and re-run from `--offset 0` after a `sync`.
 | Export row (`export`, config-driven, not `--fields`-selectable at the CLI) | `full_name`, `html_url`, `description` | every `Star` field |
 
 `archived` appears in `stars`' output only when the caller passes
-`--include-archived` (Decision 22) — without the field, an Archived Star
-and an active Star render identically, and an agent could try to `tag` an
-Archived Star and hit `star_archived` with no clue why.
+`--include-archived` (Decision 22). This applies to basic, detailed, and
+explicit field selection. Without the field, an Archived Star and an active
+Star render identically, and an agent could try to `tag` an Archived Star and
+hit `star_archived` with no clue why.
 
 ## Commands
 
@@ -251,13 +253,15 @@ rest. `--json` shape:
   "targets": ["a/b", "c/d"],
   "results": [
     {"full_name": "a/b", "tagged": true, "list_ids": [...], "removed_list_ids": [...], "error": null},
-    {"full_name": "c/d", "tagged": false, "list_ids": null, "removed_list_ids": null, "error": "..."}
+    {"full_name": "c/d", "tagged": false, "list_ids": null, "removed_list_ids": null, "error": "...", "error_code": "no_local_record"}
   ]
 }
 ```
 
+Each failed result includes both its human `error` and machine `error_code`.
 Exit codes: `0` if every target succeeded, `EXIT_PARTIAL` (4) if some
-did and some didn't, `EXIT_TERMINAL` (1) if none did.
+did and some didn't, `EXIT_RETRYABLE` (3) if all failures are retryable,
+and `EXIT_TERMINAL` (1) otherwise.
 
 ### `ghstars unstar REPO`
 
@@ -270,16 +274,15 @@ record Archived (never deleted). A real, visible mutation.
 | `--yes` | — | Confirm. Required, single or bulk (Decision 1). |
 | `--json` | — | Emit JSON. |
 
-Every unstar — single or bulk — requires `--yes`. There is no
-interactive prompt at all: a terminal-gated prompt would not work for a
-non-interactive caller, so `--yes` is the whole confirmation contract.
-Without it, the command fails with `invalid_input` before mutating
-anything, and the failure message lists every target that would have
-been unstarred. Only explicit repository names can select a target — no
-Filter, search term, standard input, or wildcard.
+Every unstar command requires `--yes`. The command does not show an
+interactive prompt. Without `--yes`, it fails with `invalid_input` before
+it mutates anything and lists every target. Only explicit repository names
+can select a target. Filters, search terms, standard input, and wildcards
+cannot select a target.
 
 For more than one target, the command also prints `Targets: a/b, c/d`
 (stdout in text mode, stderr under `--json`) before mutating anything.
+Each failed result includes both its human `error` and machine `error_code`.
 
 **Single target** `--json` success shape:
 
@@ -294,14 +297,15 @@ For more than one target, the command also prints `Targets: a/b, c/d`
   "targets": ["a/b", "c/d"],
   "results": [
     {"full_name": "a/b", "unstarred": true, "archived_locally": true, "error": null},
-    {"full_name": "c/d", "unstarred": false, "archived_locally": null, "error": "..."}
+    {"full_name": "c/d", "unstarred": false, "archived_locally": null, "error": "...", "error_code": "no_local_record"}
   ]
 }
 ```
 
 Exit codes: same rule as `tag` — `0` / `EXIT_PARTIAL` (4) /
-`EXIT_TERMINAL` (1) for the bulk path; single-target failures use the
-`fail()` machine code's own retryable/terminal split.
+`EXIT_RETRYABLE` (3) / `EXIT_TERMINAL` (1) for the bulk path;
+single-target failures use the `fail()` machine code's own retryable/
+terminal split.
 
 ### `ghstars category rename OLD NEW`
 
