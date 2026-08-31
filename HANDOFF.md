@@ -153,6 +153,17 @@ No ticket covers these.
 
 Run focused tests, the full test suite, and diagnostics before handoff.
 
+## Important: review the notes repository split
+
+The notes domain will split into `~/repos/notes_data` and `~/repos/notes_system`. The current
+`pradyumnac/notes` remote will become `pradyumnac/notes-data`. The notes behavior will move to the
+new `pradyumnac/notes-system` repository.
+
+Review this repository's behavior and current status against that split. Check whether any live
+workflow still depends on the old notes path or the old `scripts/gh-stars.py` implementation. Treat
+the reference in `.scratch/ghstars-v1/issues/08-agent-mode-status-command.md` as historical until
+this review decides otherwise. Do not rewrite it before the review.
+
 ## Task rail
 
 *No unfinished Task tool work.*
