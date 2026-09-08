@@ -471,6 +471,43 @@ says whether anything changed; only the output does. A missing/broken
 git binary or an untracked `state/` fails with `tool_unavailable` or
 `invalid_input` instead of running git at all.
 
+### `ghstars doctor`
+
+Check the GitHub account against the taxonomy and report a repair plan.
+Reads live Lists, so it diagnoses the account rather than the last sync.
+
+| Option | Meaning |
+| --- | --- |
+| `--fix` | Create the missing Lists. Requires `--yes` and `--intent`. |
+| `--yes` | Confirms a write. No interactive prompt exists (Scope 0). |
+| `--intent` | Intent for created Lists. One of Explore/Current/Retired/Reference/Learn. |
+| `--force` | Create even while List names need attention. |
+| `--private` | Create private Lists. |
+| `--json` | Emit the plan as JSON. |
+
+It reports two conditions, and never picks a repair for you:
+
+- **malformed** — the name attempts `{Intent}: {Category}` and fails. One
+  repair: rename the List.
+- **unblessed** — the shape is fine but the Category is not in `[taxonomy]`.
+  Two repairs: bless the word, or rename the List.
+
+Either condition blocks `--fix`, because a rename can turn an unblessed
+Category into a blessed one and remove the need to create anything. Pass
+`--force` to create anyway.
+
+`--fix` never renames and never deletes. It only creates, and only for a
+blessed Category that has no List. It refuses without `--intent`, since
+ghstars must not guess an Intent (ticket 03).
+
+`--json` emits a `DoctorReport` (`ok`, `list_count`, `problems`,
+`missing_categories`, `create_blocked`, `blocked_reason`, `created`), not a
+`FIELD_REGISTRY` field set — the same bespoke-report pattern `status` uses.
+The skill layer reads this plan and walks the user through it; the CLI itself
+never prompts.
+
+Exit code is `1` when the account is not `ok` and nothing was created.
+
 ### `ghstars tui`
 
 Launch the interactive TUI. Interactive only — not part of the agent

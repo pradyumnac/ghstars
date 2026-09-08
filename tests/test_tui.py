@@ -1300,9 +1300,7 @@ def test_styled_list_never_invents_an_intent_prefix() -> None:
     from ghstars.tui.config import CATEGORY_COLOURS_DARK
 
     palette = CategoryPalette(muted="#888888", hexes=CATEGORY_COLOURS_DARK)
-    bare = classify_list(
-        List(id="L_1", name="Vendored skills", slug="vendored-skills")
-    )
+    bare = classify_list(List(id="L_1", name="Vendored skills", slug="vendored-skills"))
 
     assert bare.intent == "Reference"  # the parse the renderer must not echo
     assert _styled_list(bare, palette, {}).plain == "Vendored skills"
@@ -1314,9 +1312,7 @@ def test_styled_list_keeps_the_prefix_when_the_name_has_one() -> None:
     from ghstars.tui.config import CATEGORY_COLOURS_DARK
 
     palette = CategoryPalette(muted="#888888", hexes=CATEGORY_COLOURS_DARK)
-    prefixed = classify_list(
-        List(id="L_1", name="Explore: Tool", slug="explore-tool")
-    )
+    prefixed = classify_list(List(id="L_1", name="Explore: Tool", slug="explore-tool"))
 
     assert _styled_list(prefixed, palette, {}).plain == "Explore: Tool"
 

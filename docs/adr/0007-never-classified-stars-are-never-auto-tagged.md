@@ -36,6 +36,14 @@ means the user's own choice to genuinely use `Explore: General` for
 something gets mixed in with stars ghstars parked there without being
 asked.
 
+> **Note (2026-09-09):** the Context above describes `Explore: General` via
+> CONTEXT.md's old "General List" concept — an unprefixed name, outside the
+> taxonomy. ADR 0005 replaced that: a name with no Intent prefix now takes the
+> `Reference` Intent, and `General` is a reserved Category meaning "Intent
+> known, subject undecided". The decision below is unaffected. ghstars still
+> never writes to a List on a Star's behalf, and "Unclassified" is still the
+> derived `list_ids == []` view, not a List.
+
 ## Decision
 
 `sync()` never creates or writes to any List on behalf of a

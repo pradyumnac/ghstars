@@ -123,9 +123,7 @@ def _find_list(lists: list[List], list_name: str) -> List | None:
     )
 
 
-def _check_writable_list_name(
-    list_name: str, categories: Iterable[str] | None
-) -> None:
+def _check_writable_list_name(list_name: str, categories: Iterable[str] | None) -> None:
     """Refuse a name ghstars must not create (ADR 0005). Runs only before
     `create_list`; an existing List is never judged here (ADR 0001).
     """

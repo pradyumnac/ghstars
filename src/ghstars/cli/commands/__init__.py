@@ -13,6 +13,7 @@ that side effect only.
 from ghstars.cli.commands import (  # noqa: F401
     category,
     diff,
+    doctor,
     export,
     facets,
     list_lists,

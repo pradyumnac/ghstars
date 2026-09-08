@@ -66,6 +66,7 @@ warn_unreachable = true
 module = [
   "ghstars.core.category",
   "ghstars.core.config",
+  "ghstars.core.doctor",
   "ghstars.core.export",
   "ghstars.core.fields",
   "ghstars.core.models",
