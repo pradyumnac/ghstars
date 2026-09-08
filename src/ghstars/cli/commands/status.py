@@ -4,6 +4,8 @@ import typer
 
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
+from ghstars.cli.errors import CODE_INVALID_INPUT, fail
+from ghstars.core import CoreConfigError, load_core_config
 from ghstars.core.status import build_status
 
 
@@ -21,7 +23,14 @@ def status_cmd(
     even worth the round trip. Live API rate-limit data is a separate
     call (`ghstars ratelimit`), never folded in here.
     """
-    report = build_status(cli.get_store())
+    # Reading `ghstars.toml` keeps this offline; it is a local file, not an
+    # API call. The vocabulary drives verify's unblessed-Category check.
+    try:
+        categories = load_core_config(cli.get_core_config_path()).taxonomy.categories
+    except CoreConfigError as exc:
+        fail(str(exc), code=CODE_INVALID_INPUT, json_output=json_output)
+
+    report = build_status(cli.get_store(), categories=categories)
 
     if json_output:
         typer.echo(json.dumps(report.model_dump(mode="json")))

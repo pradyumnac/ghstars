@@ -49,6 +49,7 @@ from ghstars.core.discovery import query_stars
 from ghstars.core.fields import FIELD_REGISTRY, select_fields
 from ghstars.core.models import Intent, List, Star
 from ghstars.core.state_store import atomic_write
+from ghstars.core.taxonomy import normalize_category
 
 ExportFormat = Literal["yaml", "json", "csv"]
 
@@ -114,7 +115,10 @@ def _matches(entry: ExportEntry, lst: List) -> bool:
         return False
     if entry.list_name is not None:
         return lst.name == entry.list_name
-    return lst.category == entry.category and (
+    # `lst.category` is normalized (ADR 0005); normalize the configured value
+    # too, so `category = "Dev_Library"` still selects `Explore: Dev_Library`
+    # instead of silently writing an empty file.
+    return lst.category == normalize_category(entry.category or "") and (
         entry.intent is None or lst.intent == entry.intent
     )
 

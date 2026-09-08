@@ -22,6 +22,27 @@ same change (see `CONTEXT.md`, "CLI field-set stability").
 config. Unset, it defaults to `~/.ghstars/`. Set it to an isolated
 directory for a live-account test or an agent sandbox run (Decision 10).
 
+## The `[taxonomy]` table
+
+`~/.ghstars/config/ghstars.toml` holds the blessed Category vocabulary
+(ADR 0005). Adding a Category is an edit here, never a release.
+
+```toml
+[taxonomy]
+categories = ["Tool", "Library", "Example", "AI Agents", "General"]
+```
+
+A missing file means every default applies, so the built-in vocabulary is
+used. `categories = []` is not the same thing: it blesses nothing, so
+`verify` reports every Category.
+
+A Category outside the list is never rejected. `ghstars status` reports it,
+and the List keeps working, because GitHub is the source of truth
+(ADR 0001). The one place the list is enforced is `ghstars tag`, which
+refuses to *create* an unblessed Category — ghstars never writes a name it
+cannot parse. An underscore reads as a space, so `AI_Agents` and
+`AI Agents` are one value, both in this file and in a List name.
+
 ## Global conventions
 
 - **`--json`** on any command restricts standard out to exactly one JSON
@@ -79,6 +100,7 @@ Machine codes:
 | `star_archived` | no | Target Star is Archived (unstarred) locally. |
 | `list_membership_drift` | no | GitHub's live List membership for the target has diverged from local state since the last sync. |
 | `tag_push_failed` | no | The List mutation itself failed on GitHub's side. |
+| `unwritable_list_name` | no | `tag` would have created a List whose name is malformed, or whose Category is outside the `[taxonomy]` table of `ghstars.toml`. Nothing was created. A name that already exists on GitHub is never refused this way. |
 | `rate_limit_exceeded` | yes | GitHub API rate limit hit before the call could complete. |
 | `state_lock_held` | yes | Another `ghstars` process holds the local state lock. |
 | `network_failure` | yes | A GitHub API call failed for a network/transport reason. |

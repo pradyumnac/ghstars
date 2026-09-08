@@ -1293,6 +1293,47 @@ async def test_ascii_only_replaces_glyphs_with_text_markers(
     assert "\U0001f512" not in detail
 
 
+def test_styled_list_never_invents_an_intent_prefix() -> None:
+    """A bare name parses to the `Reference` Intent since ADR 0005, so the
+    renderer must show GitHub's own name, not a rebuilt label.
+    """
+    from ghstars.core.taxonomy import classify_list
+    from ghstars.tui.app import CategoryPalette, _styled_list
+    from ghstars.tui.config import CATEGORY_COLOURS_DARK
+
+    palette = CategoryPalette(muted="#888888", hexes=CATEGORY_COLOURS_DARK)
+    bare = classify_list(
+        List(id="L_1", name="Vendored skills", slug="vendored-skills")
+    )
+
+    assert bare.intent == "Reference"  # the parse the renderer must not echo
+    assert _styled_list(bare, palette, {}).plain == "Vendored skills"
+
+
+def test_styled_list_keeps_the_prefix_when_the_name_has_one() -> None:
+    from ghstars.core.taxonomy import classify_list
+    from ghstars.tui.app import CategoryPalette, _styled_list
+    from ghstars.tui.config import CATEGORY_COLOURS_DARK
+
+    palette = CategoryPalette(muted="#888888", hexes=CATEGORY_COLOURS_DARK)
+    prefixed = classify_list(
+        List(id="L_1", name="Explore: Tool", slug="explore-tool")
+    )
+
+    assert _styled_list(prefixed, palette, {}).plain == "Explore: Tool"
+
+
+def test_membership_chip_never_invents_an_intent_prefix() -> None:
+    from ghstars.core.taxonomy import classify_list
+    from ghstars.tui.app import CategoryPalette, _membership_chip
+    from ghstars.tui.config import CATEGORY_COLOURS_DARK
+
+    palette = CategoryPalette(muted="#888888", hexes=CATEGORY_COLOURS_DARK)
+    bare = classify_list(List(id="L_1", name="AI_Agents", slug="ai-agents"))
+
+    assert "Reference" not in _membership_chip(bare, palette, {}).plain
+
+
 async def test_ascii_only_replaces_membership_chip_glyphs(
     tmp_path: Path, make_star: StarFactory
 ) -> None:

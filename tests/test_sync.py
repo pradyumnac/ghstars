@@ -133,8 +133,10 @@ def test_sync_fetches_and_classifies_lists(tmp_path: Path) -> None:
     assert saved["L_1"].category == "Tool"
     assert saved["L_1"].malformed is False
 
-    assert saved["L_2"].intent is None
-    assert saved["L_2"].category is None
+    # No Intent prefix means the Reference Intent, with the whole name as the
+    # Category (ADR 0005). Only a malformed name is left without an Intent.
+    assert saved["L_2"].intent == "Reference"
+    assert saved["L_2"].category == "Vendored skills"
     assert saved["L_2"].malformed is False
 
     assert saved["L_3"].intent is None

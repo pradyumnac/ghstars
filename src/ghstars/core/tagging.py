@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from filelock import Timeout
 from pydantic import BaseModel
 
@@ -5,7 +7,12 @@ from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import List, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import apply_membership_diff
-from ghstars.core.taxonomy import classify_list, strip_lifecycle_siblings
+from ghstars.core.taxonomy import (
+    blessed_categories,
+    classify_list,
+    parse_list_name,
+    strip_lifecycle_siblings,
+)
 from ghstars.github import GitHubApiError
 
 # An optional Lists snapshot avoids redundant live fetches during bulk tagging.
@@ -44,6 +51,27 @@ class StarListMembershipDriftError(Exception):
         )
 
 
+class UnwritableListNameError(Exception):
+    """`ghstars tag` would have created a List whose name ghstars must
+    not write (ADR 0005).
+
+    ghstars never *produces* a name it cannot parse. Ticket 07 already
+    holds `category rename` and `category drain` to this rule, because
+    both build a name from an Intent word, `: `, and the user's text.
+    `tag_star` takes the raw name from the user, so it is the one write
+    path that can still produce a bad one.
+
+    A name that already exists on GitHub is a different case entirely:
+    ghstars keeps it and reports it, because ADR 0001 makes GitHub the
+    source of truth. This error fires only before a `create_list` call.
+    """
+
+    def __init__(self, list_name: str, reason: str) -> None:
+        self.list_name = list_name
+        self.reason = reason
+        super().__init__(f"cannot create List {list_name!r}: {reason}")
+
+
 class TagPushError(Exception):
     """The immediate push to GitHub failed (network/API error, or the
     target List was deleted concurrently) — not a conflict.
@@ -78,6 +106,60 @@ class TagResult(BaseModel):
     lists: list[List] = []
 
 
+def _find_list(lists: list[List], list_name: str) -> List | None:
+    """Find the List that `list_name` names, by exact name or by identity.
+
+    An exact name match wins. Failing that, a List parsing to the same
+    Intent and Category is the same List under a different spelling --
+    `Explore: AI_Agents` and `Explore: AI Agents` name one Category
+    (ADR 0005). Reusing it stops `tag` creating a duplicate that `verify`
+    cannot flag, because both spellings are blessed.
+    """
+    exact = next((item for item in lists if item.name == list_name), None)
+    if exact is not None:
+        return exact
+
+    wanted = parse_list_name(list_name)
+    if wanted.malformed or wanted.category is None:
+        return None
+    return next(
+        (
+            item
+            for item in lists
+            if not item.malformed
+            and item.intent == wanted.intent
+            and item.category == wanted.category
+        ),
+        None,
+    )
+
+
+def _check_writable_list_name(
+    list_name: str, categories: Iterable[str] | None
+) -> None:
+    """Refuse a name ghstars must not create (ADR 0005).
+
+    Runs only before `create_list`. An existing List is never judged
+    here -- ADR 0001 keeps GitHub the source of truth, so a name already
+    on GitHub is kept and reported by `verify` instead.
+    """
+    parsed = parse_list_name(list_name)
+    if parsed.malformed:
+        raise UnwritableListNameError(
+            list_name,
+            "the name attempts the '{Intent}: {Category}' pattern and does not "
+            "match it",
+        )
+    if categories is None or parsed.category is None:
+        return
+    if parsed.category not in blessed_categories(categories):
+        raise UnwritableListNameError(
+            list_name,
+            f"Category {parsed.category!r} is not in the [taxonomy] table of "
+            "ghstars.toml -- add it there, or use a blessed Category",
+        )
+
+
 def tag_star(
     client: GitHubClient,
     store: StateStore,
@@ -87,6 +169,7 @@ def tag_star(
     is_private: bool = False,
     lists: list[List] | None = None,
     node_id: str | None = None,
+    categories: Iterable[str] | None = None,
 ) -> TagResult:
     """Add `full_name` to `list_name`, then push the change to GitHub.
 
@@ -99,10 +182,17 @@ def tag_star(
     result. Push nothing and write nothing. The user must run `ghstars
     sync` first, then retry.
 
+    Raise `UnwritableListNameError` when the List does not exist and its
+    name is one ghstars must not create: a malformed name, or a Category
+    outside `categories` (ADR 0005). An *existing* List is never judged
+    this way. Create nothing and write nothing.
+
     Strip a sibling List when the target List's intent is Explore,
     Current, or Retired. A sibling holds the same Category under one of
     the other two intents. This makes a Current-to-Retired move one
-    call (spec stories 16 and 17).
+    call (spec stories 16 and 17). This strip stays per-Category on
+    purpose: a per-Star strip would delete the membership that holds a
+    Star's second subject.
 
     Raise `TagPushError` when the push fails, and write no local state.
     Update `stars.json` and `lists.json` only after the push succeeds.
@@ -131,8 +221,9 @@ def tag_star(
             classify_list(lst)
             for lst in (lists if lists is not None else client.fetch_lists())
         ]
-        lst = next((item for item in lists if item.name == list_name), None)
+        lst = _find_list(lists, list_name)
         if lst is None:
+            _check_writable_list_name(list_name, categories)
             lst = classify_list(client.create_list(list_name, is_private=is_private))
             lists = [*lists, lst]
             # Save newly created Lists before later validation or push steps.
@@ -192,6 +283,7 @@ def bulk_tag_stars(
     list_name: str,
     *,
     is_private: bool = False,
+    categories: Iterable[str] | None = None,
 ) -> list[BulkTagOutcome]:
     """Tag every repo in `full_names` into `list_name`, one `tag_star()`
     call per repo, isolating each repo's failure from the others.
@@ -256,7 +348,18 @@ def bulk_tag_stars(
                 is_private=is_private,
                 lists=lists,
                 node_id=node_ids.get(full_name),
+                categories=categories,
             )
+        except UnwritableListNameError as exc:
+            # The name is wrong for every target, so each one reports it.
+            outcomes.append(
+                BulkTagOutcome(
+                    full_name=full_name,
+                    error=str(exc),
+                    error_code="unwritable_list_name",
+                )
+            )
+            continue
         except StarNotFoundError as exc:
             outcomes.append(
                 BulkTagOutcome(

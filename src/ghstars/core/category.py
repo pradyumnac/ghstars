@@ -8,11 +8,15 @@ lifecycle Intent -- Explore stays Explore, Current stays Current,
 Retired stays Retired. Neither command ever crosses Intents; that stays
 `ghstars tag`'s job, one Star at a time.
 
-Both commands are scoped to CONTEXT.md's Category vocabulary
-specifically -- Explore/Current/Retired Lists only. Reference Lists use
-"Topic" for their after-colon label (CONTEXT.md), a different concept;
-General Lists (`intent=None`) have no Category at all. Neither command
-touches either.
+Both commands filter on the lifecycle Intents -- Explore/Current/Retired
+Lists only. A `Reference` or `Learn` List carries a Category like any
+other (ADR 0005), but neither command touches one, because neither
+Intent has a lifecycle to move a Star through.
+
+That filter is by Intent, not by "has a Category". This matters since
+ADR 0005: a name with no Intent prefix now takes the `Reference` Intent
+and its whole name as the Category, so such a List has a Category and
+is still correctly skipped here.
 
 Design constraint, added to ticket 07's own acceptance criteria during
 ticket 17's review: both commands fetch fresh GitHub state right before

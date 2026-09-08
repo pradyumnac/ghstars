@@ -60,6 +60,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from ghstars.core.models import List, Star
+from ghstars.core.taxonomy import normalize_category
 
 # -- recency ------------------------------------------------------------------
 
@@ -151,7 +152,10 @@ def _apply_one_filter(
     if filter_key == "followed":
         return [star for star in stars if star.follow]
     if filter_key.startswith("category:"):
-        category = filter_key.removeprefix("category:")
+        # Stored Categories are normalized (ADR 0005), so normalize the user's
+        # value too. Without this, `--category Dev_Library` matches nothing
+        # once `Explore: Dev_Library` has stored the Category `Dev Library`.
+        category = normalize_category(filter_key.removeprefix("category:"))
         ids = {lst.id for lst in lists if lst.category == category}
         return [star for star in stars if set(star.list_ids) & ids]
     if filter_key.startswith("intent:"):

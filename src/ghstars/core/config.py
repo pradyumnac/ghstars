@@ -28,9 +28,10 @@ every default applies, never an error. ghstars never writes into
 import tomllib
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ghstars.core.export import ExportConfig
+from ghstars.core.taxonomy import DEFAULT_CATEGORIES
 
 
 class CoreConfigError(Exception):
@@ -45,12 +46,39 @@ class CoreConfigError(Exception):
     """
 
 
+class TaxonomyConfig(BaseModel):
+    """`[taxonomy]` -- the blessed Category vocabulary (ADR 0005).
+
+    Adding a Category is a text edit here, never a release. That is the
+    whole point of putting the vocabulary in config: the user names a
+    List on GitHub first, then blesses the word, and no code changes.
+
+    A Category outside this list is never rejected. `verify` reports it,
+    and the List keeps working (ADR 0001 -- GitHub is the source of
+    truth). `List.malformed` is a different condition entirely; it means
+    the *name shape* is wrong, which only a rename repairs.
+
+    `DEFAULT_CATEGORIES` applies when `ghstars.toml` is absent, the same
+    rule every other tier follows (ADR 0009). Setting `categories = []`
+    is not the same as omitting the table: an empty list blesses
+    nothing, so `verify` reports every Category.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    categories: list[str] = Field(default_factory=lambda: sorted(DEFAULT_CATEGORIES))
+
+
 class CoreConfig(BaseModel):
     """`ghstars.toml`'s schema. One table per core-tier concern.
 
     `export` reuses `ExportConfig` unchanged (ticket 10's schema) --
     ticket 32 only moved *where* it loads from, nesting it under the
     `[export]` table instead of its own `export.toml`.
+
+    `taxonomy` holds the Category vocabulary (ADR 0005). It is core-tier
+    under ADR 0009's rule: `core.taxonomy`, `core.discovery` and
+    `core.category` all read it, not just one interface.
 
     `extra="forbid"`, same as `TuiConfig`: an unknown top-level table is
     a typo, not a future extension point, and should surface at load
@@ -60,6 +88,7 @@ class CoreConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     export: ExportConfig = ExportConfig()
+    taxonomy: TaxonomyConfig = TaxonomyConfig()
 
 
 def load_core_config(path: Path) -> CoreConfig:

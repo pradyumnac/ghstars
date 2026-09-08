@@ -11,6 +11,7 @@ from ghstars.core.tagging import (
     StarListMembershipDriftError,
     StarNotFoundError,
     TagPushError,
+    UnwritableListNameError,
     bulk_tag_stars,
     tag_star,
 )
@@ -456,3 +457,113 @@ def test_bulk_tag_stars_skips_the_batch_lookup_for_a_single_target(
     assert client.batch_lookup_calls == []
     assert outcomes[0].result is not None
     assert outcomes[0].result.star.list_ids == ["L_target"]
+
+
+def test_tag_star_refuses_to_create_a_malformed_list_name(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """ghstars never *produces* a name it cannot parse (ADR 0005, ticket 07)."""
+    star = make_star("example-owner/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    client = FakeGitHubClient(stars=[star])
+
+    with pytest.raises(UnwritableListNameError):
+        tag_star(client, store, "example-owner/ghstars", "Exploring: Foo")
+
+    assert client.fetch_lists() == []
+    assert store.load_stars()[0].list_ids == []
+
+
+def test_tag_star_refuses_to_create_an_unblessed_category(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("example-owner/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    client = FakeGitHubClient(stars=[star])
+
+    with pytest.raises(UnwritableListNameError) as excinfo:
+        tag_star(
+            client,
+            store,
+            "example-owner/ghstars",
+            "Explore: Wombat",
+            categories=["Tool", "General"],
+        )
+
+    assert "Wombat" in str(excinfo.value)
+    assert client.fetch_lists() == []
+
+
+def test_tag_star_creates_a_blessed_category(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("example-owner/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    client = FakeGitHubClient(stars=[star])
+
+    result = tag_star(
+        client,
+        store,
+        "example-owner/ghstars",
+        "Explore: Tool",
+        categories=["Tool", "General"],
+    )
+
+    assert client.fetch_lists()[0].name == "Explore: Tool"
+    assert result.star.list_ids == [client.fetch_lists()[0].id]
+
+
+def test_tag_star_reuses_a_list_whose_category_matches_after_normalizing(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """`Explore: AI_Agents` and `Explore: AI Agents` name one Category, so
+    tagging the first must not create a duplicate of the second (ADR 0005).
+    """
+    star = make_star("example-owner/ghstars")
+    existing = List(
+        id="L_1",
+        name="Explore: AI Agents",
+        slug="explore-ai-agents",
+        intent="Explore",
+        category="AI Agents",
+    )
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    client = FakeGitHubClient(stars=[star], lists=[existing])
+
+    result = tag_star(
+        client,
+        store,
+        "example-owner/ghstars",
+        "Explore: AI_Agents",
+        categories=["AI Agents"],
+    )
+
+    assert len(client.fetch_lists()) == 1
+    assert result.star.list_ids == ["L_1"]
+
+
+def test_tag_star_never_judges_a_list_that_already_exists(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """ADR 0001 keeps GitHub the source of truth. An unblessed name already
+    on GitHub is kept and reported by `verify`, never refused here.
+    """
+    star = make_star("example-owner/ghstars")
+    existing = List(id="L_1", name="Explore: Wombat", slug="explore-wombat")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    client = FakeGitHubClient(stars=[star], lists=[existing])
+
+    result = tag_star(
+        client,
+        store,
+        "example-owner/ghstars",
+        "Explore: Wombat",
+        categories=["Tool", "General"],
+    )
+
+    assert result.star.list_ids == ["L_1"]

@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 import ghstars.cli as cli_module
 from ghstars.cli import app
-from ghstars.core.models import List, RetriageEntry, Star
+from ghstars.core.models import Intent, List, RetriageEntry, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.status import build_status, verify_state
 
@@ -202,6 +202,81 @@ def test_verify_state_passes_on_clean_state() -> None:
     star = _star("example-owner/x", list_ids=["L_1"])
 
     assert verify_state([star], [lst]) == []
+
+
+def _classified(list_id: str, name: str, intent: Intent, category: str) -> List:
+    return List(
+        id=list_id,
+        name=name,
+        slug=name.lower().replace(": ", "-").replace(" ", "-"),
+        intent=intent,
+        category=category,
+    )
+
+
+def test_verify_state_flags_an_unblessed_category() -> None:
+    """An unblessed Category is reported, never rejected -- and it is a
+    different condition from `List.malformed` (ADR 0005).
+    """
+    lst = _classified("L_1", "Explore: Tool - Dev", "Explore", "Tool - Dev")
+
+    problems = verify_state([], [lst], categories=["Tool", "General"])
+
+    assert any("unblessed Category 'Tool - Dev'" in p for p in problems)
+    # The name shape is fine; only the value is unblessed.
+    assert lst.malformed is False
+
+
+def test_verify_state_accepts_a_blessed_category() -> None:
+    lst = _classified("L_1", "Explore: Tool", "Explore", "Tool")
+
+    assert verify_state([], [lst], categories=["Tool", "General"]) == []
+
+
+def test_verify_state_skips_the_vocabulary_check_without_categories() -> None:
+    """A caller with no config keeps the structural checks alone."""
+    lst = _classified("L_1", "Explore: Wombat", "Explore", "Wombat")
+
+    assert verify_state([], [lst]) == []
+
+
+def test_verify_state_flags_a_star_in_the_triage_inbox_and_a_classified_list() -> None:
+    inbox = _classified("L_1", "Explore: General", "Explore", "General")
+    classified = _classified("L_2", "Explore: Tool", "Explore", "Tool")
+    star = _star("example-owner/x", list_ids=["L_1", "L_2"])
+
+    problems = verify_state([star], [inbox, classified])
+
+    assert any("triage inbox" in p for p in problems)
+
+
+def test_verify_state_allows_a_star_in_the_triage_inbox_alone() -> None:
+    inbox = _classified("L_1", "Explore: General", "Explore", "General")
+    star = _star("example-owner/x", list_ids=["L_1"])
+
+    assert verify_state([star], [inbox]) == []
+
+
+def test_verify_state_flags_two_lifecycle_intents_on_one_star() -> None:
+    """At most one of Explore/Current/Retired applies across all of a
+    Star's Lists (ADR 0005). Reported, never blocked.
+    """
+    current = _classified("L_1", "Current: Tool", "Current", "Tool")
+    explore = _classified("L_2", "Explore: AI Agents", "Explore", "AI Agents")
+    star = _star("example-owner/x", list_ids=["L_1", "L_2"])
+
+    problems = verify_state([star], [current, explore])
+
+    assert any("two lifecycle Intents" in p for p in problems)
+
+
+def test_verify_state_allows_a_lifecycle_intent_beside_reference_and_learn() -> None:
+    current = _classified("L_1", "Current: Tool", "Current", "Tool")
+    reference = _classified("L_2", "Reference: AI Agents", "Reference", "AI Agents")
+    learn = _classified("L_3", "Learn: Example", "Learn", "Example")
+    star = _star("example-owner/x", list_ids=["L_1", "L_2", "L_3"])
+
+    assert verify_state([star], [current, reference, learn]) == []
 
 
 def test_build_status_handles_a_completely_empty_store(

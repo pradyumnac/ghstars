@@ -1,6 +1,24 @@
+import re
 import uuid
 
 from ghstars.core.models import List, RateLimitStatus, Star
+
+_NON_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+def github_slug(name: str) -> str:
+    """Reproduce GitHub's own slug rule for a List name.
+
+    Verified against the live account on 2026-09-09, over all 11 Lists:
+    lower-case the name, replace each run of characters outside `a-z0-9`
+    with one dash, then trim the ends. `Explore: Tool - Dev` gives
+    `explore-tool-dev`, and `AI_Agents` gives `ai-agents`.
+
+    The earlier rule here diverged on 6 of those 11 names, because it
+    replaced each space separately and left underscores alone, producing
+    `explore-tool---dev` and `ai_agents`.
+    """
+    return _NON_SLUG.sub("-", name.lower()).strip("-")
 
 
 class FakeGitHubClient:
@@ -35,7 +53,7 @@ class FakeGitHubClient:
         created = List(
             id=list_id,
             name=name,
-            slug=name.lower().replace(" ", "-").replace(":", ""),
+            slug=github_slug(name),
             description=description,
             is_private=is_private,
         )

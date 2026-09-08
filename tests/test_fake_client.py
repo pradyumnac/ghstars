@@ -1,7 +1,7 @@
 import pytest
 from conftest import StarFactory
 
-from ghstars.core.fake_client import FakeGitHubClient
+from ghstars.core.fake_client import FakeGitHubClient, github_slug
 from ghstars.core.models import List
 
 
@@ -111,3 +111,36 @@ def test_check_rate_limit_ok_by_default() -> None:
     client = FakeGitHubClient()
     status = client.check_rate_limit()
     assert status.ok is True
+
+
+@pytest.mark.parametrize(
+    ("name", "slug"),
+    [
+        # Every pair verified against the live account on 2026-09-09.
+        ("Explore: Tool - Dev", "explore-tool-dev"),
+        ("Explore: Dev_Library", "explore-dev-library"),
+        ("Explore: Tool - CLI", "explore-tool-cli"),
+        ("Explore:  Skills", "explore-skills"),
+        ("AI_Agents", "ai-agents"),
+        ("ML_Research", "ml-research"),
+        ("Learning", "learning"),
+        ("Explore: Tool", "explore-tool"),
+        ("Reference: General", "reference-general"),
+        ("Skills", "skills"),
+        ("Explore: General", "explore-general"),
+    ],
+)
+def test_github_slug_matches_the_real_github_rule(name: str, slug: str) -> None:
+    """The previous rule diverged on 6 of these 11 real names: it replaced
+    each space separately and left underscores alone, so `Explore: Tool - Dev`
+    became `explore-tool---dev` and `AI_Agents` became `ai_agents`.
+    """
+    assert github_slug(name) == slug
+
+
+def test_create_list_uses_the_real_slug_rule() -> None:
+    client = FakeGitHubClient()
+
+    created = client.create_list("Explore: Tool - Dev")
+
+    assert created.slug == "explore-tool-dev"

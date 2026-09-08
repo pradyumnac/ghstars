@@ -6,12 +6,14 @@ from filelock import Timeout
 from ghstars import cli
 from ghstars.cli import app  # imported by name for mypy; see commands/sync.py
 from ghstars.cli.errors import (
+    CODE_INVALID_INPUT,
     CODE_LIST_MEMBERSHIP_DRIFT,
     CODE_NETWORK_FAILURE,
     CODE_NO_LOCAL_RECORD,
     CODE_STAR_ARCHIVED,
     CODE_STATE_LOCK_HELD,
     CODE_TAG_PUSH_FAILED,
+    CODE_UNWRITABLE_LIST_NAME,
     EXIT_PARTIAL,
     EXIT_RETRYABLE,
     EXIT_TERMINAL,
@@ -19,11 +21,14 @@ from ghstars.cli.errors import (
     fail,
 )
 from ghstars.core import (
+    CoreConfigError,
     StarArchivedError,
     StarListMembershipDriftError,
     StarNotFoundError,
     TagPushError,
+    UnwritableListNameError,
     bulk_tag_stars,
+    load_core_config,
     tag_star,
 )
 from ghstars.github import GitHubApiError
@@ -69,10 +74,22 @@ def tag_cmd(
     client = cli.get_client()
     store = cli.get_store()
 
+    # The vocabulary guards what ghstars *creates*; it never judges a List
+    # that already exists on GitHub (ADR 0001/0005).
+    try:
+        categories = load_core_config(cli.get_core_config_path()).taxonomy.categories
+    except CoreConfigError as exc:
+        fail(str(exc), code=CODE_INVALID_INPUT, json_output=json_output)
+
     if extra_repos:
         full_names = [repo, *extra_repos]
         outcomes = bulk_tag_stars(
-            client, store, full_names, list_name, is_private=private
+            client,
+            store,
+            full_names,
+            list_name,
+            is_private=private,
+            categories=categories,
         )
         successes = sum(1 for outcome in outcomes if outcome.error is None)
 
@@ -119,7 +136,15 @@ def tag_cmd(
         raise typer.Exit(code=EXIT_TERMINAL if successes == 0 else EXIT_PARTIAL)
 
     try:
-        result = tag_star(client, store, repo, list_name, is_private=private)
+        result = tag_star(
+            client, store, repo, list_name, is_private=private, categories=categories
+        )
+    except UnwritableListNameError as exc:
+        fail(
+            str(exc),
+            code=CODE_UNWRITABLE_LIST_NAME,
+            json_output=json_output,
+        )
     except StarNotFoundError:
         fail(
             f"no local record for {repo!r}. Run `ghstars sync` first.",

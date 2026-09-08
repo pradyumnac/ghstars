@@ -81,16 +81,45 @@ name becomes the Category. Every List has an Intent.
 A Star holds at most one lifecycle Intent across all of its Lists. `Reference`
 and `Learn` have no limit.
 
-This rule is stricter than the released code. `strip_lifecycle_siblings`
-applies the rule per Category today. It must apply the rule per Star.
+`verify` reports a Star that breaks this rule. No command blocks on it.
 
-### A lifecycle conflict fails the command
+Ticket 03 sets the pattern: ghstars flags a taxonomy problem for the user to
+resolve, and never guesses. The user resolves a conflict with a rename or a
+tag, because only the user knows which Intent is correct.
 
-`tag` must refuse a tag that breaks the rule. The error names the List that
-conflicts. `tag` removes no membership.
+`strip_lifecycle_siblings` does not change. It keeps its per-Category scope.
+That scope is what makes a `Current` to `Retired` move one call, which spec
+stories 3, 16 and 17 require. A per-Star scope would instead delete the
+membership that holds a second subject.
 
-Automatic removal is wrong here. A conflicting List can hold the only record of
-a subject, so a silent removal loses data, not only an Intent.
+### ghstars never writes a name it cannot parse
+
+`tag` must refuse to create a List when the name is malformed, or when the
+Category is outside the vocabulary. The error names the problem. `tag` writes
+nothing and removes no membership.
+
+Ticket 07 already applies this rule to `category rename` and `category drain`:
+both build a name from an Intent word, `: `, and the user's text, so neither
+can produce a malformed name. `tag_star` takes the raw name from the user and
+passes it to `create_list`, so `tag` is the one write path that can still
+produce one.
+
+A name that already exists on GitHub is different. ghstars keeps it and reports
+it. ADR 0001 makes GitHub the source of truth, so ghstars never rejects what it
+reads.
+
+### `malformed` keeps its ticket 03 meaning
+
+`List.malformed` means that the name attempts the Intent-prefix pattern and
+fails, for example `Exploring: Foo`. It does not mean that the Category is
+outside the vocabulary.
+
+The two conditions need different repairs. A malformed name has one repair, a
+rename. An unblessed Category has two: a rename, or a new entry in
+`ghstars.toml`.
+
+`verify` reports an unblessed Category. The `List` model gains no field, so the
+CLI field sets do not change and ticket 14 keeps its contract.
 
 ### The Category vocabulary lives in config
 
@@ -131,13 +160,23 @@ time. `verify` must report a Star that breaks this rule.
 
 - `parse_list_name` gains the normalization step and the missing-prefix rule.
   `ParsedListName` keeps its shape.
-- `strip_lifecycle_siblings` changes scope from the Category to the Star.
-  Its callers in `core.tagging` and `core.category` change with it.
-- `tag` gains a refusal path and a new error code. Existing tests that expect a
-  silent strip need review.
+- `strip_lifecycle_siblings` does not change. `core.tagging` and
+  `core.category` keep their current behaviour, and their tests keep passing.
+- `tag` gains a refusal path and a new error code. It refuses a name it cannot
+  parse, and a Category outside the vocabulary. It does not refuse a lifecycle
+  conflict.
 - `core.config.CoreConfig` gains a `[taxonomy]` table beside `[export]`.
-- `verify` gains two checks: an unblessed Category, and a Star in the triage
-  inbox beside a classified List.
+- `verify` gains three checks: an unblessed Category, a Star in the triage
+  inbox beside a classified List, and a Star with two lifecycle Intents.
+  Only the first needs the vocabulary, so `verify_state` gains an optional
+  argument that skips that one check. The other two always run.
+- `verify_ok` widens in meaning. It covered corruption alone. It now also
+  covers taxonomy drift, so a structurally clean account can report a
+  problem. Any reader of `verify_ok` must expect that.
+- `ghstars stars --category` and an `[export]` entry's `category` normalize
+  the user's value, so `Dev_Library` still matches the stored `Dev Library`.
+- `tag` reuses a List that parses to the same Intent and Category under a
+  different spelling, instead of creating a duplicate.
 - `export`'s `category` matcher keeps one axis. It does not change.
 - The TUI Filter keeps one Category field. It does not become two filters.
 - Six List names on GitHub flag as `malformed` after the next synchronization.

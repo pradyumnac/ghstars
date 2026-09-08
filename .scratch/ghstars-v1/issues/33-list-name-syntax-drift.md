@@ -5,8 +5,9 @@ a syntax that the repo does not model. This ticket records the measured
 difference and the direction decision. It does not hold the implementation
 plan.
 
-**Status:** ready-for-agent — design settled 2026-09-09, ADR 0005 rewritten,
-`CONTEXT.md` and `spec.md` updated. The work list is at the end of this file.
+**Status:** ready-for-human — the code landed on 2026-09-09. Two steps remain,
+and both need the user: run `ghstars sync`, then rename the flagged Lists on
+GitHub in one approved batch. See "Work to do" and "Deferred".
 
 **Blocked by:** None.
 
@@ -299,6 +300,13 @@ holds the terms. `spec.md` holds the stories.
 Ship the code before the synchronization. The local store holds the old names,
 and a synchronization under today's parser loses the `ML Research` Category
 until the code lands.
+
+Items 1 to 7 landed on 2026-09-09. Item 8 waits for the user.
+
+`ghstars status` under-reports until item 8 runs. `lists.json` still holds
+`intent = null` and `category = null` for every bare name, because the older
+parser wrote it. The triage-inbox check and the lifecycle check cannot see
+those Lists until a synchronization rewrites the file.
 
 1. `core/models.py` — add `Learn` to the `Intent` literal.
 2. `core/taxonomy.py` — add the normalization steps, the missing-prefix rule

@@ -10,6 +10,7 @@ import pytest
 import ghstars.cli.deps as deps_module
 from ghstars.core.config import CoreConfig, CoreConfigError, load_core_config
 from ghstars.core.export import ExportConfig
+from ghstars.core.taxonomy import DEFAULT_CATEGORIES
 
 # --- load_core_config ---------------------------------------------------
 
@@ -165,3 +166,38 @@ def test_get_tui_config_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     monkeypatch.setattr(deps_module, "DEFAULT_GHSTARS_HOME", tmp_path)
 
     assert deps_module.get_tui_config_path() == tmp_path / "config" / "tui.toml"
+
+
+def test_missing_file_ships_the_default_category_vocabulary(tmp_path: Path) -> None:
+    """ADR 0009: a missing file means every default applies."""
+    config = load_core_config(tmp_path / "ghstars.toml")
+
+    assert set(config.taxonomy.categories) == DEFAULT_CATEGORIES
+
+
+def test_load_core_config_parses_the_taxonomy_table(tmp_path: Path) -> None:
+    """Adding a Category is a text edit here, never a release (ADR 0005)."""
+    path = tmp_path / "ghstars.toml"
+    path.write_text('[taxonomy]\ncategories = ["Tool", "Wombat"]\n')
+
+    config = load_core_config(path)
+
+    assert config.taxonomy.categories == ["Tool", "Wombat"]
+
+
+def test_an_empty_category_list_is_not_the_same_as_an_absent_table(
+    tmp_path: Path,
+) -> None:
+    """`categories = []` blesses nothing, so verify reports every Category."""
+    path = tmp_path / "ghstars.toml"
+    path.write_text("[taxonomy]\ncategories = []\n")
+
+    assert load_core_config(path).taxonomy.categories == []
+
+
+def test_load_core_config_rejects_an_unknown_taxonomy_key(tmp_path: Path) -> None:
+    path = tmp_path / "ghstars.toml"
+    path.write_text('[taxonomy]\ncatagories = ["Tool"]\n')
+
+    with pytest.raises(CoreConfigError):
+        load_core_config(path)

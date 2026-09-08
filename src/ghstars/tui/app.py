@@ -72,6 +72,7 @@ from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import sync
 from ghstars.core.tagging import bulk_tag_stars
+from ghstars.core.taxonomy import has_intent_prefix
 from ghstars.core.unstar import unstar_star
 from ghstars.github import GitHubApiError
 from ghstars.tui.config import (
@@ -189,11 +190,21 @@ def _styled_category(
 def _styled_list(
     lst: List, palette: CategoryPalette, overrides: Mapping[str, CategoryColourName]
 ) -> Text:
-    """Render a full List name while keeping its Category as the colour cue."""
+    """Render a full List name while keeping its Category as the colour cue.
+
+    Show the `{Intent}: {Category}` form only when GitHub's own name
+    carries the prefix. Since ADR 0005 a bare name parses to the
+    `Reference` Intent, so rebuilding the label from `intent` and
+    `category` alone would print `Reference: Vendored skills` for a List
+    actually called `Vendored skills`.
+    """
     text = Text()
-    if lst.intent and lst.category:
+    if lst.intent and lst.category and has_intent_prefix(lst.name):
         text.append(f"{lst.intent}: ")
         text.append_text(_styled_category(lst.category, palette, overrides))
+    elif lst.category and not lst.malformed:
+        # GitHub's name verbatim, coloured by the Category it parses to.
+        text.append(lst.name, style=palette.style_for(lst.category, overrides))
     else:
         text.append(lst.name, style=palette.muted)
     return text
@@ -209,9 +220,12 @@ def _membership_chip(
     """Render one text-first Intent and Category membership cue."""
     lock, globe = (_ASCII_LOCK, _ASCII_GLOBE) if ascii_only else (_LOCK, _GLOBE)
     text = Text(f"[{lock if lst.is_private else globe} ")
-    if lst.intent and lst.category:
+    if lst.intent and lst.category and has_intent_prefix(lst.name):
         text.append(f"{lst.intent} · ")
         text.append_text(_styled_category(lst.category, palette, overrides))
+    elif lst.category and not lst.malformed:
+        # See `_styled_list`: never invent a prefix GitHub's name lacks.
+        text.append(lst.name, style=palette.style_for(lst.category, overrides))
     else:
         text.append(lst.name, style=palette.muted)
     text.append("]")

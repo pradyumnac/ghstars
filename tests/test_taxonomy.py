@@ -2,7 +2,9 @@ import pytest
 
 from ghstars.core.models import Intent, List
 from ghstars.core.taxonomy import (
+    blessed_categories,
     classify_list,
+    normalize_category,
     parse_list_name,
     strip_lifecycle_siblings,
 )
@@ -28,21 +30,27 @@ def test_parse_list_name_recognizes_intent_prefixes(
 
 
 @pytest.mark.parametrize(
-    "name",
+    ("name", "category"),
     [
-        "Vendored skills",
-        "AI Agents Reference",
-        "Explorer",
-        "My Tools",
-        "Explore",  # bare Intent word, no separator attempt -> General
-        "Explore Zone",  # normal word boundary, not a separator attempt
-        "Current Events",
+        ("Vendored skills", "Vendored skills"),
+        ("AI Agents Reference", "AI Agents Reference"),
+        ("Explorer", "Explorer"),
+        ("My Tools", "My Tools"),
+        ("Explore", "Explore"),  # bare Intent word, no separator attempt
+        ("Explore Zone", "Explore Zone"),  # normal word boundary
+        ("Current Events", "Current Events"),
+        ("AI_Agents", "AI Agents"),  # underscore is a space inside one token
     ],
 )
-def test_parse_list_name_recognizes_unprefixed_general(name: str) -> None:
+def test_parse_list_name_gives_an_unprefixed_name_the_reference_intent(
+    name: str, category: str
+) -> None:
+    """A name with no Intent prefix takes `Reference`, and its whole name
+    becomes the Category (ADR 0005). Every List that parses has an Intent.
+    """
     parsed = parse_list_name(name)
-    assert parsed.intent is None
-    assert parsed.category is None
+    assert parsed.intent == "Reference"
+    assert parsed.category == category
     assert parsed.malformed is False
 
 
@@ -85,13 +93,13 @@ def test_classify_list_flags_malformed_and_leaves_intent_category_none() -> None
     assert classified.malformed is True
 
 
-def test_classify_list_general_is_not_malformed() -> None:
+def test_classify_list_unprefixed_takes_the_reference_intent() -> None:
     lst = List(id="L_1", name="Vendored skills", slug="vendored-skills")
 
     classified = classify_list(lst)
 
-    assert classified.intent is None
-    assert classified.category is None
+    assert classified.intent == "Reference"
+    assert classified.category == "Vendored skills"
     assert classified.malformed is False
 
 
@@ -190,3 +198,75 @@ def test_strip_lifecycle_siblings_is_a_no_op_when_no_sibling_present() -> None:
 
     assert new_ids == []
     assert removed == []
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("AI_Agents", "AI Agents"),  # underscore is a space inside one token
+        ("ML_Research", "ML Research"),
+        (" Skills", "Skills"),  # a double space after the colon
+        ("Dev  Library", "Dev Library"),  # collapse a run of whitespace
+        ("Tool", "Tool"),  # already normal
+        ("  padded  ", "padded"),
+    ],
+)
+def test_normalize_category(raw: str, expected: str) -> None:
+    assert normalize_category(raw) == expected
+
+
+def test_parse_list_name_normalizes_the_derived_category() -> None:
+    """The double-space typo on the real account resolves without a rename.
+
+    `List.name` keeps GitHub's exact value; only the derived Category is
+    normalized (ADR 0005).
+    """
+    assert parse_list_name("Explore:  Skills").category == "Skills"
+    assert parse_list_name("Explore: Dev_Library").category == "Dev Library"
+
+
+def test_blessed_categories_normalizes_configured_values() -> None:
+    """`ghstars.toml` can spell an entry either way and still match."""
+    assert blessed_categories(["AI_Agents", "Tool"]) == frozenset({"AI Agents", "Tool"})
+
+
+@pytest.mark.parametrize("name", ["Learn: Example", "Learn: Tool"])
+def test_parse_list_name_recognizes_the_learn_intent(name: str) -> None:
+    parsed = parse_list_name(name)
+    assert parsed.intent == "Learn"
+    assert parsed.malformed is False
+
+
+def test_learn_is_not_a_lifecycle_intent() -> None:
+    """`Learn` sits beside a lifecycle List, never instead of one, so it
+    must never strip a sibling (ADR 0005).
+    """
+    current = List(
+        id="L_current",
+        name="Current: Tool",
+        slug="current-tool",
+        intent="Current",
+        category="Tool",
+    )
+    learn = List(
+        id="L_learn",
+        name="Learn: Tool",
+        slug="learn-tool",
+        intent="Learn",
+        category="Tool",
+    )
+
+    new_ids, removed = strip_lifecycle_siblings(
+        [current.id], lists=[current, learn], target=learn
+    )
+
+    assert new_ids == [current.id]
+    assert removed == []
+
+
+@pytest.mark.parametrize("name", ["Explore: ", "Explore:   ", "___", "   "])
+def test_parse_list_name_flags_a_name_that_yields_no_category(name: str) -> None:
+    parsed = parse_list_name(name)
+    assert parsed.malformed is True
+    assert parsed.intent is None
+    assert parsed.category is None

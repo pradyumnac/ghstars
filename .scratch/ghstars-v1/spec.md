@@ -38,7 +38,7 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
 ### Taxonomy
 
  1. As a developer, I want to classify a Star using `Explore`, `Current`, `Retired`, `Reference`, or `Learn` Intent prefixes on List names, so that the List name itself fully encodes my relationship to that Category.
- 2. As a developer, I want `Explore`, `Current`, and `Retired` to be mutually exclusive across every List a Star belongs to, so that a Star's adoption status is always unambiguous. `ghstars tag` refuses a tag that breaks this rule and removes no membership (ADR 0005).
+ 2. As a developer, I want `Explore`, `Current`, and `Retired` to be mutually exclusive across every List a Star belongs to, so that a Star's adoption status is always unambiguous. `verify` reports a Star that breaks this rule; no command blocks on it, because only I know which Intent is right (ADR 0005). `tag` still strips a same-Category sibling, so a Current-to-Retired move stays one call (stories 3, 16, 17).
  3. As a developer, I want to move a Star from `Current` to `Retired` without unstarring it, so that I can keep a record of things I used to rely on without cluttering my active tool lists.
  4. As a developer, I want `Reference` and `Learn` Lists to have no adoption lifecycle, so that informational collections (e.g. "Reference: AI Agents") and things I am studying (e.g. "Learn: Example") aren't forced into a Current/Explore choice that doesn't apply.
  5. As a developer, I want a List with no Intent prefix to take the `Reference` Intent and use its whole name as its Category, so that every List sits in the taxonomy without me prefixing every one (ADR 0005).
@@ -206,7 +206,11 @@ The parser normalizes the *derived* Category only: each underscore becomes a spa
 
 The `[taxonomy]` table in `ghstars.toml` holds the blessed Category values. A Category outside that set is kept and flagged `malformed`, never rejected — ADR 0001 keeps GitHub the source of truth, so a List can be named first and blessed after. Validation reports every malformed name rather than guessing an Intent or a Category for it.
 
-`Explore`/`Current`/`Retired` are mutually exclusive across *all* of a Star's Lists, not per Category. `Reference` and `Learn` carry no lifecycle and no limit. `tag` refuses a tag that breaks the rule and removes no membership.
+`Explore`/`Current`/`Retired` are mutually exclusive across *all* of a Star's Lists, not per Category. `Reference` and `Learn` carry no lifecycle and no limit. `verify` reports a breach; no command blocks on it. `tag` keeps stripping a same-Category sibling, which is what makes a Current-to-Retired move one call.
+
+ghstars never *writes* a name it cannot parse. `tag` refuses to create a List whose name is malformed, or whose Category is outside the `[taxonomy]` vocabulary — the rule ticket 07 already applies to `category rename` and `category drain`. A name that already exists on GitHub is always kept and reported instead, because ADR 0001 makes GitHub the source of truth.
+
+`List.malformed` keeps its ticket 03 meaning: the name attempts the Intent-prefix pattern and fails. An unblessed Category is a separate condition that `verify` reports, and it adds no field to `List`.
 
 **State/config layout** (see ADR 0002)
 

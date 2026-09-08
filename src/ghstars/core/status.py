@@ -1,9 +1,15 @@
+from collections.abc import Iterable
 from datetime import datetime
 
 from pydantic import BaseModel
 
 from ghstars.core.models import List, Star
 from ghstars.core.state_store import StateStore
+from ghstars.core.taxonomy import (
+    LIFECYCLE_INTENTS,
+    TRIAGE_CATEGORY,
+    blessed_categories,
+)
 
 
 class StatusReport(BaseModel):
@@ -25,7 +31,12 @@ class StatusReport(BaseModel):
     verify_problems: list[str] = []
 
 
-def verify_state(stars: list[Star], lists: list[List]) -> list[str]:
+def verify_state(
+    stars: list[Star],
+    lists: list[List],
+    *,
+    categories: Iterable[str] | None = None,
+) -> list[str]:
     """Deterministic, offline structural checks against local state.
 
     Mirrors the old `gh-stars.py`'s `verify()` -- a flat list of problem
@@ -46,6 +57,34 @@ def verify_state(stars: list[Star], lists: list[List]) -> list[str]:
     Star, or a `List.malformed=True` entry: both are already-documented,
     self-healing, non-corrupt states (`reconcile_list_membership`'s and
     `List.malformed`'s own docstrings), not structural damage.
+
+    Three further checks come from ADR 0005. They report taxonomy drift,
+    not corruption, and they never block a command -- ticket 03's rule is
+    that ghstars flags a taxonomy problem for the user to resolve and
+    never guesses the repair. `verify_ok` therefore now means "no
+    corruption *and* no taxonomy drift", which is wider than it was:
+
+    - A Category outside the blessed vocabulary. This is the only check
+      that needs `categories`, and the only one `None` skips. It is
+      *not* `List.malformed`, which means the name shape is wrong; an
+      unblessed Category has two valid repairs (rename the List, or
+      bless the word in `ghstars.toml`).
+    - A Star in the triage inbox and a classified List at once. Always
+      checked. `General` means the subject is undecided, so it
+      contradicts a decided Category on the same Star.
+    - A Star holding two different lifecycle Intents. Always checked. At
+      most one of Explore/Current/Retired applies across all of a Star's
+      Lists.
+
+    A Star only reaches the last two checks once `sync` has re-classified
+    `lists.json` under ADR 0005. Until then a bare-name List still holds
+    `intent=None, category=None` from the older parser, and these checks
+    cannot see it.
+
+    Args:
+        categories: the blessed Category vocabulary, normally
+            `CoreConfig.taxonomy.categories`. `None` skips the
+            vocabulary check only; the other two always run.
     """
     problems: list[str] = []
 
@@ -71,10 +110,48 @@ def verify_state(stars: list[Star], lists: list[List]) -> list[str]:
                     f"{star.full_name}: list_ids references unknown List id {list_id!r}"
                 )
 
+    if categories is not None:
+        blessed = blessed_categories(categories)
+        for lst in lists:
+            if lst.category is not None and lst.category not in blessed:
+                problems.append(
+                    f"unblessed Category {lst.category!r} in List {lst.name!r}: "
+                    f"rename the List, or add it to [taxonomy] in ghstars.toml"
+                )
+
+    by_id = {lst.id: lst for lst in lists}
+    for star in stars:
+        member_lists = [by_id[i] for i in star.list_ids if i in by_id]
+
+        in_triage = [lst for lst in member_lists if lst.category == TRIAGE_CATEGORY]
+        classified = [
+            lst
+            for lst in member_lists
+            if lst.category is not None and lst.category != TRIAGE_CATEGORY
+        ]
+        if in_triage and classified:
+            problems.append(
+                f"{star.full_name}: in the triage inbox "
+                f"{sorted(lst.name for lst in in_triage)} and the classified List "
+                f"{sorted(lst.name for lst in classified)} at the same time"
+            )
+
+        lifecycle = {
+            lst.intent for lst in member_lists if lst.intent in LIFECYCLE_INTENTS
+        }
+        if len(lifecycle) > 1:
+            problems.append(
+                f"{star.full_name}: holds two lifecycle Intents "
+                f"{sorted(str(i) for i in lifecycle)}; at most one of "
+                f"Explore/Current/Retired applies to a Star"
+            )
+
     return problems
 
 
-def build_status(store: StateStore) -> StatusReport:
+def build_status(
+    store: StateStore, *, categories: Iterable[str] | None = None
+) -> StatusReport:
     """Assemble the `status` report from local state only.
 
     "Last sync time": there is no dedicated sync-timestamp field or file
@@ -115,7 +192,7 @@ def build_status(store: StateStore) -> StatusReport:
 
     retriage_queue_count = sum(1 for entry in retriage if not entry.resolved)
 
-    problems = verify_state(stars, lists)
+    problems = verify_state(stars, lists, categories=categories)
 
     return StatusReport(
         last_sync_at=last_sync_at,

@@ -37,6 +37,24 @@ def test_filter_category(make_star: StarFactory) -> None:
     assert _names(rows) == ["owner/a"]
 
 
+def test_filter_category_normalizes_the_users_value(make_star: StarFactory) -> None:
+    """Stored Categories are normalized (ADR 0005), so the filter value must
+    be too -- otherwise `--category Dev_Library` silently matches nothing.
+    """
+    lst = List(
+        id="L1",
+        name="Explore: Dev_Library",
+        slug="explore-dev-library",
+        category="Dev Library",
+        intent="Explore",
+    )
+    star = make_star("owner/a", list_ids=["L1"])
+
+    rows = query_stars([star], [lst], filters=["category:Dev_Library"])
+
+    assert _names(rows) == ["owner/a"]
+
+
 def test_filter_intent(make_star: StarFactory) -> None:
     explore = List(id="L1", name="Explore: AI", slug="explore-ai", intent="Explore")
     current = List(
