@@ -34,8 +34,7 @@ CODE_NO_LOCAL_RECORD = "no_local_record"
 CODE_STAR_ARCHIVED = "star_archived"
 CODE_LIST_MEMBERSHIP_DRIFT = "list_membership_drift"
 CODE_TAG_PUSH_FAILED = "tag_push_failed"
-# Terminal, never retryable: ghstars refused to create a List name it must not
-# write (ADR 0005). The user fixes the name, or blesses the Category.
+# Terminal: ghstars refused to create a List name it must not write (ADR 0005).
 CODE_UNWRITABLE_LIST_NAME = "unwritable_list_name"
 CODE_RATE_LIMIT_EXCEEDED = "rate_limit_exceeded"
 CODE_STATE_LOCK_HELD = "state_lock_held"

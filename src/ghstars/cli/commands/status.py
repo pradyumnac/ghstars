@@ -23,8 +23,7 @@ def status_cmd(
     even worth the round trip. Live API rate-limit data is a separate
     call (`ghstars ratelimit`), never folded in here.
     """
-    # Reading `ghstars.toml` keeps this offline; it is a local file, not an
-    # API call. The vocabulary drives verify's unblessed-Category check.
+    # Local file, not an API call, so this stays offline.
     try:
         categories = load_core_config(cli.get_core_config_path()).taxonomy.categories
     except CoreConfigError as exc:

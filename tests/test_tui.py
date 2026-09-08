@@ -1294,9 +1294,7 @@ async def test_ascii_only_replaces_glyphs_with_text_markers(
 
 
 def test_styled_list_never_invents_an_intent_prefix() -> None:
-    """A bare name parses to the `Reference` Intent since ADR 0005, so the
-    renderer must show GitHub's own name, not a rebuilt label.
-    """
+    """A bare name parses to `Reference` (ADR 0005); show GitHub's name, not a rebuilt label."""
     from ghstars.core.taxonomy import classify_list
     from ghstars.tui.app import CategoryPalette, _styled_list
     from ghstars.tui.config import CATEGORY_COLOURS_DARK

@@ -45,9 +45,7 @@ def test_parse_list_name_recognizes_intent_prefixes(
 def test_parse_list_name_gives_an_unprefixed_name_the_reference_intent(
     name: str, category: str
 ) -> None:
-    """A name with no Intent prefix takes `Reference`, and its whole name
-    becomes the Category (ADR 0005). Every List that parses has an Intent.
-    """
+    """An unprefixed name takes `Reference`, whole name as Category (ADR 0005)."""
     parsed = parse_list_name(name)
     assert parsed.intent == "Reference"
     assert parsed.category == category
@@ -216,10 +214,8 @@ def test_normalize_category(raw: str, expected: str) -> None:
 
 
 def test_parse_list_name_normalizes_the_derived_category() -> None:
-    """The double-space typo on the real account resolves without a rename.
-
-    `List.name` keeps GitHub's exact value; only the derived Category is
-    normalized (ADR 0005).
+    """`List.name` keeps GitHub's exact value; only the derived Category
+    is normalized (ADR 0005).
     """
     assert parse_list_name("Explore:  Skills").category == "Skills"
     assert parse_list_name("Explore: Dev_Library").category == "Dev Library"
@@ -238,9 +234,7 @@ def test_parse_list_name_recognizes_the_learn_intent(name: str) -> None:
 
 
 def test_learn_is_not_a_lifecycle_intent() -> None:
-    """`Learn` sits beside a lifecycle List, never instead of one, so it
-    must never strip a sibling (ADR 0005).
-    """
+    """`Learn` sits beside a lifecycle List, never strips a sibling (ADR 0005)."""
     current = List(
         id="L_current",
         name="Current: Tool",

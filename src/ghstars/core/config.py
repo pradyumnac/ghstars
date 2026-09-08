@@ -49,19 +49,9 @@ class CoreConfigError(Exception):
 class TaxonomyConfig(BaseModel):
     """`[taxonomy]` -- the blessed Category vocabulary (ADR 0005).
 
-    Adding a Category is a text edit here, never a release. That is the
-    whole point of putting the vocabulary in config: the user names a
-    List on GitHub first, then blesses the word, and no code changes.
-
-    A Category outside this list is never rejected. `verify` reports it,
-    and the List keeps working (ADR 0001 -- GitHub is the source of
-    truth). `List.malformed` is a different condition entirely; it means
-    the *name shape* is wrong, which only a rename repairs.
-
-    `DEFAULT_CATEGORIES` applies when `ghstars.toml` is absent, the same
-    rule every other tier follows (ADR 0009). Setting `categories = []`
-    is not the same as omitting the table: an empty list blesses
-    nothing, so `verify` reports every Category.
+    A Category outside this list is reported by `verify`, never rejected
+    (ADR 0001); that's different from `List.malformed`, a name-shape error.
+    `categories = []` blesses nothing -- not the same as omitting the table.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -76,9 +66,8 @@ class CoreConfig(BaseModel):
     ticket 32 only moved *where* it loads from, nesting it under the
     `[export]` table instead of its own `export.toml`.
 
-    `taxonomy` holds the Category vocabulary (ADR 0005). It is core-tier
-    under ADR 0009's rule: `core.taxonomy`, `core.discovery` and
-    `core.category` all read it, not just one interface.
+    `taxonomy` holds the Category vocabulary (ADR 0005), core-tier since
+    `core.taxonomy`, `core.discovery` and `core.category` all read it.
 
     `extra="forbid"`, same as `TuiConfig`: an unknown top-level table is
     a typo, not a future extension point, and should surface at load

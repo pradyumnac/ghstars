@@ -215,9 +215,7 @@ def _classified(list_id: str, name: str, intent: Intent, category: str) -> List:
 
 
 def test_verify_state_flags_an_unblessed_category() -> None:
-    """An unblessed Category is reported, never rejected -- and it is a
-    different condition from `List.malformed` (ADR 0005).
-    """
+    """Reported, never rejected -- different from `List.malformed` (ADR 0005)."""
     lst = _classified("L_1", "Explore: Tool - Dev", "Explore", "Tool - Dev")
 
     problems = verify_state([], [lst], categories=["Tool", "General"])
@@ -258,9 +256,7 @@ def test_verify_state_allows_a_star_in_the_triage_inbox_alone() -> None:
 
 
 def test_verify_state_flags_two_lifecycle_intents_on_one_star() -> None:
-    """At most one of Explore/Current/Retired applies across all of a
-    Star's Lists (ADR 0005). Reported, never blocked.
-    """
+    """At most one of Explore/Current/Retired applies per Star (ADR 0005)."""
     current = _classified("L_1", "Current: Tool", "Current", "Tool")
     explore = _classified("L_2", "Explore: AI Agents", "Explore", "AI Agents")
     star = _star("example-owner/x", list_ids=["L_1", "L_2"])

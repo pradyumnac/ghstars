@@ -34,7 +34,6 @@ class List(BaseModel):
     intent: Intent | None = None
     category: str | None = None
     # Flag attempted but invalid `{Intent}: {Category}` names without guessing.
-    # `None` intent means exactly that: a malformed name gets no guessed Intent.
     malformed: bool = False
     items: list[str] = []
 

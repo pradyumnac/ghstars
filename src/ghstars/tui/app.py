@@ -192,11 +192,9 @@ def _styled_list(
 ) -> Text:
     """Render a full List name while keeping its Category as the colour cue.
 
-    Show the `{Intent}: {Category}` form only when GitHub's own name
-    carries the prefix. Since ADR 0005 a bare name parses to the
-    `Reference` Intent, so rebuilding the label from `intent` and
-    `category` alone would print `Reference: Vendored skills` for a List
-    actually called `Vendored skills`.
+    Show `{Intent}: {Category}` only when GitHub's name carries the
+    prefix -- a bare name parses to `Reference` too (ADR 0005), so
+    rebuilding the label would invent a prefix GitHub's name lacks.
     """
     text = Text()
     if lst.intent and lst.category and has_intent_prefix(lst.name):

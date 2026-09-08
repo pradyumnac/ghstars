@@ -115,9 +115,7 @@ def _matches(entry: ExportEntry, lst: List) -> bool:
         return False
     if entry.list_name is not None:
         return lst.name == entry.list_name
-    # `lst.category` is normalized (ADR 0005); normalize the configured value
-    # too, so `category = "Dev_Library"` still selects `Explore: Dev_Library`
-    # instead of silently writing an empty file.
+    # `lst.category` is normalized (ADR 0005); normalize the configured value too.
     return lst.category == normalize_category(entry.category or "") and (
         entry.intent is None or lst.intent == entry.intent
     )

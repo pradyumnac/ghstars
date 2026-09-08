@@ -58,33 +58,15 @@ def verify_state(
     self-healing, non-corrupt states (`reconcile_list_membership`'s and
     `List.malformed`'s own docstrings), not structural damage.
 
-    Three further checks come from ADR 0005. They report taxonomy drift,
-    not corruption, and they never block a command -- ticket 03's rule is
-    that ghstars flags a taxonomy problem for the user to resolve and
-    never guesses the repair. `verify_ok` therefore now means "no
-    corruption *and* no taxonomy drift", which is wider than it was:
-
-    - A Category outside the blessed vocabulary. This is the only check
-      that needs `categories`, and the only one `None` skips. It is
-      *not* `List.malformed`, which means the name shape is wrong; an
-      unblessed Category has two valid repairs (rename the List, or
-      bless the word in `ghstars.toml`).
-    - A Star in the triage inbox and a classified List at once. Always
-      checked. `General` means the subject is undecided, so it
-      contradicts a decided Category on the same Star.
-    - A Star holding two different lifecycle Intents. Always checked. At
-      most one of Explore/Current/Retired applies across all of a Star's
-      Lists.
-
-    A Star only reaches the last two checks once `sync` has re-classified
-    `lists.json` under ADR 0005. Until then a bare-name List still holds
-    `intent=None, category=None` from the older parser, and these checks
-    cannot see it.
+    Three further checks come from ADR 0005, reporting taxonomy drift
+    (never blocking, per ticket 03): a Category outside the blessed
+    vocabulary (needs `categories`; distinct from `List.malformed`, a
+    name-shape error), a Star in the triage inbox alongside a classified
+    List, and a Star holding two different lifecycle Intents.
 
     Args:
-        categories: the blessed Category vocabulary, normally
-            `CoreConfig.taxonomy.categories`. `None` skips the
-            vocabulary check only; the other two always run.
+        categories: blessed Category vocabulary. `None` skips that one
+            check only; the other two always run.
     """
     problems: list[str] = []
 

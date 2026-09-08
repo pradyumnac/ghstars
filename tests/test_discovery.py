@@ -38,9 +38,7 @@ def test_filter_category(make_star: StarFactory) -> None:
 
 
 def test_filter_category_normalizes_the_users_value(make_star: StarFactory) -> None:
-    """Stored Categories are normalized (ADR 0005), so the filter value must
-    be too -- otherwise `--category Dev_Library` silently matches nothing.
-    """
+    """Stored Categories are normalized (ADR 0005); the filter value must be too."""
     lst = List(
         id="L1",
         name="Explore: Dev_Library",

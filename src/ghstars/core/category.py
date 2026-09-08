@@ -9,14 +9,8 @@ Retired stays Retired. Neither command ever crosses Intents; that stays
 `ghstars tag`'s job, one Star at a time.
 
 Both commands filter on the lifecycle Intents -- Explore/Current/Retired
-Lists only. A `Reference` or `Learn` List carries a Category like any
-other (ADR 0005), but neither command touches one, because neither
-Intent has a lifecycle to move a Star through.
-
-That filter is by Intent, not by "has a Category". This matters since
-ADR 0005: a name with no Intent prefix now takes the `Reference` Intent
-and its whole name as the Category, so such a List has a Category and
-is still correctly skipped here.
+only; `Reference` and `Learn` Lists have a Category too (ADR 0005) but no
+lifecycle, so the Intent filter, not a Category check, is what skips them.
 
 Design constraint, added to ticket 07's own acceptance criteria during
 ticket 17's review: both commands fetch fresh GitHub state right before

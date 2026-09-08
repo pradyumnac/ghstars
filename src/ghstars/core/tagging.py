@@ -52,18 +52,11 @@ class StarListMembershipDriftError(Exception):
 
 
 class UnwritableListNameError(Exception):
-    """`ghstars tag` would have created a List whose name ghstars must
-    not write (ADR 0005).
+    """`ghstars tag` refused to create a List name ghstars must not write
+    (ADR 0005), same rule ticket 07 holds `category rename`/`drain` to.
 
-    ghstars never *produces* a name it cannot parse. Ticket 07 already
-    holds `category rename` and `category drain` to this rule, because
-    both build a name from an Intent word, `: `, and the user's text.
-    `tag_star` takes the raw name from the user, so it is the one write
-    path that can still produce a bad one.
-
-    A name that already exists on GitHub is a different case entirely:
-    ghstars keeps it and reports it, because ADR 0001 makes GitHub the
-    source of truth. This error fires only before a `create_list` call.
+    An existing name on GitHub is never judged this way (ADR 0001); this
+    fires only before a `create_list` call.
     """
 
     def __init__(self, list_name: str, reason: str) -> None:
@@ -107,13 +100,9 @@ class TagResult(BaseModel):
 
 
 def _find_list(lists: list[List], list_name: str) -> List | None:
-    """Find the List that `list_name` names, by exact name or by identity.
-
-    An exact name match wins. Failing that, a List parsing to the same
-    Intent and Category is the same List under a different spelling --
-    `Explore: AI_Agents` and `Explore: AI Agents` name one Category
-    (ADR 0005). Reusing it stops `tag` creating a duplicate that `verify`
-    cannot flag, because both spellings are blessed.
+    """Find the List `list_name` names, by exact name or, failing that, by a
+    List parsing to the same Intent/Category under a different spelling
+    (ADR 0005) -- avoids `tag` creating an unflaggable duplicate.
     """
     exact = next((item for item in lists if item.name == list_name), None)
     if exact is not None:
@@ -137,11 +126,8 @@ def _find_list(lists: list[List], list_name: str) -> List | None:
 def _check_writable_list_name(
     list_name: str, categories: Iterable[str] | None
 ) -> None:
-    """Refuse a name ghstars must not create (ADR 0005).
-
-    Runs only before `create_list`. An existing List is never judged
-    here -- ADR 0001 keeps GitHub the source of truth, so a name already
-    on GitHub is kept and reported by `verify` instead.
+    """Refuse a name ghstars must not create (ADR 0005). Runs only before
+    `create_list`; an existing List is never judged here (ADR 0001).
     """
     parsed = parse_list_name(list_name)
     if parsed.malformed:
@@ -183,16 +169,15 @@ def tag_star(
     sync` first, then retry.
 
     Raise `UnwritableListNameError` when the List does not exist and its
-    name is one ghstars must not create: a malformed name, or a Category
-    outside `categories` (ADR 0005). An *existing* List is never judged
-    this way. Create nothing and write nothing.
+    name is malformed or has an unblessed Category (ADR 0005); an
+    existing List is never judged this way. Create nothing, write nothing.
 
     Strip a sibling List when the target List's intent is Explore,
     Current, or Retired. A sibling holds the same Category under one of
     the other two intents. This makes a Current-to-Retired move one
-    call (spec stories 16 and 17). This strip stays per-Category on
-    purpose: a per-Star strip would delete the membership that holds a
-    Star's second subject.
+    call (spec stories 16 and 17). Stays per-Category on purpose -- a
+    per-Star strip would delete the membership holding a Star's second
+    subject.
 
     Raise `TagPushError` when the push fails, and write no local state.
     Update `stars.json` and `lists.json` only after the push succeeds.

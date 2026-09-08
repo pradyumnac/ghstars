@@ -1,23 +1,15 @@
 """List name to Intent/Category taxonomy parsing.
 
 Convention: `{Intent}: {Category}` for
-Explore/Current/Retired/Reference/Learn. A name with no Intent prefix
-takes the `Reference` Intent, and its whole name becomes the Category
-(ADR 0005). Every List that parses therefore carries an Intent.
+Explore/Current/Retired/Reference/Learn. An unprefixed name takes the
+`Reference` Intent, with the whole name as its Category (ADR 0005); only
+a malformed name (wrong case, separator, or unknown prefix before `: `)
+gets no Intent -- flag it for the user, never guess one (ticket 03).
 
-A malformed name is the one exception. It attempts the Intent-prefix
-pattern and does not match it: wrong case (`explore: Foo`), wrong
-separator (`Explore - Foo`), or an unrecognized word before `: `
-(`Exploring: Foo`). It gets no Intent and no Category. Flag it for the
-user to rename. Never guess an Intent (ticket 03).
-
-The parser normalizes the *derived* Category only. `List.name` keeps
-GitHub's exact value and is never rewritten. An underscore stands for a
-space inside one token, so `AI_Agents` and `AI Agents` are one Category.
-
-An unblessed Category -- one outside the `[taxonomy]` vocabulary -- is a
-separate condition from `malformed`, with a different repair. `verify`
-reports it. See `ghstars.core.status.verify_state`.
+The derived Category is normalized (underscore -> space, whitespace
+collapsed); `List.name` itself is never rewritten. An unblessed Category
+is a separate, verify-reported condition from `malformed` -- see
+`ghstars.core.status.verify_state`.
 """
 
 import re
@@ -82,15 +74,10 @@ _MALFORMED = ParsedListName(intent=None, category=None, malformed=True)
 
 
 def normalize_category(text: str) -> str:
-    """Normalize a Category label for comparison and storage.
+    """Normalize a Category label: underscore -> space, collapse whitespace.
 
-    An underscore is a space inside one token, so `AI_Agents` and
-    `AI Agents` name one Category. Collapsing runs of whitespace also
-    makes a double-space typo (`Explore:  Skills`) harmless without a
-    rename on GitHub.
-
-    This applies to the *derived* Category only. `List.name` is GitHub's
-    value and is never rewritten (ADR 0001).
+    Applies to the *derived* Category only; `List.name` is never rewritten
+    (ADR 0001).
     """
     return _WHITESPACE.sub(" ", text.replace("_", " ")).strip()
 
@@ -98,18 +85,15 @@ def normalize_category(text: str) -> str:
 def has_intent_prefix(name: str) -> bool:
     """True when `name` literally starts with an Intent prefix.
 
-    A name without one still parses to the `Reference` Intent (ADR 0005),
-    so `List.intent` alone cannot tell a caller whether the user actually
-    typed a prefix. A renderer needs this: rebuilding a label from
-    `intent` and `category` would otherwise show `Reference: Vendored
-    skills` for a List that GitHub calls `Vendored skills`.
+    A bare name still parses to `Reference` (ADR 0005), so a renderer
+    needs this to avoid showing a prefix GitHub's name doesn't have.
     """
     return any(name.startswith(f"{intent}{_SEPARATOR}") for intent in _INTENTS)
 
 
 def blessed_categories(categories: Iterable[str]) -> frozenset[str]:
-    """Normalize a configured vocabulary, so that `ghstars.toml` can spell
-    an entry either way (`AI_Agents` or `AI Agents`) and still match.
+    """Normalize a configured vocabulary so either spelling
+    (`AI_Agents` or `AI Agents`) matches.
     """
     return frozenset(normalize_category(item) for item in categories)
 
@@ -173,11 +157,9 @@ def strip_lifecycle_siblings(
     candidate, and `target` itself is a no-op source when it is not a
     lifecycle List.
 
-    The scope stays per Category on purpose (ADR 0005). It is what makes
-    a `Current` to `Retired` move one call (spec stories 3, 16 and 17).
-    A per-Star scope would delete the membership holding a Star's second
-    subject, so `verify` reports a Star with two lifecycle Intents
-    instead of any write path stripping one.
+    Stays per-Category on purpose (ADR 0005): a per-Star scope would
+    delete the membership holding a Star's second subject, so `verify`
+    reports two lifecycle Intents instead of any write path stripping one.
 
     Returns `(new_ids, removed_ids)`. `removed_ids` is empty when
     `target`'s intent is not lifecycle, or no sibling was present in

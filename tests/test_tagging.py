@@ -519,9 +519,7 @@ def test_tag_star_creates_a_blessed_category(
 def test_tag_star_reuses_a_list_whose_category_matches_after_normalizing(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    """`Explore: AI_Agents` and `Explore: AI Agents` name one Category, so
-    tagging the first must not create a duplicate of the second (ADR 0005).
-    """
+    """`Explore: AI_Agents` and `Explore: AI Agents` name one Category (ADR 0005)."""
     star = make_star("example-owner/ghstars")
     existing = List(
         id="L_1",
@@ -549,9 +547,7 @@ def test_tag_star_reuses_a_list_whose_category_matches_after_normalizing(
 def test_tag_star_never_judges_a_list_that_already_exists(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    """ADR 0001 keeps GitHub the source of truth. An unblessed name already
-    on GitHub is kept and reported by `verify`, never refused here.
-    """
+    """An unblessed name already on GitHub is kept, not refused (ADR 0001)."""
     star = make_star("example-owner/ghstars")
     existing = List(id="L_1", name="Explore: Wombat", slug="explore-wombat")
     store = StateStore(tmp_path)

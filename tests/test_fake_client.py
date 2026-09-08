@@ -131,10 +131,7 @@ def test_check_rate_limit_ok_by_default() -> None:
     ],
 )
 def test_github_slug_matches_the_real_github_rule(name: str, slug: str) -> None:
-    """The previous rule diverged on 6 of these 11 real names: it replaced
-    each space separately and left underscores alone, so `Explore: Tool - Dev`
-    became `explore-tool---dev` and `AI_Agents` became `ai_agents`.
-    """
+    """The previous rule diverged on 6 of these 11 real names."""
     assert github_slug(name) == slug
 
 
