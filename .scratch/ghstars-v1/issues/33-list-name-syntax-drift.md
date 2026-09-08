@@ -325,5 +325,7 @@ until the code lands.
 
 ## Comments
 
-The tracker convention in `docs/agents/issue-tracker.md` refers to
-`triage-labels.md`. That file does not exist in the repository.
+The tracker convention in `docs/agents/issue-tracker.md` referred to a missing
+`triage-labels.md`. That file now exists. It maps the `triage` skill's canonical
+roles to the strings this tracker uses, and it records why `retired` replaces
+`wontfix` and why `done` has no canonical role.
