@@ -10,7 +10,7 @@ The user also stars and reorganizes from their phone and the GitHub web UI, so a
 
 ## Solution
 
-`ghstars` is a terminal-first tool (TUI + CLI) that classifies starred repos into Lists, using GitHub's own native Lists feature (`UserList` in GitHub's GraphQL API) as the synced, authoritative backing store rather than inventing a parallel local taxonomy. Classification is encoded directly in List names via an `Intent` prefix (`Explore` / `Current` / `Retired` / `Reference`) plus a freeform `Category`, so the taxonomy is visible and usable from github.com, the phone app, or ghstars itself — with no separate system to keep manually consistent.
+`ghstars` is a terminal-first tool (TUI + CLI) that classifies starred repos into Lists, using GitHub's own native Lists feature (`UserList` in GitHub's GraphQL API) as the synced, authoritative backing store rather than inventing a parallel local taxonomy. Classification is encoded directly in List names via an `Intent` prefix (`Explore` / `Current` / `Retired` / `Reference` / `Learn`) plus a flat `Category`, so the taxonomy is visible and usable from github.com, the phone app, or ghstars itself — with no separate system to keep manually consistent.
 
 A Textual TUI supports fast interactive tagging, bulk tagging, and retagging. A Typer CLI, including a dedicated token-efficient agent/JSON mode, supports scripting and lets an accompanying agent skill drive and monitor ghstars the same way the existing `github-stars` skill drives `gh-stars.py` today. Sync is two-way: GitHub is the sole source of truth for List existence and membership (see ADR 0001); anything GitHub's schema can't represent (conflict handling, sync history, export config) lives in a local `~/.ghstars/` tree (see ADR 0002), git-diffable but never auto-git-initialized.
 
@@ -37,15 +37,16 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
 
 ### Taxonomy
 
- 1. As a developer, I want to classify a Star using `Explore`, `Current`, `Retired`, or `Reference` Intent prefixes on List names, so that the List name itself fully encodes my relationship to that Category.
- 2. As a developer, I want `Explore`, `Current`, and `Retired` to be mutually exclusive per Category, so that a Star's adoption status for a given Category is always unambiguous.
+ 1. As a developer, I want to classify a Star using `Explore`, `Current`, `Retired`, `Reference`, or `Learn` Intent prefixes on List names, so that the List name itself fully encodes my relationship to that Category.
+ 2. As a developer, I want `Explore`, `Current`, and `Retired` to be mutually exclusive across every List a Star belongs to, so that a Star's adoption status is always unambiguous. `ghstars tag` refuses a tag that breaks this rule and removes no membership (ADR 0005).
  3. As a developer, I want to move a Star from `Current` to `Retired` without unstarring it, so that I can keep a record of things I used to rely on without cluttering my active tool lists.
- 4. As a developer, I want `Reference` Lists to have no adoption lifecycle, so that informational collections (e.g. "Reference: AI Agents") aren't forced into a Current/Explore choice that doesn't apply.
- 5. As a developer, I want General Lists with no Intent prefix, so that Lists outside the tool-adoption domain aren't forced into this taxonomy.
- 6. As a developer, I want to add new Categories on demand, so that my taxonomy can grow as my interests do.
+ 4. As a developer, I want `Reference` and `Learn` Lists to have no adoption lifecycle, so that informational collections (e.g. "Reference: AI Agents") and things I am studying (e.g. "Learn: Example") aren't forced into a Current/Explore choice that doesn't apply.
+ 5. As a developer, I want a List with no Intent prefix to take the `Reference` Intent and use its whole name as its Category, so that every List sits in the taxonomy without me prefixing every one (ADR 0005).
+ 6. As a developer, I want to add a new Category by editing the `[taxonomy]` table in `ghstars.toml`, so that my taxonomy grows without a release. An unlisted Category is flagged `malformed`, never rejected (ADR 0005).
  7. As a developer, I want to rename a Category and have all its Lists (across Intents) renamed consistently, so that I don't have to manually update Current/Explore/Retired variants separately.
  8. As a developer, I want to "drain" (bulk-migrate) all Stars from one Category into another, so that I can reorganize my taxonomy without manually moving each Star.
- 9. As a developer, I want ghstars to validate that List names conform to the `{Intent}: {Category}` convention (or are recognized as General), so that a malformed name doesn't silently break sync or export.
+ 9. As a developer, I want ghstars to validate that List names conform to the `{Intent}: {Category}` convention and that each Category is one the `[taxonomy]` table blesses, so that a malformed name doesn't silently break sync or export. A malformed name is always kept and reported, never rejected.
+10. As a developer, I want a Star to never sit in the `Explore: General` triage inbox and a classified List at the same time, so that "undecided" means what it says. `verify` reports each Star that breaks this rule.
 
 ### TUI
 
@@ -177,7 +178,7 @@ ticket already cross-references.
 **Data model (Pydantic)**
 
 - `Star`: full_name, html_url, description, starred_at, first_seen, language, license, stargazer_count, fork, follow, archived, archived_at, last_checked, list memberships.
-- `List`: id (GitHub node ID), name, slug, description, is_private, intent (`Explore`/`Current`/`Retired`/`Reference`/`None` for General), category, items.
+- `List`: id (GitHub node ID), name, slug, description, is_private, intent (`Explore`/`Current`/`Retired`/`Reference`/`Learn`; never `None` — a name with no prefix takes `Reference`), category, malformed, items.
 - `RetriageEntry`: star full_name, attempted list change, conflict detected at, resolved (bool).
 - No separate sync-log schema — `state/`'s git commits (when present) serve this role; no bespoke log format to design or maintain.
 
@@ -197,7 +198,15 @@ Three-way merge per Star, per sync: base (last-synced snapshot) vs. current GitH
 
 **Naming convention & validation**
 
-`{Intent}: {Category}` for Explore/Current/Retired/Reference; freeform for General. `Explore`/`Current`/`Retired` are mutually exclusive per Category. Validation flags non-conforming existing List names (e.g. the account's current unprefixed "Vendored skills" list) as needing a rename rather than silently guessing an Intent for them.
+`{Intent}: {Category}` for Explore/Current/Retired/Reference/Learn. A name with no Intent prefix takes the `Reference` Intent and uses its whole name as the Category, so every List sits in the taxonomy.
+
+The Category is one flat value. It names a kind of thing (`Tool`, `Library`, `Example`) or a subject (`AI Agents`, `ML Research`). It never splits into a kind and a subject — ADR 0005 measured that split against the account and rejected it. A Star that needs two subjects belongs to two Lists.
+
+The parser normalizes the *derived* Category only: each underscore becomes a space, each run of whitespace collapses to one space, and the ends are trimmed. `List.name` keeps GitHub's exact value and is never rewritten.
+
+The `[taxonomy]` table in `ghstars.toml` holds the blessed Category values. A Category outside that set is kept and flagged `malformed`, never rejected — ADR 0001 keeps GitHub the source of truth, so a List can be named first and blessed after. Validation reports every malformed name rather than guessing an Intent or a Category for it.
+
+`Explore`/`Current`/`Retired` are mutually exclusive across *all* of a Star's Lists, not per Category. `Reference` and `Learn` carry no lifecycle and no limit. `tag` refuses a tag that breaks the rule and removes no membership.
 
 **State/config layout** (see ADR 0002)
 
@@ -280,7 +289,7 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 - Auto-committing `state/` — explicitly rejected; committing state/'s git history (when the user tracks it) is the user's responsibility, not ghstars'.
 - Retriage Queue auto-resolution — always requires manual review; no auto-merge/union logic.
 - TUI pagination and page-size config — **postponed, not rejected**. Measured on the real 1530-Star account: `load_stars()` 32ms, building all 1530 `DataTable` rows 52ms, full rebuild 56ms, one `update_cell` 0.1ms. Textual's `DataTable` already virtualizes painting. Pagination would add config, state, and keys to solve 85ms. Revisit if a real account reaches a size where the measurement changes. Story 72 (non-blocking launch) is the part that must be built now.
-- Compound Category, splitting a Category into a kind and a subject (for example `Explore: Dev Tools / AI`) — **deferred to a follow-up issue, ADR, and spec entry**. The direction is chosen, the mechanism is not. It changes `parse_list_name`, and it needs a migration path for existing List names. Stories 50-72 assume today's single freeform Category, and the Filter design (story 54) must leave room for a second axis later.
+- Compound Category, splitting a Category into a kind and a subject (for example `Explore: Dev Tools / AI`) — **rejected on 2026-09-09, measured against the real account** (ADR 0005). A `Dev` axis matches about 36% of the library, the axis that actually separates Stars is the technology (open-ended, so a tag set rather than one slot), and companion code has no domain of use at all. Seven Stars already sit in more than one List, so List membership already carries the second axis. The Category stays one flat value and the Filter (story 54) stays one field.
 - Immediate push of a tag edit from the TUI — owned by ticket 16, not by these stories. `tag_star()` stages `pending_list_ids` today; the TUI renders that staged state honestly. Ticket 16 still has three unresolved design questions about narrowing the three-way merge to one Star.
 - Filtering by GitHub's own repository topics — ghstars never fetches `repositoryTopics`, and the taxonomy lives in List names by design.
 
@@ -288,7 +297,7 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 
 - ADR 0001 (GitHub is the sole source of truth for List membership) and ADR 0002 (single `~/.ghstars/` directory instead of XDG base dirs) are binding architectural context — read both before implementing the sync engine or state layout.
 - ADR 0006 (the TUI can sync on an explicit keypress) supersedes ADR 0003 and governs stories 65 and 66. Read it before adding any live GitHub call to the TUI.
-- ADR 0005 (compound Category) is `proposed`, not accepted. Do not build against it.
+- ADR 0005 (flat Category; List membership carries the second axis) is `proposed`. It reverses the compound-Category direction it first held. Read it before you touch `parse_list_name`, `strip_lifecycle_siblings`, or `tag` — it changes the exclusivity rule from per-Category to per-Star, and it makes a lifecycle conflict fail the command instead of silently stripping a membership.
 - ADR 0008 (TUI config and TUI state hold disjoint fields) governs stories 60-62, 69-71, and 73-76. Read it before you add a TUI setting. It also records two ticket 28 criteria that ticket 23 reverses: Category colours become named colours instead of Textual semantic text roles, and the Star table scrolls instead of hiding columns on a narrow terminal.
 - ADR 0007 supersedes story 4 as originally written: a never-classified Star is never pushed into `Explore: General` or any other List. "Unclassified" is a derived local view (`list_ids == [] and not archived`), never a real GitHub List membership ghstars writes on the user's behalf.
 - The TUI's rate-limit worker catches only `GitHubApiError` (`tui/app.py:432`). A `ValidationError` from `RateLimitResponse.model_validate` escapes the worker and leaves the bar blank with no message. Story 63 must fix this, and match the broad-catch reasoning `_apply_tag` already documents.

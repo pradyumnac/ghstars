@@ -17,9 +17,10 @@ _Avoid_: Tag, Bucket.
 
 **Intent**:
 A List's stated relationship to its Category. The List name starts with
-`Explore`, `Current`, `Retired`, or `Reference`. `Explore`, `Current`, and
-`Retired` are mutually exclusive per Category. `Reference` has no lifecycle. A
-List without an Intent prefix is a General List.
+`Explore`, `Current`, `Retired`, `Reference`, or `Learn`. A Star holds at most
+one of `Explore`, `Current`, and `Retired` across all of its Lists. `Reference`
+and `Learn` have no lifecycle and no limit. A List without an Intent prefix has
+the `Reference` Intent. Every List has an Intent.
 _Avoid_: Stage, Status, Type.
 
 **Retired** (Intent value):
@@ -27,19 +28,35 @@ A Star stays starred and classified but is no longer in active use. It moves
 from `Current` to `Retired: {Category}` or `Retired: General`.
 _Avoid_: Archived.
 
+**Learn** (Intent value):
+The user keeps a Star to learn from it. `Learn` has no lifecycle. A `Learn`
+List can sit beside an `Explore`, `Current`, or `Retired` List on the same
+Star.
+_Avoid_: Learning, Study, Training.
+
 **Archived** (Star property):
 A Star was unstarred on GitHub. ghstars keeps its local history but removes its
 Intent and List membership. This is distinct from Retired.
 _Avoid_: Retired.
 
 **Category**:
-The subject label after a List Intent prefix. For example, `Vendored Skills` in
-`Explore: Vendored Skills`. A General List has no Category.
+The subject label after a List Intent prefix. For example, `Tool` in
+`Explore: Tool`. A Category names a kind of thing, such as `Tool`, or a
+subject, such as `AI Agents`. A List without an Intent prefix uses its whole
+name as the Category.
 _Avoid_: Tag, Topic, Label.
 
-**General List**:
-A List without an Intent prefix. It is outside the Intent taxonomy.
-_Avoid_: Freeform List, Uncategorized List.
+**General** (Category value):
+The reserved Category for a List with a known Intent and an undecided subject.
+`Explore: General` is the triage inbox. A Star stays there until the user gives
+it a Category.
+_Avoid_: Misc, Uncategorized, Inbox.
+
+**Example** (Category value):
+Code that a publisher releases with a book, a course, or a video. The user
+reads it to learn a pattern. The user does not run it. An Example List takes
+the `Reference` Intent or the `Learn` Intent.
+_Avoid_: Book, Sample, Demo.
 
 **Layout**:
 A named density preset for the flat Star table. It controls columns, row height,

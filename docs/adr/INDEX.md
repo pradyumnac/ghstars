@@ -9,7 +9,7 @@ Rationale lives in each file under `docs/adr/`; this is an index only.
 | [0002](0002-single-dotdir-instead-of-xdg-base-dirs.md) | accepted | in-progress | Single ~/.ghstars/ directory instead of XDG base dirs |
 | [0003](0003-github-sync-is-always-explicit.md) | superseded by 0006 | not-started | GitHub sync is always explicit, never auto-triggered |
 | [0004](0004-pending-tag-staging-and-retriage-stay-dormant.md) | accepted | done | Pending-tag staging and the Retriage Queue stay in place, dormant, after ticket 16 |
-| [0005](0005-compound-category-kind-and-subject.md) | proposed | n/a | Compound Category: a kind and a subject in one List name |
+| [0005](0005-compound-category-kind-and-subject.md) | proposed | n/a | Flat Category; List membership carries the second axis |
 | [0006](0006-tui-may-sync-on-an-explicit-keypress.md) | accepted | not-started | The TUI can sync on an explicit keypress |
 | [0007](0007-never-classified-stars-are-never-auto-tagged.md) | accepted | done | Never-classified Stars are never auto-tagged; "Unclassified" is a local, derived view |
 | [0008](0008-tui-config-and-state-are-disjoint.md) | accepted | done | TUI config and TUI state hold disjoint fields |
