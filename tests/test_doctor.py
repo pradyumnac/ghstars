@@ -187,6 +187,9 @@ def test_diagnose_and_verify_state_agree_on_star_rules() -> None:
 def test_repair_commands_are_shell_quoted() -> None:
     """`repr` emits double quotes for a name holding an apostrophe, and a
     shell expands `$(...)` inside those. `shlex.quote` does not.
+
+    Asserted with `shlex.split`, a POSIX-compatible lexer -- it tokenizes
+    the suggestion the way a shell would, without running one.
     """
     import shlex
 
@@ -195,8 +198,8 @@ def test_repair_commands_are_shell_quoted() -> None:
 
     report = diagnose([hostile], categories=VOCAB)
 
-    # A shell parsing the suggestion recovers the name verbatim, with no
-    # substitution performed on it.
+    # POSIX lexing of the suggestion recovers the name verbatim, with no
+    # substitution applied to it.
     argv = shlex.split(report.problems[0].repairs[0])
     assert name in argv
 

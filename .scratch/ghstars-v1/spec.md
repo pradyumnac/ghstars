@@ -42,7 +42,7 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
  3. As a developer, I want to move a Star from `Current` to `Retired` without unstarring it, so that I can keep a record of things I used to rely on without cluttering my active tool lists.
  4. As a developer, I want `Reference` and `Learn` Lists to have no adoption lifecycle, so that informational collections (e.g. "Reference: AI Agents") and things I am studying (e.g. "Learn: Example") aren't forced into a Current/Explore choice that doesn't apply.
  5. As a developer, I want a List with no Intent prefix to take the `Reference` Intent and use its whole name as its Category, so that every List sits in the taxonomy without me prefixing every one (ADR 0005).
- 6. As a developer, I want to add a new Category by editing the `[taxonomy]` table in `ghstars.toml`, so that my taxonomy grows without a release. An unlisted Category is flagged `malformed`, never rejected (ADR 0005).
+ 6. As a developer, I want to add a new Category by editing the `[taxonomy]` table in `ghstars.toml`, so that my taxonomy grows without a release. An unlisted Category is reported as *unblessed*, never rejected — a separate condition from `malformed`, which means the name shape is wrong (ADR 0005).
  7. As a developer, I want to rename a Category and have all its Lists (across Intents) renamed consistently, so that I don't have to manually update Current/Explore/Retired variants separately.
  8. As a developer, I want to "drain" (bulk-migrate) all Stars from one Category into another, so that I can reorganize my taxonomy without manually moving each Star.
  9. As a developer, I want ghstars to validate that List names conform to the `{Intent}: {Category}` convention and that each Category is one the `[taxonomy]` table blesses, so that a malformed name doesn't silently break sync or export. A malformed name is always kept and reported, never rejected.
@@ -204,7 +204,7 @@ The Category is one flat value. It names a kind of thing (`Tool`, `Library`, `Ex
 
 The parser normalizes the *derived* Category only: each underscore becomes a space, each run of whitespace collapses to one space, and the ends are trimmed. `List.name` keeps GitHub's exact value and is never rewritten.
 
-The `[taxonomy]` table in `ghstars.toml` holds the blessed Category values. A Category outside that set is kept and flagged `malformed`, never rejected — ADR 0001 keeps GitHub the source of truth, so a List can be named first and blessed after. Validation reports every malformed name rather than guessing an Intent or a Category for it.
+The `[taxonomy]` table in `ghstars.toml` holds the blessed Category values. A Category outside that set is kept and reported as *unblessed*, never rejected — ADR 0001 keeps GitHub the source of truth, so a List can be named first and blessed after. `unblessed` is a distinct condition from `malformed`: a malformed name has one repair (rename it), an unblessed Category has two (bless the word, or rename), so ghstars reports it and never chooses. Validation reports each rather than guessing an Intent or a Category.
 
 `Explore`/`Current`/`Retired` are mutually exclusive across *all* of a Star's Lists, not per Category. `Reference` and `Learn` carry no lifecycle and no limit. `verify` reports a breach; no command blocks on it. `tag` keeps stripping a same-Category sibling, which is what makes a Current-to-Retired move one call.
 

@@ -87,15 +87,15 @@ def _render(report: DoctorReport) -> None:
         typer.echo(f"Blessed Categories with no List: {len(report.missing_categories)}")
         for category in report.missing_categories:
             typer.echo(f"  - {category}")
-        # Name the Categories explicitly: these rarely share one Intent, and
-        # a bare run would put all of them under whichever is passed first.
-        selectors = " ".join(
-            f"--category {shlex.quote(c)}" for c in sorted(report.missing_categories)
-        )
-        typer.echo(
-            f"  fix: ghstars remote bootstrap --yes --intent <Intent> {selectors}"
-        )
-        typer.echo("       (one run per Intent; these may not share one)")
+        # One template per Category. Grouping them into a single command
+        # would assign every Category the same Intent, and ghstars cannot
+        # group them itself without guessing an Intent (ticket 03).
+        typer.echo("  fix: run one per Category, choosing each Intent yourself:")
+        for category in sorted(report.missing_categories):
+            typer.echo(
+                "       ghstars remote bootstrap --yes --intent <Intent> "
+                f"--category {shlex.quote(category)}"
+            )
 
     if report.create_blocked:
         typer.echo(f"Bootstrap blocked: {report.blocked_reason}")

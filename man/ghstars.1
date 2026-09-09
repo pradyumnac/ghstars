@@ -111,6 +111,18 @@ Requires
 .B --yes
 and
 .BR --intent .
+Use the repeatable
+.B --category
+to limit the run to named Categories; the default is every missing one.
+Missing Categories rarely share one Intent, so run it once per Intent with
+explicit
+.B --category
+values.
+.B ghstars doctor
+prints one ready template per Category.
+An unknown
+.B --category
+value is an error, never a silent no-op.
 A List name needing attention blocks it; use
 .B --force
 to proceed.

@@ -7,11 +7,12 @@ through it.
 
 **Status:** ready-for-human — the command landed on 2026-09-09, and its Star-
 level check plus `ghstars untag` landed the same day. The skill-layer wizard
-is not built.
+is not built, and a review left six items open. See ticket 35.
 
 **Kind:** enhancement
 
-**Blocked by:** None. Ticket 33 landed the rules this command checks.
+**Blocked by:** None for the command itself. Ticket 35 holds the review
+follow-ups, three of which need a product decision.
 
 ## Delivered on 2026-09-09
 

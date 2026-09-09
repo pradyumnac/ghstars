@@ -6,6 +6,16 @@ operation: status, rate limit, sync, facet and List inspection, Star discovery,
 tag and retag, retriage review, unstar, Category rename or drain, export, and
 diff.
 
+Tickets 33 and 34 widened this scope on 2026-09-09. The skill must also cover:
+
+- `ghstars doctor`, and the fact that it exits 0 whenever the diagnosis
+  succeeded. The caller branches on `ok`, never on the exit code.
+- `ghstars remote bootstrap` and `ghstars remote rename-list`.
+- `ghstars untag`.
+- `StarProblem.requires_sync`: a repair carrying it needs `ghstars sync` first.
+- `StatusReport.warnings`: advisories that never affect `verify_ok`.
+- The repair loop in `docs/reference/cli.md`, which orders these commands.
+
 When the agent notices relevant workflow friction, it tells the user directly
 as a plain observation. It does not persist, deduplicate, or apply
 observations.
@@ -21,6 +31,12 @@ question as a follow-up when work starts.
 - [ ] Skill documents the deterministic/agentic division of labor for status,
       rate limit, sync, facets, Star and List discovery, tag/retag, retriage,
       unstar, Category rename/drain, export, and diff
+- [ ] Skill covers `doctor`, `remote bootstrap`, `remote rename-list` and
+      `untag`, including `requires_sync` and `warnings` (tickets 33, 34)
+- [ ] Decide the typed-repair schema with this skill, not before it: today
+      `ListProblem.repairs`/`StarProblem.repairs` are untyped strings mixing
+      commands and prose, and `PartialBootstrapError` carries created names in
+      an English message. See ticket 35.
 - [ ] Skill tells the user about relevant workflow friction as a plain observation
 - [ ] Skill does not persist, deduplicate, or apply observations
 - [ ] Skill structure mirrors the existing `github-stars` skill
