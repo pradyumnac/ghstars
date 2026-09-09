@@ -25,8 +25,8 @@ Seven items, summarized:
 | Ref | Item | State |
 | --- | --- | --- |
 | P1 | `remote bootstrap` with no `--category` versus the explicit-target rule in `docs/reference/cli.md` | Resolved -- `--category` stays optional; `--yes` now gates on a computed plan, same as `unstar` |
-| P2 | Existing semantic duplicate Lists: detection landed as ticket 36, the repair policy is not decided | Detection done, repair needs a decision |
-| P3 | `bootstrap` cannot bind to a reviewed `doctor` plan | Needs a decision |
+| P2 | Existing semantic duplicate Lists | Resolved -- detection landed as ticket 36; prose-only repair was already the right shape (ticket 03), no separate policy needed |
+| P3 | `bootstrap` cannot bind to a reviewed `doctor` plan | Decided -- a `plan_id` content fingerprint, not a wall-clock cutoff; `bootstrap --plan` rides with ticket 14 |
 | P4 | Stale classification: detect the drift, or remove the duplication that causes it | Needs a decision |
 | P5 | `List.items` and `Star.list_ids` are the two stored sides of one relationship, and nothing checks they agree | Ready to build |
 | P6 | Typed repair entries, replacing untyped strings that mix commands with prose | Rides with ticket 14 |

@@ -6,8 +6,9 @@ difference and the direction decision. It does not hold the implementation
 plan.
 
 **Status:** ready-for-human — the code and the remediation landed on
-2026-09-09. Six items remain open; see "Pending" below. Three need a product
-decision, one is ready to build, two ride with ticket 14. P1 is resolved.
+2026-09-09. Five items remain open; see "Pending" below. One needs a
+product decision, one is ready to build, three ride with ticket 14 (P3's
+decision is made; P6/P7 always did). P1 and P2 are resolved.
 
 ## Remediation, executed 2026-09-09
 
@@ -372,25 +373,19 @@ caller, same as everywhere else in the CLI.
 Changed: `src/ghstars/cli/commands/remote.py` (`bootstrap_cmd`),
 `docs/reference/cli.md`.
 
-## Needs a product decision (3)
+**P2 — Existing semantic duplicate Lists. Resolved, split into ticket
+36, 2026-09-09.** The "repair policy" question this item posed --
+which List survives, whether membership merges -- turned out not to need
+a separate decision. `doctor` already has a rule for exactly this shape of
+problem (*unblessed*, *two lifecycle Intents*): when two-or-more repairs
+are valid, ghstars reports prose and lets the human choose (ticket 03).
+Ticket 36 applied that same rule to `semantic_duplicate` rather than
+inventing a new one. Landed: `PROBLEM_SEMANTIC_DUPLICATE` in
+`core/doctor.py`, TDD, full test suite and `mise run check` green. No
+further decision is pending -- there is no merge/delete command to design
+a policy for yet, and prose-only was never meant to be temporary.
 
-**P2 — Existing semantic duplicate Lists. Split into ticket 36,
-2026-09-09.** Detection landed there: `PROBLEM_SEMANTIC_DUPLICATE` in
-`core/doctor.py`, TDD, full test suite and `mise run check` green. Ticket 36
-holds the rule table and the worked examples. The repair half stays
-undecided -- which List survives, and whether membership merges -- and
-stays here as the open question. Ticket 36 blocks closing this ticket only
-insofar as the detection needed to exist; it does not block anything else
-in this "Pending" section.
-
-New `PROBLEM_SEMANTIC_DUPLICATE` in `core/doctor.py`, added to `diagnose()`'s
-existing loop, surfaced through the existing `DoctorReport.problems` --
-same `ghstars doctor` output, same `--json` shape, no new report type.
-
-**P3 — `bootstrap` cannot bind to a reviewed plan.** `doctor` fetches, then
-`bootstrap` fetches again and re-derives its own target set. A List created
-between the two changes what gets made. `--category` narrows the window; it
-does not close it. Accept the race, or require plan stability.
+## Needs a product decision (1)
 
 **P4 — Stale classification: detect or eliminate.**
 `stale_classification_warning` only finds a List with `intent=None` and
@@ -418,7 +413,30 @@ in step. This is the duplication that cannot be collapsed -- the source is a
 network fetch, and `tag`/`untag` legitimately write both sides between syncs
 -- so it earns a check rather than a redesign.
 
-## Riding with ticket 14 (2)
+## Riding with ticket 14 (3)
+
+**P3 — `bootstrap` cannot bind to a reviewed plan. Decided, 2026-09-09:**
+a content fingerprint, not a wall-clock cutoff. `doctor --json` gains
+`plan_id`, a hash over `sorted(lst.id for lst in lists)` plus
+`missing_categories` from that fetch -- it changes if and only if a List
+was created, deleted, or renamed into or out of the missing set.
+`bootstrap` takes an optional `--plan PLAN_ID`; it already re-fetches and
+re-diagnoses right before writing, so it recomputes the same fingerprint
+from that fresh fetch and compares. A mismatch refuses with a new
+`plan_drift` error code, modeled on the existing
+`CODE_LIST_MEMBERSHIP_DRIFT` (`tag`/`untag`) -- same fix: re-run `doctor`,
+get a new `plan_id`, retry.
+
+Rejected: a wall-clock cutoff (e.g. "under 30 minutes old"). It proxies for
+account change instead of detecting it -- false positive on a quiet
+account past the cutoff, false negative on fast drift inside it. The
+fingerprint has neither failure mode.
+
+`--plan` stays optional. An interactive human typing `bootstrap` right
+after `doctor` still works unflagged -- the in-process race is already
+seconds-wide. `--plan` matters for a caller that reads `doctor --json` and
+acts later, which is exactly ticket 14's skill layer, so this lands with
+that ticket rather than before it.
 
 **P6 — Typed repairs.** `ListProblem.repairs` and `StarProblem.repairs` are
 untyped strings mixing executable commands with prose. `problem` already
