@@ -11,17 +11,28 @@ session tripled its surface: the skill must cover `doctor`, `remote
 bootstrap`, `remote rename-list` and `untag` alongside the commands ticket 30
 delivered.
 
-### Open decisions
+### Open work
 
-1. Choose an Intent for each blessed Category with no List. `remote bootstrap`
-   takes one Intent per run, and the missing Categories do not share one.
-   `Example` takes `Reference` or `Learn`, never `Explore` (ADR 0005).
-2. Decide whether a skill may write to `ghstars.toml`. ADR 0002 forbids
-   *ghstars* writing there. A skill is not ghstars, so blessing a Category
-   from the wizard needs a ruling. See ticket 34.
-3. Plan the triage pass for the unclassified Stars. ghstars cannot classify
-   them: it must never guess an Intent or a Category (ticket 03). The pass
-   needs a method, not a command.
+**Every open item lives in one place: ticket 33's "Pending" section**
+(`.scratch/ghstars-v1/issues/33-list-name-syntax-drift.md`). Read it before
+starting anything in this area. Ticket 35 was folded into it; ticket 34 and
+ticket 14 point at it rather than repeating it.
+
+Seven items, summarized:
+
+| Ref | Item | State |
+| --- | --- | --- |
+| P1 | `remote bootstrap` with no `--category` is a wildcard mutation target, against the explicit-target rule in `docs/reference/cli.md` | Needs a decision |
+| P2 | Existing semantic duplicate Lists: detection is ready, the repair policy is not | Needs a decision |
+| P3 | `bootstrap` cannot bind to a reviewed `doctor` plan | Needs a decision |
+| P4 | Stale classification: detect the drift, or remove the duplication that causes it | Needs a decision |
+| P5 | `List.items` and `Star.list_ids` are the two stored sides of one relationship, and nothing checks they agree | Ready to build |
+| P6 | Typed repair entries, replacing untyped strings that mix commands with prose | Rides with ticket 14 |
+| P7 | Structured partial-bootstrap data, replacing an English error message | Rides with ticket 14 |
+
+Beyond those: ticket 14's skill, ticket 34's wizard, and the triage pass for
+the unclassified Stars. That pass needs a *method*, not a command -- ghstars
+must never guess an Intent or a Category (ticket 03).
 
 ### Notes repository split
 

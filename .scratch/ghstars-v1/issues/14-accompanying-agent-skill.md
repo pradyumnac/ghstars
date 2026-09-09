@@ -36,7 +36,7 @@ question as a follow-up when work starts.
 - [ ] Decide the typed-repair schema with this skill, not before it: today
       `ListProblem.repairs`/`StarProblem.repairs` are untyped strings mixing
       commands and prose, and `PartialBootstrapError` carries created names in
-      an English message. See ticket 35.
+      an English message. See ticket 33's "Pending" section, P6 and P7.
 - [ ] Skill tells the user about relevant workflow friction as a plain observation
 - [ ] Skill does not persist, deduplicate, or apply observations
 - [ ] Skill structure mirrors the existing `github-stars` skill

@@ -7,12 +7,12 @@ through it.
 
 **Status:** ready-for-human — the command landed on 2026-09-09, and its Star-
 level check plus `ghstars untag` landed the same day. The skill-layer wizard
-is not built, and a review left six items open. See ticket 35.
+is not built, and a review left items open. See ticket 33's "Pending" section.
 
 **Kind:** enhancement
 
-**Blocked by:** None for the command itself. Ticket 35 holds the review
-follow-ups, three of which need a product decision.
+**Blocked by:** None for the command itself. Ticket 33's "Pending"
+section holds the review follow-ups.
 
 ## Delivered on 2026-09-09
 
@@ -65,8 +65,12 @@ valid repair types means prose, because ghstars must not choose (ticket 03).
 structure. `category rename`/`drain` stay where they are -- renaming a
 shipped command buys nothing today.
 
-Blessing a Category never becomes a command. ADR 0002 forbids ghstars writing
-to `config/` on the user's behalf, so it stays a hand edit of `ghstars.toml`.
+Blessing a Category *did* become a command, reversing this ticket's original
+call. `ghstars taxonomy bless CATEGORY` writes `[taxonomy]`, and the TUI does
+the same behind a confirmation. ADR 0002 forbids writing `config/` *on the
+user's behalf*, which is not the same as a write the user explicitly asks
+for; ADR 0009's reading is amended accordingly. Both paths round-trip through
+`tomlkit`, so comments and formatting survive.
 
 `remote rename-list` closes the gap found renaming `Learning` to
 `Learn: General` by hand: `category rename` keeps each List's Intent, so it
@@ -85,9 +89,10 @@ Design questions for that work:
    reports it. A rename is a live mutation.
 2. Decide how the wizard chooses an Intent per Category. One Intent for the
    whole run is the current shape of `--intent`.
-3. Decide whether the wizard blesses a word in `ghstars.toml` on the user's
-   behalf. ADR 0002 forbids ghstars writing there; a skill is not ghstars, so
-   this needs a ruling.
+3. Decide whether a *skill* may bless a word in `ghstars.toml`. The CLI and
+   the TUI now may, on an explicit instruction (ADR 0005). A skill acts on the
+   user's behalf rather than at their keystroke, so the same reasoning does
+   not carry over unexamined.
 
 ## Comments
 

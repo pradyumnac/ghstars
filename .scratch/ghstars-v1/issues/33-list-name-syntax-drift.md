@@ -5,7 +5,9 @@ a syntax that the repo does not model. This ticket records the measured
 difference and the direction decision. It does not hold the implementation
 plan.
 
-**Status:** done — the code and the remediation both landed on 2026-09-09.
+**Status:** ready-for-human — the code and the remediation landed on
+2026-09-09. Seven items remain open; see "Pending" below. Four need a product
+decision, one is ready to build, two ride with ticket 14.
 
 ## Remediation, executed 2026-09-09
 
@@ -336,12 +338,90 @@ those Lists until a synchronization rewrites the file.
 8. Synchronize. Six List names then flag as malformed. That set is the triage
    worklist.
 
-## Deferred, with no ticket
+## Done, 2026-09-09
 
-- Rename the six malformed Lists on GitHub. Do this during the triage pass.
-- Decide whether `Explore: Tool - Dev` and `Explore: Tool - CLI` merge into
-  `Explore: Tool`, or whether `CLI` becomes a Category.
-- Classify the 1,421 unclassified Stars.
+The six drifted names were resolved on the live account. `Tool - Dev` and
+`Tool - CLI` were blessed rather than merged. `Explore: Dev_Library` became
+`Explore: Library` via `ghstars category rename`, and `Learning` became
+`Learn: General` via `update_list()`. Four Stars were untagged out of the
+triage inbox, and the six missing blessed Categories were created --
+`Course` and `Example` under `Reference`, the rest under `Explore`.
+`ghstars doctor` reports `ok`.
+
+# Pending
+
+Everything still open across this work, in one place. Ticket 35 was folded
+in here on 2026-09-09; it holds nothing this section does not.
+
+## Needs a product decision (4)
+
+**P1 — `remote bootstrap` versus the explicit-target contract.**
+`docs/reference/cli.md` states a global rule: "A mutation always names its
+target explicitly. No command accepts a Filter, a search term, standard
+input, or a wildcard as a mutation target (Scope 4)." `bootstrap` with no
+`--category` mutates every missing Category, which is a wildcard target.
+Require at least one `--category`, or document `bootstrap` as an explicit
+exception.
+
+**P2 — Existing semantic duplicate Lists.** `rename_list` stops a new
+duplicate. Nothing reports a pair already on GitHub that parses to one
+`(intent, category)`, and `tag`'s `_find_list` binds to whichever GitHub
+returns first. ADR 0005 makes bare and explicit forms one List, which makes
+a duplicate a defect by that decision's own logic. Detection can land now.
+The repair cannot: which List survives, and whether membership merges, is
+the decision.
+
+**P3 — `bootstrap` cannot bind to a reviewed plan.** `doctor` fetches, then
+`bootstrap` fetches again and re-derives its own target set. A List created
+between the two changes what gets made. `--category` narrows the window; it
+does not close it. Accept the race, or require plan stability.
+
+**P4 — Stale classification: detect or eliminate.**
+`stale_classification_warning` only finds a List with `intent=None` and
+`malformed=False`. It misses an un-normalized Category, old whitespace, and
+a `Learn:` List the old parser marked malformed.
+
+Two fixes, and they differ in kind. *Detect*: compare the stored
+`intent`/`category`/`malformed` against `classify_list(lst)`; complete, but
+the duplication stays and so does the class. *Eliminate*: these three fields
+are a pure function of `List.name` stored in the same record, so deriving
+them on access (a pydantic `computed_field`) makes the staleness class
+unreachable and removes `classify_list` and its seven defensive call sites.
+
+Measured on 2026-09-09: eliminating costs 4 failing tests out of 524, all
+records whose stored value contradicted the name. `StateStore` stays a dumb
+container either way -- the derivation belongs on the model, not the store.
+
+## Ready to build, no decision needed (1)
+
+**P5 — Membership symmetry is unguarded.** `verify_state` checks duplicate
+ids and dangling references, but never that `full_name in lst.items` agrees
+with `lst.id in star.list_ids`. Those are the two stored sides of one
+relationship, and `reconcile_list_membership` is the only thing keeping them
+in step. This is the duplication that cannot be collapsed -- the source is a
+network fetch, and `tag`/`untag` legitimately write both sides between syncs
+-- so it earns a check rather than a redesign.
+
+## Riding with ticket 14 (2)
+
+**P6 — Typed repairs.** `ListProblem.repairs` and `StarProblem.repairs` are
+untyped strings mixing executable commands with prose. `problem` already
+discriminates them, so a machine caller can branch today, but the entries
+themselves carry no marker. Type them `{kind: "command" | "prose", text}`.
+
+**P7 — Structured partial-bootstrap data.** `PartialBootstrapError` carries
+the created names inside an English message rather than as data.
+
+Both change the contract ticket 14's skill consumes, so they land with that
+skill, not before it. Ticket 14's scope now names them.
+
+## Larger work, tracked elsewhere
+
+- **Ticket 14** -- the agent skill. Not started, and the largest open item.
+- **Ticket 34** -- the skill-layer wizard, plus whether a skill may write
+  `ghstars.toml` the way the TUI now does.
+- **The triage pass** -- 1,426 unclassified Stars. It needs a method, not a
+  command: ghstars must never guess an Intent or a Category (ticket 03).
 
 ## Comments
 
