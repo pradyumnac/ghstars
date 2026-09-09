@@ -20,15 +20,24 @@ is not built.
 - [x] Two conditions are reported apart, because their repairs differ:
       `malformed` (bad shape, one repair) and `unblessed` (good shape,
       unblessed Category, two repairs).
-- [x] `--fix --yes --intent <Intent>` creates one List per blessed Category
-      that has no List. It never renames and never deletes.
-- [x] `--fix` refuses without `--intent`. ghstars does not guess an Intent
-      (ticket 03).
-- [x] A name that needs attention blocks `--fix`. `--force` overrides it.
+- [x] `remote bootstrap --yes --intent <Intent>` creates one List per blessed
+      Category that has no List. It never renames and never deletes.
+- [x] `remote bootstrap` refuses without `--intent`. ghstars does not guess
+      an Intent (ticket 03).
+- [x] A name that needs attention blocks `remote bootstrap`. `--force`
+      overrides it.
 - [x] `--json` emits a `DoctorReport`, not a `FIELD_REGISTRY` field set, so
       the CLI field sets keep their ticket 14 contract.
 - [x] No prompt anywhere. Ticket 30 Scope 0 requires the command to work
       without a terminal.
+- [x] `doctor` exits 0 whenever the diagnosis itself succeeded. ADR 0010
+      reserves a non-zero exit for a failure carrying an error envelope, and
+      a report is not one. Callers branch on `ok`.
+- [x] `ok` covers defects only. A blessed Category with no List is an
+      opportunity, not a defect; folding it in left `ok` false forever.
+- [x] One rule function (`taxonomy.star_conflicts`) backs both `verify_state`
+      (local state) and `doctor` (live state), so the two reporters cannot
+      check unequal rule sets.
 
 ## Why the names gate the creates
 

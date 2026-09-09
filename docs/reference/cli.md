@@ -36,12 +36,13 @@ A missing file means every default applies, so the built-in vocabulary is
 used. `categories = []` is not the same thing: it blesses nothing, so
 `verify` reports every Category.
 
-A Category outside the list is never rejected. `ghstars status` reports it,
-and the List keeps working, because GitHub is the source of truth
-(ADR 0001). The one place the list is enforced is `ghstars tag`, which
-refuses to *create* an unblessed Category — ghstars never writes a name it
-cannot parse. An underscore reads as a space, so `AI_Agents` and
-`AI Agents` are one value, both in this file and in a List name.
+A Category outside the list is never rejected. `ghstars status` and
+`ghstars doctor` report it, and the List keeps working, because GitHub is
+the source of truth (ADR 0001). The list is enforced only on what ghstars
+*writes*: `tag` refuses to create an unblessed Category, and
+`remote rename-list` refuses to rename into one. An underscore reads as a
+space, so `AI_Agents` and `AI Agents` are one value, both in this file and
+in a List name.
 
 ## Global conventions
 
@@ -471,6 +472,30 @@ exit `0` whether or not anything changed, so the exit code here never
 says whether anything changed; only the output does. A missing/broken
 git binary or an untracked `state/` fails with `tool_unavailable` or
 `invalid_input` instead of running git at all.
+
+### The repair loop
+
+`doctor` reports; one command repairs each kind of problem; `sync` puts local
+state back in step. In order:
+
+```
+ghstars sync                     # untag reads local state, so start here
+ghstars doctor                   # read-only; exits 0, branch on `ok`
+  ├─ malformed name          →  ghstars remote rename-list OLD NEW --yes
+  ├─ unblessed Category      →  edit [taxonomy] in ghstars.toml, or rename
+  ├─ Star in inbox + a List  →  ghstars untag REPO LIST
+  └─ blessed Category, no List →  ghstars remote bootstrap --yes --intent X
+ghstars sync                     # every remote repair leaves local state stale
+```
+
+Two rules govern what is a command and what is prose. **One repair type means
+a command; two means prose**, since ghstars must not choose (ticket 03). And
+**ghstars never writes to `config/`** (ADR 0002), so blessing a Category is
+always a hand edit.
+
+`untag` is the only repair that reads local state, so it needs a `sync`
+*before*. The two `remote` verbs work against live GitHub and need a `sync`
+*after*.
 
 ### `ghstars doctor`
 

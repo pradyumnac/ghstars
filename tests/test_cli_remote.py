@@ -74,9 +74,7 @@ def test_bootstrap_is_blocked_by_a_name_needing_attention(
     client = FakeGitHubClient(lists=[_list("L1", "Explore: Wombat")])
     _use(monkeypatch, StateStore(tmp_path), client)
 
-    result = runner.invoke(
-        app, ["remote", "bootstrap", "--yes", "--intent", "Explore"]
-    )
+    result = runner.invoke(app, ["remote", "bootstrap", "--yes", "--intent", "Explore"])
 
     assert result.exit_code != 0
     assert len(client.fetch_lists()) == 1
@@ -226,3 +224,30 @@ def test_rename_list_is_a_no_op_when_the_name_is_unchanged() -> None:
     result = rename_list(client, "Explore: Tool", "Explore: Tool", categories=VOCAB)
 
     assert result.name == "Explore: Tool"
+
+
+def test_rename_list_rejects_a_same_name_no_op_on_a_bad_name() -> None:
+    """Pasting the old string back must not report a repair that never
+    happened -- validation runs before the no-op check.
+    """
+    client = FakeGitHubClient(lists=[_list("L1", "Exploring: Foo")])
+
+    with pytest.raises(UnwritableListNameError):
+        rename_list(client, "Exploring: Foo", "Exploring: Foo", categories=VOCAB)
+
+
+def test_rename_list_rejects_a_target_matching_another_lists_identity() -> None:
+    """`Explore: AI_Agents` and `Explore: AI Agents` are one Category, and a
+    duplicate of that shape is one nothing downstream can flag.
+    """
+    client = FakeGitHubClient(
+        lists=[_list("L1", "Widgets"), _list("L2", "Explore: AI Agents")]
+    )
+
+    with pytest.raises(ListNameTakenError):
+        rename_list(
+            client,
+            "Widgets",
+            "Explore: AI_Agents",
+            categories=[*VOCAB, "AI Agents", "Widgets"],
+        )

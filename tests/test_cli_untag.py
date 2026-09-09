@@ -63,9 +63,7 @@ def test_untag_json_reports_the_remaining_list_ids(
     )
     _use(monkeypatch, store, client)
 
-    result = runner.invoke(
-        app, ["untag", "owner/repo", "Explore: General", "--json"]
-    )
+    result = runner.invoke(app, ["untag", "owner/repo", "Explore: General", "--json"])
 
     assert json.loads(result.output) == {"full_name": "owner/repo", "list_ids": []}
 

@@ -128,9 +128,10 @@ ADR 0009 assigns the setting to the core tier, because `core.taxonomy`,
 `core.discovery` and `core.category` all read it. The user adds a value with a
 text edit, not with a release.
 
-A Category outside the vocabulary is kept and flagged `malformed`. It is never
-rejected. ADR 0001 makes GitHub the source of truth, so the user can name a
-List first and bless the value after.
+A Category outside the vocabulary is kept and reported as *unblessed*, a
+condition distinct from `malformed` (see below). It is never rejected. ADR
+0001 makes GitHub the source of truth, so the user can name a List first and
+bless the value after.
 
 ### A Category can be a kind or a subject
 

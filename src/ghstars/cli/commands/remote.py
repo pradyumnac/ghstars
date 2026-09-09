@@ -9,6 +9,7 @@ from ghstars.core import CoreConfigError, load_core_config
 from ghstars.core.doctor import (
     ListNameTakenError,
     ListNotFoundError,
+    PartialBootstrapError,
     bootstrap_lists,
     diagnose,
     planned_creates,
@@ -88,6 +89,13 @@ def bootstrap_cmd(
             intent=_cast_intent(intent),
             is_private=private,
         )
+    except PartialBootstrapError as exc:
+        # Name what already exists on GitHub; re-running is safe.
+        fail(
+            f"{exc}. Already created: {exc.created}",
+            code=CODE_NETWORK_FAILURE,
+            json_output=json_output,
+        )
     except GitHubApiError as exc:
         fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output)
 
@@ -105,7 +113,9 @@ def bootstrap_cmd(
 
 @remote_app.command("rename-list")
 def rename_list_cmd(
-    old_name: str = typer.Argument(..., help="Current List name, exactly as on GitHub."),
+    old_name: str = typer.Argument(
+        ..., help="Current List name, exactly as on GitHub."
+    ),
     new_name: str = typer.Argument(..., help="New List name, e.g. 'Learn: General'."),
     yes: bool = typer.Option(False, "--yes", help="Required: this writes to GitHub."),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
@@ -132,7 +142,9 @@ def rename_list_cmd(
             cli.get_client(), old_name, new_name, categories=categories
         )
     except (ListNotFoundError, ListNameTakenError, UnwritableListNameError) as exc:
-        fail(str(exc), code=CODE_INVALID_INPUT, json_output=json_output, target=old_name)
+        fail(
+            str(exc), code=CODE_INVALID_INPUT, json_output=json_output, target=old_name
+        )
     except GitHubApiError as exc:
         fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output)
 

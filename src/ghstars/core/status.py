@@ -5,11 +5,7 @@ from pydantic import BaseModel
 
 from ghstars.core.models import List, Star
 from ghstars.core.state_store import StateStore
-from ghstars.core.taxonomy import (
-    LIFECYCLE_INTENTS,
-    TRIAGE_CATEGORY,
-    blessed_categories,
-)
+from ghstars.core.taxonomy import blessed_categories, star_conflicts
 
 
 class StatusReport(BaseModel):
@@ -106,28 +102,18 @@ def verify_state(
 
     by_id = {lst.id: lst for lst in lists}
     for star in stars:
-        member_lists = [by_id[i] for i in star.list_ids if i in by_id]
-
-        in_triage = [lst for lst in member_lists if lst.category == TRIAGE_CATEGORY]
-        classified = [
-            lst
-            for lst in member_lists
-            if lst.category is not None and lst.category != TRIAGE_CATEGORY
-        ]
-        if in_triage and classified:
+        conflicts = star_conflicts([by_id[i] for i in star.list_ids if i in by_id])
+        if conflicts.in_inbox_and_classified:
             problems.append(
                 f"{star.full_name}: in the triage inbox "
-                f"{sorted(lst.name for lst in in_triage)} and the classified List "
-                f"{sorted(lst.name for lst in classified)} at the same time"
+                f"{sorted(lst.name for lst in conflicts.triage_inbox)} and the "
+                f"classified List "
+                f"{sorted(lst.name for lst in conflicts.classified)} at the same time"
             )
-
-        lifecycle = {
-            lst.intent for lst in member_lists if lst.intent in LIFECYCLE_INTENTS
-        }
-        if len(lifecycle) > 1:
+        if conflicts.has_lifecycle_conflict:
             problems.append(
                 f"{star.full_name}: holds two lifecycle Intents "
-                f"{sorted(str(i) for i in lifecycle)}; at most one of "
+                f"{list(conflicts.lifecycle_intents)}; at most one of "
                 f"Explore/Current/Retired applies to a Star"
             )
 

@@ -12,14 +12,17 @@ from pydantic import BaseModel
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import Intent, List
 from ghstars.core.taxonomy import (
-    TRIAGE_CATEGORY,
     blessed_categories,
     check_writable_list_name,
     classify_list,
+    parse_list_name,
+    star_conflicts,
 )
 
 PROBLEM_MALFORMED = "malformed"
 PROBLEM_UNBLESSED = "unblessed"
+PROBLEM_INBOX_AND_CLASSIFIED = "inbox_and_classified"
+PROBLEM_TWO_LIFECYCLES = "two_lifecycle_intents"
 
 
 class ListProblem(BaseModel):
@@ -31,20 +34,23 @@ class ListProblem(BaseModel):
 
 
 class StarProblem(BaseModel):
-    """A Star in the triage inbox (`*: General`) and a classified List at
-    once -- the same contradiction `verify_state` reports, computed here
-    from live `List.items` rather than local `Star.list_ids`.
+    """A Star breaking a Star-level taxonomy rule, from live `List.items`.
+
+    Same rules `verify_state` applies to local state -- both call
+    `taxonomy.star_conflicts`, so the two reporters cannot diverge.
     """
 
     full_name: str
-    in_triage_inbox: list[str]
-    classified: list[str]
-    # One `ghstars untag` call per inbox membership -- the repair that
-    # only drops that one membership, keeping the rest.
-    repairs: list[str]
+    problem: str
+    detail: str
+    in_triage_inbox: list[str] = []
+    classified: list[str] = []
+    lifecycle_intents: list[str] = []
+    repairs: list[str] = []
 
 
 class DoctorReport(BaseModel):
+    # `ok` covers defects only, never `missing_categories`.
     ok: bool
     list_count: int
     problems: list[ListProblem] = []
@@ -62,25 +68,49 @@ def _star_problems(classified: list[List]) -> list[StarProblem]:
 
     found: list[StarProblem] = []
     for full_name, member_lists in membership.items():
-        inbox = [lst for lst in member_lists if lst.category == TRIAGE_CATEGORY]
-        classified_lists = [
-            lst
-            for lst in member_lists
-            if lst.category is not None and lst.category != TRIAGE_CATEGORY
-        ]
-        if inbox and classified_lists:
+        conflicts = star_conflicts(member_lists)
+        if conflicts.in_inbox_and_classified:
             found.append(
                 StarProblem(
                     full_name=full_name,
-                    in_triage_inbox=sorted(lst.name for lst in inbox),
-                    classified=sorted(lst.name for lst in classified_lists),
+                    problem=PROBLEM_INBOX_AND_CLASSIFIED,
+                    detail="in the triage inbox and a classified List at once",
+                    in_triage_inbox=sorted(lst.name for lst in conflicts.triage_inbox),
+                    classified=sorted(lst.name for lst in conflicts.classified),
                     repairs=[
                         f"ghstars untag {full_name} {lst.name!r}"
-                        for lst in sorted(inbox, key=lambda lst: lst.name)
+                        for lst in sorted(
+                            conflicts.triage_inbox, key=lambda lst: lst.name
+                        )
                     ],
                 )
             )
-    return sorted(found, key=lambda p: p.full_name)
+        if conflicts.has_lifecycle_conflict:
+            # Two valid repairs (which Intent is right?), so prose only.
+            found.append(
+                StarProblem(
+                    full_name=full_name,
+                    problem=PROBLEM_TWO_LIFECYCLES,
+                    detail=(
+                        "holds lifecycle Intents "
+                        f"{list(conflicts.lifecycle_intents)}; at most one of "
+                        "Explore/Current/Retired applies to a Star"
+                    ),
+                    lifecycle_intents=list(conflicts.lifecycle_intents),
+                    classified=sorted(
+                        lst.name
+                        for lst in member_lists
+                        if lst.intent in conflicts.lifecycle_intents
+                    ),
+                    repairs=[
+                        (
+                            "keep one lifecycle Intent: re-tag the Star, or "
+                            "untag it from the Lists that no longer apply"
+                        )
+                    ],
+                )
+            )
+    return sorted(found, key=lambda p: (p.full_name, p.problem))
 
 
 def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
@@ -100,9 +130,7 @@ def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
                     detail="name attempts '{Intent}: {Category}' and does not match",
                     # One repair type, so the command is concrete; only the
                     # target name is the user's to choose.
-                    repairs=[
-                        f"ghstars remote rename-list {lst.name!r} '<new name>'"
-                    ],
+                    repairs=[f"ghstars remote rename-list {lst.name!r} '<new name>'"],
                 )
             )
         elif lst.category is not None and lst.category not in blessed:
@@ -124,7 +152,10 @@ def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
     missing = sorted(blessed - present)
 
     return DoctorReport(
-        ok=not problems and not star_problems and not missing,
+        # `missing` is deliberately excluded: a blessed Category with no
+        # List is an opportunity, not a defect. Folding it in would leave
+        # `ok` false forever, since the default vocabulary ships 12.
+        ok=not problems and not star_problems,
         list_count=len(lists),
         problems=problems,
         star_problems=star_problems,
@@ -176,18 +207,44 @@ def rename_list(
     target = next((lst for lst in lists if lst.name == old_name), None)
     if target is None:
         raise ListNotFoundError(old_name)
+
+    # Validate before the no-op check, so renaming a malformed name to
+    # itself reports the problem instead of a bogus success.
+    check_writable_list_name(new_name, categories)
+
+    # Compare parsed identity, not just the raw name: `Explore: AI_Agents`
+    # and `Explore: AI Agents` are one Category, and a duplicate of that
+    # shape is one nothing downstream can flag.
+    wanted = parse_list_name(new_name)
+    for lst in lists:
+        if lst.id == target.id:
+            continue
+        if lst.name == new_name:
+            raise ListNameTakenError(new_name)
+        other = parse_list_name(lst.name)
+        if not other.malformed and (other.intent, other.category) == (
+            wanted.intent,
+            wanted.category,
+        ):
+            raise ListNameTakenError(lst.name)
+
     if old_name == new_name:
         return classify_list(target)
-    if any(lst.name == new_name for lst in lists if lst.id != target.id):
-        raise ListNameTakenError(new_name)
-
-    check_writable_list_name(new_name, categories)
     return classify_list(client.update_list(target.id, name=new_name))
 
 
 def planned_creates(report: DoctorReport, *, intent: Intent) -> list[str]:
-    """The List names `--fix` would create for `intent`."""
+    """The List names `remote bootstrap` would create for `intent`."""
     return [f"{intent}: {category}" for category in report.missing_categories]
+
+
+class PartialBootstrapError(Exception):
+    """A create failed part-way. Names already created are reported, not lost."""
+
+    def __init__(self, created: list[str], cause: Exception) -> None:
+        self.created = created
+        self.cause = cause
+        super().__init__(f"created {len(created)} List(s), then failed: {cause}")
 
 
 def bootstrap_lists(
@@ -197,10 +254,18 @@ def bootstrap_lists(
     intent: Intent,
     is_private: bool = False,
 ) -> list[str]:
-    """Create one List per missing blessed Category. Caller checks the gate."""
+    """Create one List per missing blessed Category. Caller checks the gate.
+
+    A mid-run failure raises `PartialBootstrapError` carrying what was
+    already created, so the caller reports it rather than losing it.
+    Re-running is safe: what exists is no longer missing.
+    """
     created: list[str] = []
     for name in planned_creates(report, intent=intent):
-        client.create_list(name, is_private=is_private)
+        try:
+            client.create_list(name, is_private=is_private)
+        except Exception as exc:
+            raise PartialBootstrapError(created, exc) from exc
         created.append(name)
     return created
 

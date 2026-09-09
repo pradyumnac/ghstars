@@ -255,7 +255,9 @@ def untag_star(
             classify_list(lst)
             for lst in (lists if lists is not None else client.fetch_lists())
         ]
-        lst = next((item for item in lists if item.name == list_name), None)
+        # Same resolution as `tag_star`: a different spelling of one
+        # Category names the same List.
+        lst = _find_list(lists, list_name)
         if lst is None:
             raise StarNotInListError(full_name, list_name)
 

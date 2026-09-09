@@ -60,10 +60,14 @@ def test_diagnose_normalizes_before_checking_the_vocabulary() -> None:
 
 
 def test_diagnose_reports_blessed_categories_with_no_list() -> None:
+    """A blessed Category with no List is an opportunity, not a defect, so
+    it is reported without making the account not-ok. Otherwise `ok` would
+    be false forever -- the default vocabulary ships 12 Categories.
+    """
     report = diagnose([_list("L1", "Explore: Tool")], categories=VOCAB)
 
     assert report.missing_categories == ["General", "Library"]
-    assert report.ok is False
+    assert report.ok is True
 
 
 def test_diagnose_is_ok_when_every_category_has_a_list() -> None:
@@ -124,6 +128,60 @@ def test_diagnose_flags_a_star_in_the_inbox_and_a_classified_list() -> None:
     assert problem.in_triage_inbox == ["Explore: General"]
     assert problem.classified == ["Explore: Tool"]
     assert problem.repairs == ["ghstars untag owner/x 'Explore: General'"]
+
+
+def test_diagnose_flags_two_lifecycle_intents_on_one_star() -> None:
+    """`tag`'s strip is per-Category by design, so it creates this state
+    freely -- the live reporter must not be blind to it (ADR 0005).
+    """
+    explore = List(
+        id="L1", name="Explore: Tool", slug="explore-tool", items=["owner/x"]
+    )
+    current = List(
+        id="L2", name="Current: Library", slug="current-library", items=["owner/x"]
+    )
+
+    report = diagnose([explore, current], categories=VOCAB)
+
+    assert report.ok is False
+    problem = next(
+        p for p in report.star_problems if p.problem == "two_lifecycle_intents"
+    )
+    assert problem.lifecycle_intents == ["Current", "Explore"]
+
+
+def test_diagnose_and_verify_state_agree_on_star_rules() -> None:
+    """Both call `taxonomy.star_conflicts`, so they cannot diverge."""
+    from conftest import NOW
+
+    from ghstars.core.models import Star
+    from ghstars.core.status import verify_state
+    from ghstars.core.taxonomy import classify_list
+
+    explore = List(
+        id="L1", name="Explore: Tool", slug="explore-tool", items=["owner/x"]
+    )
+    current = List(
+        id="L2", name="Current: Library", slug="current-library", items=["owner/x"]
+    )
+    star = Star(
+        full_name="owner/x",
+        html_url="https://github.com/owner/x",
+        starred_at=NOW,
+        first_seen=NOW,
+        last_checked=NOW,
+        list_ids=["L1", "L2"],
+    )
+
+    live = diagnose([explore, current], categories=VOCAB)
+    # `verify_state` reads the classification `sync` stored; `diagnose`
+    # derives it live. Same rules underneath either way.
+    local = verify_state(
+        [star], [classify_list(explore), classify_list(current)], categories=VOCAB
+    )
+
+    assert any(p.problem == "two_lifecycle_intents" for p in live.star_problems)
+    assert any("two lifecycle Intents" in problem for problem in local)
 
 
 def test_diagnose_allows_a_star_in_the_inbox_alone() -> None:

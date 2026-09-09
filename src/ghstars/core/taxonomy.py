@@ -13,7 +13,7 @@ is a separate, verify-reported condition from `malformed` -- see
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from ghstars.core.models import Intent, List
@@ -113,9 +113,7 @@ class UnwritableListNameError(Exception):
         super().__init__(f"cannot write List name {list_name!r}: {reason}")
 
 
-def check_writable_list_name(
-    list_name: str, categories: Iterable[str] | None
-) -> None:
+def check_writable_list_name(list_name: str, categories: Iterable[str] | None) -> None:
     """Raise `UnwritableListNameError` unless ghstars may write this name."""
     parsed = parse_list_name(list_name)
     if parsed.malformed:
@@ -178,6 +176,53 @@ def classify_list(lst: List) -> List:
             "category": parsed.category,
             "malformed": parsed.malformed,
         }
+    )
+
+
+@dataclass(frozen=True)
+class StarConflicts:
+    """Which Star-level taxonomy rules a Star's List memberships break.
+
+    The one place these rules live (ADR 0005). `verify_state` feeds it
+    local `Star.list_ids`; `doctor` feeds it live `List.items`. Neither
+    re-derives a rule, so the two reporters cannot drift apart.
+    """
+
+    triage_inbox: list[List]
+    classified: list[List]
+    lifecycle_intents: list[Intent]
+
+    @property
+    def in_inbox_and_classified(self) -> bool:
+        """`General` says the subject is undecided; a Category says it is not."""
+        return bool(self.triage_inbox and self.classified)
+
+    @property
+    def has_lifecycle_conflict(self) -> bool:
+        """At most one of Explore/Current/Retired, across all of a Star's Lists."""
+        return len(self.lifecycle_intents) > 1
+
+    @property
+    def ok(self) -> bool:
+        return not self.in_inbox_and_classified and not self.has_lifecycle_conflict
+
+
+def star_conflicts(member_lists: Sequence[List]) -> StarConflicts:
+    """Evaluate every Star-level rule against the Lists a Star belongs to."""
+    return StarConflicts(
+        triage_inbox=[lst for lst in member_lists if lst.category == TRIAGE_CATEGORY],
+        classified=[
+            lst
+            for lst in member_lists
+            if lst.category is not None and lst.category != TRIAGE_CATEGORY
+        ],
+        lifecycle_intents=sorted(
+            {
+                lst.intent
+                for lst in member_lists
+                if lst.intent is not None and lst.intent in LIFECYCLE_INTENTS
+            }
+        ),
     )
 
 

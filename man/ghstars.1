@@ -93,6 +93,37 @@ Use
 .B --private
 for new destination Lists.
 .TP
+.B untag
+Remove one repo from one List, keeping every other membership.
+.TP
+.B doctor
+Report how the GitHub account measures up against the taxonomy.
+Read-only.
+Reads live Lists, not the local snapshot.
+Exits 0 whenever the diagnosis itself succeeded; branch on
+.B ok
+rather than the exit code.
+.TP
+.B remote bootstrap
+Create one List per blessed Category that has none, under
+.BR --intent .
+Requires
+.B --yes
+and
+.BR --intent .
+A List name needing attention blocks it; use
+.B --force
+to proceed.
+.TP
+.B remote rename-list
+Rename exactly one List, including across Intents.
+Requires
+.BR --yes .
+Refuses a malformed or unblessed target name.
+Run
+.B ghstars sync
+afterwards.
+.TP
 .B export
 Write configured exports from the local snapshot.
 The command reads the
@@ -132,7 +163,11 @@ See
 .I ~/.ghstars/config/ghstars.toml
 Core configuration, including the
 .B [export]
-table.
+and
+.B [taxonomy]
+tables.
+.B [taxonomy]
+holds the blessed Category vocabulary.
 .TP
 .I ~/.ghstars/state/
 Local Star, List, Retriage Queue, and TUI state.
