@@ -18,7 +18,7 @@ from conftest import StarFactory
 from filelock import Timeout
 from rich.style import Style
 from rich.text import Text
-from textual.widgets import DataTable, Input, Label, Static
+from textual.widgets import Button, DataTable, Input, Label, Static
 
 from ghstars.core.discovery import query_stars
 from ghstars.core.fake_client import FakeGitHubClient
@@ -27,6 +27,7 @@ from ghstars.core.state_store import StateStore
 from ghstars.github.schema import RateLimitResponse
 from ghstars.tui.app import (
     ConfigEditorScreen,
+    ConfirmBlessScreen,
     ConfirmUnstarScreen,
     DetailPane,
     FilterScreen,
@@ -1876,3 +1877,92 @@ async def test_sort_by_list_name_ascending_no_lists_last(
         assert table.get_row_at(0)[1] == "example-owner/in-a"
         assert table.get_row_at(1)[1] == "example-owner/in-b"
         assert table.get_row_at(2)[1] == "example-owner/none"
+
+
+async def test_tagging_an_unblessed_category_offers_to_bless(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """The vocabulary guard lives in core and refuses the write. Rather than
+    surface a bare failure, the TUI offers the one repair only the user can
+    authorise (ADR 0002 as amended by ADR 0005).
+    """
+    star = make_star("example-owner/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+    client = FakeGitHubClient(stars=[star])
+    config_path = _vocabulary(tmp_path, ["Tool"])
+
+    app = TuiApp(client=client, store=store, config_path=config_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("t")
+        await pilot.pause()
+        app.screen.query_one("#new-list-input", Input).value = "Explore: Wombat"
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ConfirmBlessScreen)
+        # Nothing written until the user confirms.
+        assert "Wombat" not in (config_path.parent / "ghstars.toml").read_text()
+        assert client.fetch_lists() == []
+
+
+async def test_confirming_a_bless_writes_config_then_tags(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("example-owner/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([])
+    client = FakeGitHubClient(stars=[star])
+    config_path = _vocabulary(tmp_path, ["Tool"])
+
+    app = TuiApp(client=client, store=store, config_path=config_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("t")
+        await pilot.pause()
+        app.screen.query_one("#new-list-input", Input).value = "Explore: Wombat"
+        await pilot.press("enter")
+        await pilot.pause()
+        app.screen.query_one("#confirm", Button).press()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert "Wombat" in (config_path.parent / "ghstars.toml").read_text()
+    assert [lst.name for lst in client.fetch_lists()] == ["Explore: Wombat"]
+
+
+async def test_tagging_an_existing_list_never_offers_to_bless(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """ADR 0001: a name already on GitHub is never judged. The guard fires
+    only before a create.
+    """
+    existing = List(id="L_1", name="Explore: Wombat", slug="explore-wombat")
+    star = make_star("example-owner/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    store.save_lists([existing])
+    client = FakeGitHubClient(stars=[star], lists=[existing])
+
+    app = TuiApp(
+        client=client, store=store, config_path=_vocabulary(tmp_path, ["Tool"])
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _table(app).focus()
+        await pilot.press("t")
+        await pilot.pause()
+        app.screen.query_one("#new-list-input", Input).value = "Explore: Wombat"
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    updated = next(
+        s for s in store.load_stars() if s.full_name == "example-owner/ghstars"
+    )
+    assert updated.list_ids == ["L_1"]

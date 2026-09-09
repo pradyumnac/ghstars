@@ -73,8 +73,9 @@ from ghstars.core.models import List, RateLimitStatus, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import sync
 from ghstars.core.tagging import bulk_tag_stars
-from ghstars.core.taxonomy import has_intent_prefix
+from ghstars.core.taxonomy import blessed_categories, has_intent_prefix, parse_list_name
 from ghstars.core.unstar import unstar_star
+from ghstars.core.vocabulary import BlessError, bless_category
 from ghstars.github import GitHubApiError
 from ghstars.tui.config import (
     CATEGORY_COLOURS_DARK,
@@ -476,6 +477,45 @@ class ConfirmUnstarScreen(ModalScreen[bool]):
             )
             with Horizontal(id="picker-buttons"):
                 yield Button("Unstar", id="confirm", variant="error")
+                yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "confirm")
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
+class ConfirmBlessScreen(ModalScreen[bool]):
+    """Show the parse before writing a Category into `ghstars.toml`.
+
+    ghstars writes `config/` only on an explicit instruction (ADR 0002 as
+    amended by ADR 0005), and this screen is that instruction. Showing the
+    parsed Intent and Category makes the taxonomy decision visible at the
+    moment the user commits to it.
+    """
+
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, list_name: str, intent: str, category: str, path: Path) -> None:
+        super().__init__()
+        self._list_name = list_name
+        self._intent = intent
+        self._category = category
+        self._path = path
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-body"):
+            yield Static(
+                f"[b]{escape(self._list_name)}[/b] uses a Category that is not "
+                "in your vocabulary yet.\n\n"
+                f"  Intent:   [b]{escape(self._intent)}[/b]\n"
+                f"  Category: [b]{escape(self._category)}[/b]\n\n"
+                f"Add {escape(self._category)!r} to [taxonomy] in\n"
+                f"{escape(str(self._path))}, then create the List?"
+            )
+            with Horizontal(id="picker-buttons"):
+                yield Button("Bless and tag", id="confirm", variant="primary")
                 yield Button("Cancel", id="cancel")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -2087,8 +2127,74 @@ class TuiApp(App[None]):
             )
         finally:
             self._picker_open = False
-        if choice is not None:
+        if choice is None:
+            return
+        self._tag_or_offer_to_bless(targets, choice)
+
+    def _tag_or_offer_to_bless(self, targets: list[str], choice: TagChoice) -> None:
+        """Tag, unless the Category needs blessing first.
+
+        The vocabulary guard lives in core and refuses the write (ADR 0005).
+        Rather than surface that as a bare failure, offer the one repair:
+        bless the Category, which only the user can authorise.
+        """
+        try:
+            categories = self._blessed_categories()
+        except CoreConfigError as exc:
+            self.notify(f"ghstars.toml: {exc}", severity="error")
+            return
+
+        parsed = parse_list_name(choice.list_name)
+        # An existing List is never judged (ADR 0001) -- the core guard fires
+        # only before `create_list`, so mirror that here or the prompt would
+        # appear for a List that needs no creating.
+        already_exists = any(
+            lst.name == choice.list_name
+            or (
+                not lst.malformed
+                and lst.intent == parsed.intent
+                and lst.category == parsed.category
+            )
+            for lst in self._lists
+        )
+        needs_blessing = (
+            not already_exists
+            and not parsed.malformed
+            and parsed.category is not None
+            and parsed.category not in blessed_categories(categories)
+        )
+        if not needs_blessing:
             self._apply_tag(targets, choice)
+            return
+
+        assert parsed.category is not None and parsed.intent is not None
+        # Bind locally: the closure below cannot narrow `parsed.category`.
+        category = parsed.category
+
+        def _on_confirm(blessed: bool | None) -> None:
+            if not blessed:
+                self.notify(f"Not tagged: {choice.list_name!r} was not blessed.")
+                return
+            try:
+                # `parsed.category` is already normalized; re-splitting the
+                # raw name here would reintroduce the underscore/whitespace
+                # cases normalization exists to collapse.
+                bless_category(self._core_config_path, category)
+            except BlessError as exc:
+                self.notify(str(exc), severity="error")
+                return
+            self.notify(f"Blessed {category!r}.")
+            self._apply_tag(targets, choice)
+
+        self.push_screen(
+            ConfirmBlessScreen(
+                choice.list_name,
+                parsed.intent,
+                category,
+                self._core_config_path,
+            ),
+            _on_confirm,
+        )
 
     def _blessed_categories(self) -> list[str]:
         """Read fresh, so a Category blessed this session applies at once."""
