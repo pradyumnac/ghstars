@@ -28,10 +28,10 @@ every default applies, never an error. ghstars never writes into
 import tomllib
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ghstars.core.export import ExportConfig
-from ghstars.core.taxonomy import DEFAULT_CATEGORIES
+from ghstars.core.taxonomy import DEFAULT_CATEGORIES, normalize_category
 
 
 class CoreConfigError(Exception):
@@ -57,6 +57,19 @@ class TaxonomyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     categories: list[str] = Field(default_factory=lambda: sorted(DEFAULT_CATEGORIES))
+
+    @model_validator(mode="after")
+    def _reject_empty_categories(self) -> TaxonomyConfig:
+        """A Category that normalizes to nothing would let `bootstrap` write
+        `Explore: `, a malformed name ghstars must never produce.
+        """
+        empty = [c for c in self.categories if not normalize_category(c)]
+        if empty:
+            raise ValueError(
+                f"[taxonomy] categories has {len(empty)} blank entry/entries: "
+                "a Category cannot be empty, whitespace, or underscores only"
+            )
+        return self
 
 
 class CoreConfig(BaseModel):

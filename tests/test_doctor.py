@@ -184,6 +184,42 @@ def test_diagnose_and_verify_state_agree_on_star_rules() -> None:
     assert any("two lifecycle Intents" in problem for problem in local)
 
 
+def test_repair_commands_are_shell_quoted() -> None:
+    """`repr` emits double quotes for a name holding an apostrophe, and a
+    shell expands `$(...)` inside those. `shlex.quote` does not.
+    """
+    import shlex
+
+    name = "Exploring: it's $(whoami)"
+    hostile = List(id="L1", name=name, slug="x", items=["owner/x"])
+
+    report = diagnose([hostile], categories=VOCAB)
+
+    # A shell parsing the suggestion recovers the name verbatim, with no
+    # substitution performed on it.
+    argv = shlex.split(report.problems[0].repairs[0])
+    assert name in argv
+
+
+def test_malformed_repair_command_includes_yes() -> None:
+    """The suggested command must work verbatim; rename-list requires --yes."""
+    report = diagnose([_list("L1", "Exploring: Foo")], categories=VOCAB)
+
+    assert report.problems[0].repairs[0].endswith("--yes")
+
+
+def test_inbox_repair_declares_that_it_needs_a_sync() -> None:
+    """`untag` reads local state, so a JSON caller needs the prerequisite."""
+    inbox = _list("L1", "Explore: General")
+    tool = _list("L2", "Explore: Tool")
+    inbox.items.append("owner/x")
+    tool.items.append("owner/x")
+
+    report = diagnose([inbox, tool], categories=VOCAB)
+
+    assert report.star_problems[0].requires_sync is True
+
+
 def test_diagnose_allows_a_star_in_the_inbox_alone() -> None:
     inbox = List(
         id="L1", name="Explore: General", slug="explore-general", items=["owner/x"]

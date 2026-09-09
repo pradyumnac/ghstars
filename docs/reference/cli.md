@@ -383,15 +383,21 @@ call this before deciding whether a `sync` round trip is even worth it.
   "pending_edit_count": 0,
   "retriage_queue_count": 0,
   "verify_ok": true,
-  "verify_problems": []
+  "verify_problems": [],
+  "warnings": []
 }
 ```
 
 `pending_edit_count` counts Stars whose `pending_list_ids` is not null;
 it stays zero while ADR 0004 keeps pending staging dormant. `verify_ok`
 is a deterministic, offline structural check (duplicate ids, dangling
-List references); `verify_problems` lists each one when `verify_ok` is
-`false`.
+List references) plus the taxonomy rules ADR 0005 adds;
+`verify_problems` lists each one when `verify_ok` is `false`.
+
+`warnings` holds advisories, not defects: state that is correct but not
+current, so the counts above may under-report. It never affects `verify_ok`.
+Today it carries one — Lists classified by a parser older than ADR 0005,
+which the taxonomy checks cannot see until the next `sync`.
 
 ### `ghstars ratelimit`
 
@@ -504,12 +510,13 @@ always** — every repair is its own command under `ghstars remote`, or
 `ghstars untag`. Reads live Lists, so it diagnoses the account rather than
 the last sync, and never prompts (Scope 0).
 
-It reports three conditions and never picks a repair for you:
+It reports four conditions and never picks a repair for you:
 
 | Condition | Repairs | Reported as |
 | --- | --- | --- |
 | **malformed** — name attempts `{Intent}: {Category}` and fails | One: rename it | A `remote rename-list` command, with the new name left for you |
 | **unblessed** — shape fine, Category not in `[taxonomy]` | Two: bless the word, or rename | Prose, both options — ghstars must not choose (ticket 03) |
+| **two lifecycle Intents** — a Star holds more than one of Explore/Current/Retired | Two: which Intent survives is yours | Prose. Same rule `verify` applies to local state |
 | **triage inbox** — a Star in `*: General` and a classified List | One: drop the inbox membership | An exact `ghstars untag` command |
 
 A problem with one possible repair is reported as the command to run. A
@@ -523,7 +530,16 @@ creates.
 not a `FIELD_REGISTRY` field set — the same bespoke-report pattern `status`
 uses. The skill layer reads this plan and calls the repair commands.
 
-Exit code is `1` when the account is not `ok`.
+Each `star_problems` entry carries `requires_sync`. When true, its `repairs`
+read local state, so `ghstars sync` must run first.
+
+`ok` covers defects only. A blessed Category with no List is reported in
+`missing_categories` without making `ok` false — otherwise `ok` would never
+be true, since the default vocabulary ships 12 Categories.
+
+**Exit code is `0` whenever the diagnosis itself succeeded**, drift included.
+ADR 0010 reserves a non-zero exit for a failure carrying an `{"error": ...}`
+envelope, and a report is not one. Branch on `ok`, never on the exit code.
 
 ### `ghstars remote`
 
@@ -540,9 +556,14 @@ creates the *whole* missing set in one call — hence "bootstrap", not
 | --- | --- |
 | `--intent` | Required. ghstars never guesses one (ticket 03). |
 | `--yes` | Required. This writes to GitHub. |
+| `--category NAME` | Limit to these Categories. Repeatable. Default: every missing one. An unknown name is an error, never a silent no-op. |
 | `--force` | Create even while List names need attention. |
 | `--private` | Create private Lists. |
 | `--json` | Emit `{"created", "planned"}`. |
+
+Missing Categories rarely share one Intent — `Example` is reference material,
+not something to explore — so use `--category` and run it once per Intent.
+`doctor` prints the selectors for you.
 
 A malformed or unblessed List name blocks the run, because a rename can turn
 an unblessed Category into a blessed one and remove the need to create

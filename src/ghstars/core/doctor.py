@@ -5,6 +5,7 @@ stable command to work without a terminal, so the interactive walkthrough
 belongs to the skill layer that reads this report.
 """
 
+import shlex
 from collections.abc import Iterable
 
 from pydantic import BaseModel
@@ -18,6 +19,7 @@ from ghstars.core.taxonomy import (
     parse_list_name,
     star_conflicts,
 )
+from ghstars.github import GitHubApiError
 
 PROBLEM_MALFORMED = "malformed"
 PROBLEM_UNBLESSED = "unblessed"
@@ -46,6 +48,9 @@ class StarProblem(BaseModel):
     in_triage_inbox: list[str] = []
     classified: list[str] = []
     lifecycle_intents: list[str] = []
+    # True when `repairs` reads local state, so `ghstars sync` must run
+    # first. `untag` does; nothing else here reads it.
+    requires_sync: bool = False
     repairs: list[str] = []
 
 
@@ -77,8 +82,10 @@ def _star_problems(classified: list[List]) -> list[StarProblem]:
                     detail="in the triage inbox and a classified List at once",
                     in_triage_inbox=sorted(lst.name for lst in conflicts.triage_inbox),
                     classified=sorted(lst.name for lst in conflicts.classified),
+                    requires_sync=True,
                     repairs=[
-                        f"ghstars untag {full_name} {lst.name!r}"
+                        f"ghstars untag {shlex.quote(full_name)} "
+                        f"{shlex.quote(lst.name)}"
                         for lst in sorted(
                             conflicts.triage_inbox, key=lambda lst: lst.name
                         )
@@ -129,8 +136,15 @@ def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
                     problem=PROBLEM_MALFORMED,
                     detail="name attempts '{Intent}: {Category}' and does not match",
                     # One repair type, so the command is concrete; only the
-                    # target name is the user's to choose.
-                    repairs=[f"ghstars remote rename-list {lst.name!r} '<new name>'"],
+                    # target name is the user's to choose. `shlex.quote`,
+                    # not `repr`: a name holding an apostrophe makes `repr`
+                    # emit double quotes, which a shell would expand.
+                    repairs=[
+                        (
+                            "ghstars remote rename-list "
+                            f"{shlex.quote(lst.name)} '<new name>' --yes"
+                        )
+                    ],
                 )
             )
         elif lst.category is not None and lst.category not in blessed:
@@ -283,7 +297,9 @@ def bootstrap_lists(
     for name in planned_creates(report, intent=intent, only=only):
         try:
             client.create_list(name, is_private=is_private)
-        except Exception as exc:
+        except GitHubApiError as exc:
+            # Only a remote failure is partial-and-retryable. Anything else
+            # is a defect here and must not be reported as a network error.
             raise PartialBootstrapError(created, exc) from exc
         created.append(name)
     return created

@@ -195,6 +195,17 @@ def test_an_empty_category_list_is_not_the_same_as_an_absent_table(
     assert load_core_config(path).taxonomy.categories == []
 
 
+def test_load_core_config_rejects_a_category_that_normalizes_to_nothing(
+    tmp_path: Path,
+) -> None:
+    """`___` would let bootstrap write `Explore: `, a malformed name."""
+    path = tmp_path / "ghstars.toml"
+    path.write_text('[taxonomy]\ncategories = ["Tool", "___"]\n')
+
+    with pytest.raises(CoreConfigError):
+        load_core_config(path)
+
+
 def test_load_core_config_rejects_an_unknown_taxonomy_key(tmp_path: Path) -> None:
     path = tmp_path / "ghstars.toml"
     path.write_text('[taxonomy]\ncatagories = ["Tool"]\n')

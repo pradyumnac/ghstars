@@ -50,8 +50,10 @@ _Avoid_: Tag, Topic, Label.
 
 **General** (Category value):
 The reserved Category for a List with a known Intent and an undecided subject.
-`Explore: General` is the triage inbox. A Star stays there until the user gives
-it a Category.
+Any `{Intent}: General` List is a triage inbox, `Explore: General` being the
+common one. A Star stays there until the user gives it a Category, and must
+not sit in an inbox and a classified List at the same time — that claims the
+subject is both undecided and decided.
 _Avoid_: Misc, Uncategorized, Inbox.
 
 **Example** (Category value):

@@ -131,8 +131,14 @@ def test_bootstrap_limits_to_the_named_categories(
     result = runner.invoke(
         app,
         [
-            "remote", "bootstrap", "--yes", "--intent", "Reference",
-            "--category", "Library", "--json",
+            "remote",
+            "bootstrap",
+            "--yes",
+            "--intent",
+            "Reference",
+            "--category",
+            "Library",
+            "--json",
         ],
     )
 
@@ -150,10 +156,55 @@ def test_bootstrap_writes_the_explicit_reference_form(
 
     runner.invoke(
         app,
-        ["remote", "bootstrap", "--yes", "--intent", "Reference", "--category", "General"],
+        [
+            "remote",
+            "bootstrap",
+            "--yes",
+            "--intent",
+            "Reference",
+            "--category",
+            "General",
+        ],
     )
 
     assert "Reference: General" in [lst.name for lst in client.fetch_lists()]
+
+
+def test_bootstrap_rejects_an_unknown_category_selector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A typo would otherwise select nothing and exit 0."""
+    client = FakeGitHubClient(lists=[_list("L1", "Explore: Tool")])
+    _use(monkeypatch, StateStore(tmp_path), client)
+
+    result = runner.invoke(
+        app,
+        ["remote", "bootstrap", "--yes", "--intent", "Explore", "--category", "Libary"],
+    )
+
+    assert result.exit_code != 0
+    assert len(client.fetch_lists()) == 1
+
+
+def test_category_rename_refuses_a_target_that_normalizes_to_nothing(
+    tmp_path: Path,
+) -> None:
+    """Ticket 07: neither command may produce a malformed name."""
+    from ghstars.core.category import InvalidCategoryNameError, rename_category
+
+    lst = List(
+        id="L1",
+        name="Explore: Tool",
+        slug="explore-tool",
+        intent="Explore",
+        category="Tool",
+    )
+    store = StateStore(tmp_path)
+    store.save_lists([lst])
+    client = FakeGitHubClient(lists=[lst])
+
+    with pytest.raises(InvalidCategoryNameError):
+        rename_category(client, store, "Tool", "___")
 
 
 def test_rename_list_changes_one_lists_name(

@@ -16,7 +16,11 @@ from ghstars.core.doctor import (
     rename_list,
 )
 from ghstars.core.models import Intent
-from ghstars.core.taxonomy import UnwritableListNameError
+from ghstars.core.taxonomy import (
+    UnwritableListNameError,
+    blessed_categories,
+    normalize_category,
+)
 from ghstars.github import GitHubApiError
 
 _INTENTS: tuple[str, ...] = ("Explore", "Current", "Retired", "Reference", "Learn")
@@ -87,6 +91,19 @@ def bootstrap_cmd(
             json_output=json_output,
         )
 
+    if category:
+        blessed = blessed_categories(categories)
+        unknown = sorted(
+            name for name in category if normalize_category(name) not in blessed
+        )
+        if unknown:
+            # A typo would otherwise select nothing and exit 0.
+            fail(
+                f"--category named {unknown}, which are not in [taxonomy].",
+                code=CODE_INVALID_INPUT,
+                json_output=json_output,
+            )
+
     try:
         report = diagnose(cli.get_client().fetch_lists(), categories=categories)
         if report.create_blocked and not force:
@@ -95,9 +112,7 @@ def bootstrap_cmd(
                 code=CODE_INVALID_INPUT,
                 json_output=json_output,
             )
-        planned = planned_creates(
-            report, intent=_cast_intent(intent), only=category
-        )
+        planned = planned_creates(report, intent=_cast_intent(intent), only=category)
         created = bootstrap_lists(
             cli.get_client(),
             report,

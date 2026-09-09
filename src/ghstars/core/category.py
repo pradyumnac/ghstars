@@ -34,6 +34,7 @@ from ghstars.core.sync import apply_membership_diff, reconcile_list_membership
 from ghstars.core.taxonomy import (
     LIFECYCLE_INTENTS,
     classify_list,
+    normalize_category,
     strip_lifecycle_siblings,
 )
 
@@ -98,6 +99,13 @@ def rename_category(
     new = new.strip()
     if not old or not new:
         raise InvalidCategoryNameError("category name cannot be blank")
+    # `___` survives strip() but normalizes to nothing, so the composed name
+    # would be malformed -- ticket 07 forbids producing one.
+    if not normalize_category(new):
+        raise InvalidCategoryNameError(
+            f"category name {new!r} normalizes to nothing: it would produce a "
+            "malformed List name"
+        )
 
     with store.lock():
         # Re-classify local Lists before selecting targets.
@@ -191,6 +199,11 @@ def drain_category(
     to_category = to_category.strip()
     if not from_category or not to_category:
         raise InvalidCategoryNameError("category name cannot be blank")
+    if not normalize_category(to_category):
+        raise InvalidCategoryNameError(
+            f"category name {to_category!r} normalizes to nothing: it would "
+            "produce a malformed List name"
+        )
 
     with store.lock():
         # Re-classify local Lists before selecting targets.
