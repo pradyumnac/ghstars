@@ -436,7 +436,8 @@ fingerprint has neither failure mode.
 after `doctor` still works unflagged -- the in-process race is already
 seconds-wide. `--plan` matters for a caller that reads `doctor --json` and
 acts later, which is exactly ticket 14's skill layer, so this lands with
-that ticket rather than before it.
+that ticket rather than before it. Recorded there as its own acceptance
+item, not folded into the generic `bootstrap` line.
 
 **P6 — Typed repairs.** `ListProblem.repairs` and `StarProblem.repairs` are
 untyped strings mixing executable commands with prose. `problem` already

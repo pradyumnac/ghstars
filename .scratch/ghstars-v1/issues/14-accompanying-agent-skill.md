@@ -10,7 +10,9 @@ Tickets 33 and 34 widened this scope on 2026-09-09. The skill must also cover:
 
 - `ghstars doctor`, and the fact that it exits 0 whenever the diagnosis
   succeeded. The caller branches on `ok`, never on the exit code.
-- `ghstars remote bootstrap` and `ghstars remote rename-list`.
+- `ghstars remote bootstrap` and `ghstars remote rename-list`, including
+  `bootstrap`'s `--plan` flag (ticket 33 P3, decided 2026-09-09, not yet
+  built -- see the acceptance list below).
 - `ghstars untag`.
 - `StarProblem.requires_sync`: a repair carrying it needs `ghstars sync` first.
 - `StatusReport.warnings`: advisories that never affect `verify_ok`.
@@ -33,6 +35,15 @@ question as a follow-up when work starts.
       unstar, Category rename/drain, export, and diff
 - [ ] Skill covers `doctor`, `remote bootstrap`, `remote rename-list` and
       `untag`, including `requires_sync` and `warnings` (tickets 33, 34)
+- [ ] Build `doctor`'s `plan_id` and `remote bootstrap --plan`: decided on
+      2026-09-09, not yet implemented. `doctor --json` gains `plan_id`, a
+      hash over live List ids plus `missing_categories`; `bootstrap --plan
+      PLAN_ID` recomputes it from the fetch it already does before writing
+      and refuses on mismatch with a new `plan_drift` code (modeled on
+      `CODE_LIST_MEMBERSHIP_DRIFT`). This closes the race between a skill
+      reading a `doctor` plan and calling `bootstrap` on it later -- the
+      skill must pass `--plan` on every `bootstrap` call it makes from a
+      stored plan. See ticket 33's "Pending" section, P3.
 - [ ] Decide the typed-repair schema with this skill, not before it: today
       `ListProblem.repairs`/`StarProblem.repairs` are untyped strings mixing
       commands and prose, and `PartialBootstrapError` carries created names in
