@@ -76,6 +76,21 @@ other four. `Learn` has no lifecycle, the same as `Reference`.
 A List name without an Intent prefix takes the `Reference` Intent. The whole
 name becomes the Category. Every List has an Intent.
 
+`Course` and `Reference: Course` are therefore the same List to the model:
+the same Intent, the same Category. Reading either gives the same result, and
+a write path treats them as one identity, so neither can duplicate the other.
+
+**ghstars always writes the explicit form.** A name it composes carries the
+Intent word, `Reference` included: `Reference: Course`, never bare `Course`.
+Relying on the default would make the Intent invisible in the name the user
+reads on github.com. `remote bootstrap` and `category rename` both build
+`{Intent}: {Category}`. `tag` is the exception, because the name comes from
+the user verbatim; a bare name typed there stays as typed, and is read as
+`Reference` like any other.
+
+A bare name already on GitHub is never rewritten. ADR 0001 keeps GitHub the
+source of truth.
+
 ### Lifecycle exclusivity is global to the Star
 
 A Star holds at most one lifecycle Intent across all of its Lists. `Reference`

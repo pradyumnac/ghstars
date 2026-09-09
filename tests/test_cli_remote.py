@@ -119,6 +119,43 @@ def test_bootstrap_creates_the_whole_missing_set_for_one_intent(
 # -- rename-list --------------------------------------------------------------
 
 
+def test_bootstrap_limits_to_the_named_categories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Missing Categories can need different Intents, so a run must be able
+    to take a subset -- otherwise the first run claims all of them.
+    """
+    client = FakeGitHubClient(lists=[_list("L1", "Explore: Tool")])
+    _use(monkeypatch, StateStore(tmp_path), client)
+
+    result = runner.invoke(
+        app,
+        [
+            "remote", "bootstrap", "--yes", "--intent", "Reference",
+            "--category", "Library", "--json",
+        ],
+    )
+
+    assert json.loads(result.output)["created"] == ["Reference: Library"]
+
+
+def test_bootstrap_writes_the_explicit_reference_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bare name would parse to Reference too, but ghstars writes the
+    Intent it means rather than leaning on the default (ADR 0005).
+    """
+    client = FakeGitHubClient(lists=[_list("L1", "Explore: Tool")])
+    _use(monkeypatch, StateStore(tmp_path), client)
+
+    runner.invoke(
+        app,
+        ["remote", "bootstrap", "--yes", "--intent", "Reference", "--category", "General"],
+    )
+
+    assert "Reference: General" in [lst.name for lst in client.fetch_lists()]
+
+
 def test_rename_list_changes_one_lists_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

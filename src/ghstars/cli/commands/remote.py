@@ -21,6 +21,12 @@ from ghstars.github import GitHubApiError
 
 _INTENTS: tuple[str, ...] = ("Explore", "Current", "Retired", "Reference", "Learn")
 
+_CATEGORY_OPTION = typer.Option(
+    None,
+    "--category",
+    help="Limit to these Categories. Repeatable. Default: every missing one.",
+)
+
 
 def _categories(json_output: bool) -> list[str]:
     try:
@@ -43,13 +49,20 @@ def bootstrap_cmd(
     force: bool = typer.Option(
         False, "--force", help="Create even while List names need attention."
     ),
+    category: list[str] | None = _CATEGORY_OPTION,
     private: bool = typer.Option(False, "--private", help="Create private Lists."),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
     """Create one List per blessed Category that has none, under `--intent`.
 
     Creates the whole missing set in one call, which is why it is named
-    for seeding a taxonomy rather than for creating a List.
+    for seeding a taxonomy rather than for creating a List. Use
+    `--category` when the missing Categories need different Intents, and
+    run it once per Intent.
+
+    Always writes the explicit `{Intent}: {Category}` form, `Reference`
+    included -- a bare name parses to `Reference` too, but ghstars writes
+    the Intent it means rather than leaning on the default.
 
     Refuses without `--intent`: ghstars never guesses one (ticket 03). A
     malformed or unblessed List name blocks the run, because a rename can
@@ -82,12 +95,15 @@ def bootstrap_cmd(
                 code=CODE_INVALID_INPUT,
                 json_output=json_output,
             )
-        planned = planned_creates(report, intent=_cast_intent(intent))
+        planned = planned_creates(
+            report, intent=_cast_intent(intent), only=category
+        )
         created = bootstrap_lists(
             cli.get_client(),
             report,
             intent=_cast_intent(intent),
             is_private=private,
+            only=category,
         )
     except PartialBootstrapError as exc:
         # Name what already exists on GitHub; re-running is safe.

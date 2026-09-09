@@ -25,6 +25,26 @@ class StatusReport(BaseModel):
     retriage_queue_count: int
     verify_ok: bool
     verify_problems: list[str] = []
+    # Advisories, not defects: state that is correct but not current, so
+    # the counts above may under-report until the user acts.
+    warnings: list[str] = []
+
+
+def stale_classification_warning(lists: list[List]) -> str | None:
+    """Warn when `lists.json` predates the current taxonomy parser.
+
+    Since ADR 0005 every well-formed name yields an Intent, so a List with
+    no Intent that is not malformed was classified by an older parser. The
+    Star-level checks cannot see such a List, and `status` therefore
+    under-reports until the next `sync` rewrites it.
+    """
+    stale = [lst for lst in lists if lst.intent is None and not lst.malformed]
+    if not stale:
+        return None
+    return (
+        f"{len(stale)} List(s) were classified by an older parser and are "
+        "invisible to the taxonomy checks: run `ghstars sync`"
+    )
 
 
 def verify_state(
@@ -164,6 +184,7 @@ def build_status(
     retriage_queue_count = sum(1 for entry in retriage if not entry.resolved)
 
     problems = verify_state(stars, lists, categories=categories)
+    stale = stale_classification_warning(lists)
 
     return StatusReport(
         last_sync_at=last_sync_at,
@@ -175,7 +196,13 @@ def build_status(
         retriage_queue_count=retriage_queue_count,
         verify_ok=not problems,
         verify_problems=problems,
+        warnings=[stale] if stale else [],
     )
 
 
-__all__ = ["StatusReport", "build_status", "verify_state"]
+__all__ = [
+    "StatusReport",
+    "build_status",
+    "stale_classification_warning",
+    "verify_state",
+]

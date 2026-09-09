@@ -20,8 +20,9 @@ A List's stated relationship to its Category. The List name starts with
 `Explore`, `Current`, `Retired`, `Reference`, or `Learn`. A Star holds at most
 one of `Explore`, `Current`, and `Retired` across all of its Lists. `Reference`
 and `Learn` have no lifecycle and no limit. A List without an Intent prefix has
-the `Reference` Intent. Only a List with a malformed name has no Intent,
-because ghstars never guesses one.
+the `Reference` Intent, so `Course` and `Reference: Course` name one List.
+ghstars writes the explicit form. Only a List with a malformed name has no
+Intent, because ghstars never guesses one.
 _Avoid_: Stage, Status, Type.
 
 **Retired** (Intent value):

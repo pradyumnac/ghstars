@@ -49,3 +49,5 @@ def status_cmd(
         typer.echo(f"Verify: FAILED ({len(report.verify_problems)} problem(s))")
         for problem in report.verify_problems:
             typer.echo(f"  - {problem}")
+    for warning in report.warnings:
+        typer.echo(f"⚠ {warning}")

@@ -16,7 +16,11 @@ import ghstars.cli as cli_module
 from ghstars.cli import app
 from ghstars.core.models import Intent, List, RetriageEntry, Star
 from ghstars.core.state_store import StateStore
-from ghstars.core.status import build_status, verify_state
+from ghstars.core.status import (
+    build_status,
+    stale_classification_warning,
+    verify_state,
+)
 
 runner = CliRunner()
 
@@ -45,6 +49,7 @@ def test_status_json_reports_empty_state_before_any_sync(
         "retriage_queue_count": 0,
         "verify_ok": True,
         "verify_problems": [],
+        "warnings": [],
     }
 
 
@@ -212,6 +217,28 @@ def _classified(list_id: str, name: str, intent: Intent, category: str) -> List:
         intent=intent,
         category=category,
     )
+
+
+def test_status_warns_when_lists_predate_the_current_parser() -> None:
+    """Since ADR 0005 a well-formed name always yields an Intent, so
+    `intent=None, malformed=False` means an older parser wrote it -- and the
+    Star-level checks cannot see such a List until the next sync.
+    """
+    stale = List(id="L_1", name="Vendored skills", slug="vendored-skills")
+
+    warning = stale_classification_warning([stale])
+
+    assert warning is not None
+    assert "ghstars sync" in warning
+
+
+def test_status_does_not_warn_on_freshly_classified_lists() -> None:
+    fresh = _classified("L_1", "Explore: Tool", "Explore", "Tool")
+    malformed = List(
+        id="L_2", name="Exploring: Foo", slug="exploring-foo", malformed=True
+    )
+
+    assert stale_classification_warning([fresh, malformed]) is None
 
 
 def test_verify_state_flags_an_unblessed_category() -> None:

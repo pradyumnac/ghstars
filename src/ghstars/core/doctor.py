@@ -233,9 +233,27 @@ def rename_list(
     return classify_list(client.update_list(target.id, name=new_name))
 
 
-def planned_creates(report: DoctorReport, *, intent: Intent) -> list[str]:
-    """The List names `remote bootstrap` would create for `intent`."""
-    return [f"{intent}: {category}" for category in report.missing_categories]
+def planned_creates(
+    report: DoctorReport,
+    *,
+    intent: Intent,
+    only: Iterable[str] | None = None,
+) -> list[str]:
+    """The List names `remote bootstrap` would create for `intent`.
+
+    Always the explicit `{Intent}: {Category}` form, including for
+    `Reference`. A bare name parses to `Reference` too, but ghstars writes
+    the Intent it means rather than relying on the default (ADR 0005).
+
+    `only` selects a subset of the missing Categories, so Categories
+    needing different Intents can be created in separate runs.
+    """
+    wanted = blessed_categories(only) if only is not None else None
+    return [
+        f"{intent}: {category}"
+        for category in report.missing_categories
+        if wanted is None or category in wanted
+    ]
 
 
 class PartialBootstrapError(Exception):
@@ -253,6 +271,7 @@ def bootstrap_lists(
     *,
     intent: Intent,
     is_private: bool = False,
+    only: Iterable[str] | None = None,
 ) -> list[str]:
     """Create one List per missing blessed Category. Caller checks the gate.
 
@@ -261,7 +280,7 @@ def bootstrap_lists(
     Re-running is safe: what exists is no longer missing.
     """
     created: list[str] = []
-    for name in planned_creates(report, intent=intent):
+    for name in planned_creates(report, intent=intent, only=only):
         try:
             client.create_list(name, is_private=is_private)
         except Exception as exc:
