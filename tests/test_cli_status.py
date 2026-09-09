@@ -84,7 +84,12 @@ def test_status_plain_text_reports_never_synced(
 def test_status_json_counts_mixed_classified_unclassified_and_retriage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
-    current_tool = List(id="L_tool", name="Current: Tool", slug="current-tool")
+    current_tool = List(
+        id="L_tool",
+        name="Current: Tool",
+        slug="current-tool",
+        items=["example-owner/classified"],
+    )
     later = datetime(2026, 8, 20, tzinfo=UTC)
     classified = make_star(
         "example-owner/classified", list_ids=["L_tool"], last_checked=NOW
@@ -212,19 +217,73 @@ def test_verify_state_flags_duplicate_list_ids() -> None:
 
 
 def test_verify_state_passes_on_clean_state() -> None:
-    lst = List(id="L_1", name="Explore: Tool", slug="explore-tool")
+    lst = List(
+        id="L_1", name="Explore: Tool", slug="explore-tool", items=["example-owner/x"]
+    )
     star = _star("example-owner/x", list_ids=["L_1"])
 
     assert verify_state([star], [lst]) == []
 
 
-def _classified(list_id: str, name: str, intent: Intent, category: str) -> List:
+def test_verify_state_flags_a_list_item_the_star_does_not_confirm() -> None:
+    """`List.items` names the Star; `Star.list_ids` disagrees -- the two
+    stored sides of one relationship (ticket 33 P5).
+    """
+    lst = List(
+        id="L_1", name="Explore: Tool", slug="explore-tool", items=["example-owner/x"]
+    )
+    star = _star("example-owner/x", list_ids=[])
+
+    problems = verify_state([star], [lst])
+
+    assert any(
+        "example-owner/x" in p and "Explore: Tool" in p and "claims" in p
+        for p in problems
+    )
+
+
+def test_verify_state_flags_a_list_ids_entry_the_list_does_not_confirm() -> None:
+    """The mirror direction: `Star.list_ids` names the List; `List.items`
+    disagrees.
+    """
+    lst = List(id="L_1", name="Explore: Tool", slug="explore-tool", items=[])
+    star = _star("example-owner/x", list_ids=["L_1"])
+
+    problems = verify_state([star], [lst])
+
+    assert any("example-owner/x" in p and "Explore: Tool" in p for p in problems)
+
+
+def test_verify_state_ignores_a_list_item_naming_an_unknown_star() -> None:
+    """The one documented exclusion: `sync()` fetches Stars and Lists
+    separately, so a `List.items` entry can legitimately name a Star not
+    yet in `stars.json`. Self-healing, not corruption (`known-limitations.md`).
+    """
+    lst = List(
+        id="L_1",
+        name="Explore: Tool",
+        slug="explore-tool",
+        items=["example-owner/not-fetched-yet"],
+    )
+
+    assert verify_state([], [lst]) == []
+
+
+def _classified(
+    list_id: str,
+    name: str,
+    intent: Intent,
+    category: str,
+    *,
+    items: list[str] | None = None,
+) -> List:
     return List(
         id=list_id,
         name=name,
         slug=name.lower().replace(": ", "-").replace(" ", "-"),
         intent=intent,
         category=category,
+        items=items or [],
     )
 
 
@@ -291,7 +350,9 @@ def test_verify_state_flags_a_star_in_the_triage_inbox_and_a_classified_list() -
 
 
 def test_verify_state_allows_a_star_in_the_triage_inbox_alone() -> None:
-    inbox = _classified("L_1", "Explore: General", "Explore", "General")
+    inbox = _classified(
+        "L_1", "Explore: General", "Explore", "General", items=["example-owner/x"]
+    )
     star = _star("example-owner/x", list_ids=["L_1"])
 
     assert verify_state([star], [inbox]) == []
@@ -309,10 +370,13 @@ def test_verify_state_flags_two_lifecycle_intents_on_one_star() -> None:
 
 
 def test_verify_state_allows_a_lifecycle_intent_beside_reference_and_learn() -> None:
-    current = _classified("L_1", "Current: Tool", "Current", "Tool")
-    reference = _classified("L_2", "Reference: AI Agents", "Reference", "AI Agents")
-    learn = _classified("L_3", "Learn: Example", "Learn", "Example")
-    star = _star("example-owner/x", list_ids=["L_1", "L_2", "L_3"])
+    full_name = "example-owner/x"
+    current = _classified("L_1", "Current: Tool", "Current", "Tool", items=[full_name])
+    reference = _classified(
+        "L_2", "Reference: AI Agents", "Reference", "AI Agents", items=[full_name]
+    )
+    learn = _classified("L_3", "Learn: Example", "Learn", "Example", items=[full_name])
+    star = _star(full_name, list_ids=["L_1", "L_2", "L_3"])
 
     assert verify_state([star], [current, reference, learn]) == []
 
@@ -325,6 +389,36 @@ def test_build_status_handles_a_completely_empty_store(
 
     assert report.last_sync_at is None
     assert report.verify_ok is True
+
+
+def test_build_status_holds_one_lock_across_every_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`verify_state`'s membership-asymmetry check (ticket 33 P5) compares
+    `stars.json` against `lists.json`. If `build_status` released the lock
+    between loading each file, a concurrent writer (`sync`/`tag`/`untag`,
+    which hold the lock across both of *their* saves) could interleave and
+    make the two loads see two different moments -- a false positive with
+    no real drift behind it. `build_status` must hold one lock across every
+    `load_*` call, the same way the writers hold one lock across every
+    `save_*` call.
+    """
+    store = StateStore(tmp_path)
+    store.save_stars([])
+    store.save_lists([])
+
+    real_load_lists = StateStore.load_lists
+
+    def _load_lists_while_locked(self: StateStore, **kwargs: object) -> list[List]:
+        assert self._file_lock.is_locked, (
+            "load_lists() ran with the lock released -- build_status must "
+            "hold one lock across load_stars() and load_lists()"
+        )
+        return real_load_lists(self, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(StateStore, "load_lists", _load_lists_while_locked)
+
+    build_status(store)
 
 
 def _star(full_name: str, **overrides: object) -> Star:

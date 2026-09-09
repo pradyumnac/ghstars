@@ -68,11 +68,21 @@ def verify_state(
     - No `Star.list_ids` entry naming a `List.id` that isn't in
       `lists.json` -- every List a Star claims membership in must
       actually exist locally.
+    - A Star and a List that both exist locally must agree about
+      membership, in both directions (`docs/explanation/state-dataflow.md`,
+      ticket 33 P5). `List.items` and `Star.list_ids` are two independently
+      written sides of one relationship -- `sync`, `tag`, and `untag` each
+      write both, but as two separate file writes, not one transaction, so
+      a process killed between them (or a hand edit touching only one
+      file) leaves them disagreeing until the next `sync` overwrites both
+      from a fresh fetch.
 
     Deliberately does *not* flag a `List.items` entry with no matching
-    Star, or a `List.malformed=True` entry: both are already-documented,
-    self-healing, non-corrupt states (`reconcile_list_membership`'s and
-    `List.malformed`'s own docstrings), not structural damage.
+    Star at all, or a `List.malformed=True` entry: both are
+    already-documented, self-healing, non-corrupt states
+    (`reconcile_list_membership`'s and `List.malformed`'s own docstrings),
+    not structural damage. The membership-agreement check above only ever
+    compares a Star and a List that both already exist locally.
 
     Three further checks come from ADR 0005, reporting taxonomy drift
     (never blocking, per ticket 03): a Category outside the blessed
@@ -109,6 +119,25 @@ def verify_state(
             if list_id not in known_list_ids:
                 problems.append(
                     f"{star.full_name}: list_ids references unknown List id {list_id!r}"
+                )
+
+    stars_by_name = {star.full_name: star for star in stars}
+    lists_by_id = {lst.id: lst for lst in lists}
+    for lst in lists:
+        for full_name in lst.items:
+            owner = stars_by_name.get(full_name)
+            if owner is not None and lst.id not in owner.list_ids:
+                problems.append(
+                    f"{full_name}: List {lst.name!r} claims it as a member, but "
+                    f"Star.list_ids does not include {lst.id!r}"
+                )
+    for star in stars:
+        for list_id in star.list_ids:
+            container = lists_by_id.get(list_id)
+            if container is not None and star.full_name not in container.items:
+                problems.append(
+                    f"{star.full_name}: list_ids includes List {container.name!r}, "
+                    "but that List's items does not include it"
                 )
 
     blessed = blessed_categories(categories)
@@ -162,10 +191,17 @@ def build_status(store: StateStore, *, categories: Iterable[str]) -> StatusRepor
     Retriage Queue count: unresolved entries only (`resolved=False`),
     matching what `ghstars retriage` itself is for -- open conflicts to
     revisit, not a lifetime history.
+
+    Holds one lock across every load. `verify_state`'s membership check
+    compares `stars.json` against `lists.json`; a writer (`sync`, `tag`,
+    `untag`) holds the lock across both of its saves, so this must hold
+    it across both loads too, or a concurrent write could be read as
+    half-old, half-new and reported as drift that was never real.
     """
-    stars = store.load_stars()
-    lists = store.load_lists()
-    retriage = store.load_retriage()
+    with store.lock():
+        stars = store.load_stars()
+        lists = store.load_lists()
+        retriage = store.load_retriage()
 
     last_sync_at = max((star.last_checked for star in stars), default=None)
 

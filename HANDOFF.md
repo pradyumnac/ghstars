@@ -8,6 +8,13 @@ against it -- five conditions now, including semantic-duplicate List
 detection (ticket 36). See ADR 0005 for the model and
 `docs/reference/cli.md` for the repair loop.
 
+`verify_state` (local, offline, used by `ghstars status`) also gained a
+fourth structural check the same day: `Star.list_ids` and `List.items`
+must agree, in both directions, for any Star/List that both exist
+locally (ticket 33 P5). See `docs/explanation/state-dataflow.md` for the
+full dataflow this check guards and why the fix touched `build_status`'s
+locking, not just `verify_state`.
+
 **Ticket 14, the agent skill, is next and is now the largest open item.** This
 session tripled its surface: the skill must cover `doctor`, `remote
 bootstrap`, `remote rename-list` and `untag` alongside the commands ticket 30
@@ -28,7 +35,7 @@ Seven items, summarized:
 | P2 | Existing semantic duplicate Lists | Resolved -- detection landed as ticket 36; prose-only repair was already the right shape (ticket 03), no separate policy needed |
 | P3 | `bootstrap` cannot bind to a reviewed `doctor` plan | Decided -- a `plan_id` content fingerprint, not a wall-clock cutoff; `bootstrap --plan` rides with ticket 14 |
 | P4 | Stale classification: detect the drift, or remove the duplication that causes it | Needs a decision |
-| P5 | `List.items` and `Star.list_ids` are the two stored sides of one relationship, and nothing checks they agree | Ready to build |
+| P5 | `List.items` and `Star.list_ids` are the two stored sides of one relationship, and nothing checks they agree | Resolved -- `verify_state` gained a 4th check; `build_status`'s locking fixed as a prerequisite |
 | P6 | Typed repair entries, replacing untyped strings that mix commands with prose | Rides with ticket 14 |
 | P7 | Structured partial-bootstrap data, replacing an English error message | Rides with ticket 14 |
 

@@ -6,9 +6,9 @@ difference and the direction decision. It does not hold the implementation
 plan.
 
 **Status:** ready-for-human — the code and the remediation landed on
-2026-09-09. Five items remain open; see "Pending" below. One needs a
-product decision, one is ready to build, three ride with ticket 14 (P3's
-decision is made; P6/P7 always did). P1 and P2 are resolved.
+2026-09-09. Four items remain open; see "Pending" below. One needs a
+product decision, three ride with ticket 14 (P3's decision is made;
+P6/P7 always did). P1, P2, and P5 are resolved.
 
 ## Remediation, executed 2026-09-09
 
@@ -385,6 +385,27 @@ inventing a new one. Landed: `PROBLEM_SEMANTIC_DUPLICATE` in
 further decision is pending -- there is no merge/delete command to design
 a policy for yet, and prose-only was never meant to be temporary.
 
+**P5 — Membership symmetry. Landed, 2026-09-09.** `verify_state` gained a
+fourth structural check: a Star and a List that both exist locally must
+agree, in both directions, about whether the Star is in the List. See
+`docs/explanation/state-dataflow.md` for the full dataflow and the three
+real scenarios that can cause disagreement (a process killed between the
+two sequential file writes `sync`/`tag`/`untag`/`unstar` each do, a hand
+edit touching one file, a future regression touching one side only).
+
+Review before build found a real bug in the plan: `build_status` read
+`stars.json` and `lists.json` under three *separate* lock acquisitions,
+so a concurrent writer could interleave and produce a false positive with
+no real drift behind it. Fixed first, as a prerequisite -- `build_status`
+now holds one lock across every load, matching how every writer already
+holds one lock across every save.
+
+Measured before building: the account this session tested against (1,593
+Stars, 17 Lists) had zero asymmetries in either direction. 4 pre-existing
+test fixtures in `tests/test_cli_status.py` encoded a state `sync()` could
+never produce (`Star.list_ids` set without the matching `List.items`) and
+were corrected to match.
+
 ## Needs a product decision (1)
 
 **P4 — Stale classification: detect or eliminate.**
@@ -402,16 +423,6 @@ unreachable and removes `classify_list` and its seven defensive call sites.
 Measured on 2026-09-09: eliminating costs 4 failing tests out of 524, all
 records whose stored value contradicted the name. `StateStore` stays a dumb
 container either way -- the derivation belongs on the model, not the store.
-
-## Ready to build, no decision needed (1)
-
-**P5 — Membership symmetry is unguarded.** `verify_state` checks duplicate
-ids and dangling references, but never that `full_name in lst.items` agrees
-with `lst.id in star.list_ids`. Those are the two stored sides of one
-relationship, and `reconcile_list_membership` is the only thing keeping them
-in step. This is the duplication that cannot be collapsed -- the source is a
-network fetch, and `tag`/`untag` legitimately write both sides between syncs
--- so it earns a check rather than a redesign.
 
 ## Riding with ticket 14 (3)
 
