@@ -51,7 +51,7 @@ def verify_state(
     stars: list[Star],
     lists: list[List],
     *,
-    categories: Iterable[str] | None = None,
+    categories: Iterable[str],
 ) -> list[str]:
     """Deterministic, offline structural checks against local state.
 
@@ -84,8 +84,8 @@ def verify_state(
     `ghstars untag` repair for the triage-inbox case.
 
     Args:
-        categories: blessed Category vocabulary. `None` skips that one
-            check only; the other two always run.
+        categories: blessed Category vocabulary. Required -- a missing
+            `ghstars.toml` still yields defaults, so there is always one.
     """
     problems: list[str] = []
 
@@ -111,14 +111,13 @@ def verify_state(
                     f"{star.full_name}: list_ids references unknown List id {list_id!r}"
                 )
 
-    if categories is not None:
-        blessed = blessed_categories(categories)
-        for lst in lists:
-            if lst.category is not None and lst.category not in blessed:
-                problems.append(
-                    f"unblessed Category {lst.category!r} in List {lst.name!r}: "
-                    f"rename the List, or add it to [taxonomy] in ghstars.toml"
-                )
+    blessed = blessed_categories(categories)
+    for lst in lists:
+        if lst.category is not None and lst.category not in blessed:
+            problems.append(
+                f"unblessed Category {lst.category!r} in List {lst.name!r}: "
+                f"rename the List, or add it to [taxonomy] in ghstars.toml"
+            )
 
     by_id = {lst.id: lst for lst in lists}
     for star in stars:
@@ -140,9 +139,7 @@ def verify_state(
     return problems
 
 
-def build_status(
-    store: StateStore, *, categories: Iterable[str] | None = None
-) -> StatusReport:
+def build_status(store: StateStore, *, categories: Iterable[str]) -> StatusReport:
     """Assemble the `status` report from local state only.
 
     "Last sync time": there is no dedicated sync-timestamp field or file

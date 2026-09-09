@@ -31,6 +31,7 @@ __all__ = [
     "get_tui_state_path",
     "git_unavailable_reason",
     "remote_app",
+    "taxonomy_app",
 ]
 
 app = typer.Typer(no_args_is_help=True)
@@ -44,6 +45,11 @@ remote_app = typer.Typer(
     "these commands write.",
 )
 app.add_typer(remote_app, name="remote")
+taxonomy_app = typer.Typer(
+    no_args_is_help=True,
+    help="Edit the Category vocabulary in ghstars.toml.",
+)
+app.add_typer(taxonomy_app, name="taxonomy")
 
 
 @app.callback()

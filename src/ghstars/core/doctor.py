@@ -202,7 +202,7 @@ def rename_list(
     old_name: str,
     new_name: str,
     *,
-    categories: Iterable[str] | None = None,
+    categories: Iterable[str],
 ) -> List:
     """Rename exactly one List, against live GitHub state only.
 

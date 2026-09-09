@@ -44,6 +44,21 @@ from ghstars.tui.config import (
 )
 
 
+def _vocabulary(tmp_path: Path, categories: list[str]) -> Path:
+    """Write a core config so the TUI's vocabulary guard has a vocabulary.
+
+    `categories` is required in core (ADR 0005), so the TUI reads
+    `ghstars.toml` before tagging. Returns the `tui.toml` path to hand
+    `TuiApp`, which keeps both configs inside this test's tmp directory.
+    """
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "ghstars.toml").write_text(
+        '[taxonomy]\ncategories = ["' + '", "'.join(categories) + '"]\n'
+    )
+    return config_dir / "tui.toml"
+
+
 def _table(app: TuiApp) -> DataTable[str]:
     return app.query_one("#stars-table", DataTable)
 
@@ -350,7 +365,11 @@ async def test_single_item_tag_pushes_immediately(
     store.save_lists([])
     client = FakeGitHubClient(stars=[star])
 
-    app = TuiApp(client=client, store=store)
+    app = TuiApp(
+        client=client,
+        store=store,
+        config_path=_vocabulary(tmp_path, ["Foo", "Tool", "General"]),
+    )
     async with app.run_test() as pilot:
         await pilot.pause()
         _table(app).focus()
@@ -518,7 +537,11 @@ async def test_retag_moves_star_between_intents_in_same_category(
     store.save_lists([current, retired])
     client = FakeGitHubClient(stars=[star], lists=[current, retired])
 
-    app = TuiApp(client=client, store=store)
+    app = TuiApp(
+        client=client,
+        store=store,
+        config_path=_vocabulary(tmp_path, ["Foo", "Tool", "General"]),
+    )
     async with app.run_test() as pilot:
         await pilot.pause()
         _table(app).focus()
@@ -701,7 +724,11 @@ async def test_detail_pane_updates_after_tagging_star_with_cursor_on_first_row(
     store.save_lists([])
     client = FakeGitHubClient(stars=[star])
 
-    app = TuiApp(client=client, store=store)
+    app = TuiApp(
+        client=client,
+        store=store,
+        config_path=_vocabulary(tmp_path, ["Foo", "Tool", "General"]),
+    )
     async with app.run_test() as pilot:
         await pilot.pause()
         assert "Lists: none" in _detail_text(app)

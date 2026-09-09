@@ -23,6 +23,7 @@ from ghstars.cli.commands import (  # noqa: F401
     status,
     sync,
     tag,
+    taxonomy,
     tui,
     unstar,
     untag,

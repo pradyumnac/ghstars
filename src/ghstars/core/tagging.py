@@ -119,7 +119,7 @@ def tag_star(
     is_private: bool = False,
     lists: list[List] | None = None,
     node_id: str | None = None,
-    categories: Iterable[str] | None = None,
+    categories: Iterable[str],
 ) -> TagResult:
     """Add `full_name` to `list_name`, then push the change to GitHub.
 
@@ -314,7 +314,7 @@ def bulk_tag_stars(
     list_name: str,
     *,
     is_private: bool = False,
-    categories: Iterable[str] | None = None,
+    categories: Iterable[str],
 ) -> list[BulkTagOutcome]:
     """Tag every repo in `full_names` into `list_name`, one `tag_star()`
     call per repo, isolating each repo's failure from the others.

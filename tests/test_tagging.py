@@ -1,3 +1,4 @@
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -12,10 +13,33 @@ from ghstars.core.tagging import (
     StarNotFoundError,
     StarNotInListError,
     TagPushError,
-    bulk_tag_stars,
-    tag_star,
     untag_star,
 )
+from ghstars.core.tagging import bulk_tag_stars as _bulk_tag_stars
+from ghstars.core.tagging import tag_star as _tag_star
+
+# `categories` is required in core (ADR 0005): a caller cannot silently skip
+# the vocabulary guard. These tests exercise tagging mechanics, so they pass a
+# permissive vocabulary by default; a test asserting a refusal passes its own.
+VOCAB_ALL = [
+    "Tool",
+    "New",
+    "Secret",
+    "A",
+    "B",
+    "General",
+    "Library",
+    "AI Agents",
+    "Tools",
+    "Foo",
+    "Skills",
+]
+
+
+tag_star = partial(_tag_star, categories=VOCAB_ALL)
+bulk_tag_stars = partial(_bulk_tag_stars, categories=VOCAB_ALL)
+
+
 from ghstars.core.taxonomy import UnwritableListNameError
 
 

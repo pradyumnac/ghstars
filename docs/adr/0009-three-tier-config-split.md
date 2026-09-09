@@ -58,7 +58,17 @@ docstring, where a reader adding a table to `ghstars.toml` will find it.
 
 ADR 0002 already governs `config/` as a whole: TOML, plain-text,
 git-diffable, stow-managed, and never written to by ghstars on the
-user's behalf. This decision does not change any of that — it only
+user's behalf.
+
+> **Amended 2026-09-09 (ADR 0005).** "On the user's behalf" is the
+> operative phrase, and it excludes a write the user explicitly asks for.
+> `ghstars taxonomy bless CATEGORY`, and the TUI acting as the user's
+> editor, may write `[taxonomy]` in `ghstars.toml`. Two constraints hold:
+> the write happens only on an explicit instruction, never as a side
+> effect of another command; and it round-trips through `tomlkit`, so
+> comments and formatting survive and the file stays hand-editable and
+> git-diffable -- the property this rule exists to protect. No command
+> writes `config/` implicitly. This decision does not change any of that — it only
 says how many files sit inside `config/` and which setting goes in
 which one. A missing file still means every default applies, the same
 rule `tui.toml` and the retired `export.toml` already followed.

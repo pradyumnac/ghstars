@@ -60,6 +60,7 @@ from textual.timer import Timer
 from textual.widgets import Button, Checkbox, DataTable, Input, Label, Select, Static
 from tomlkit.exceptions import TOMLKitError
 
+from ghstars.core.config import CoreConfigError, load_core_config
 from ghstars.core.discovery import (
     Facets,
     SortMode,
@@ -1265,6 +1266,7 @@ class TuiApp(App[None]):
         self._config_path = config_path or (
             store.base_dir.parent / "config" / "tui.toml"
         )
+        self._core_config_path = self._config_path.parent / "ghstars.toml"
         self._state_path = state_path or (store.base_dir / "tui-state.toml")
         self._config: TuiConfig = load_tui_config(self._config_path)
         self._state: TuiState = load_tui_state(self._state_path)
@@ -2088,6 +2090,10 @@ class TuiApp(App[None]):
         if choice is not None:
             self._apply_tag(targets, choice)
 
+    def _blessed_categories(self) -> list[str]:
+        """Read fresh, so a Category blessed this session applies at once."""
+        return load_core_config(self._core_config_path).taxonomy.categories
+
     @work(thread=True)
     def _apply_tag(self, targets: list[str], choice: TagChoice) -> None:
         """Runs off the UI thread: `bulk_tag_stars()` touches the
@@ -2100,12 +2106,21 @@ class TuiApp(App[None]):
         call it and translate its per-repository outcomes into this
         screen's notification.
         """
+        try:
+            categories = self._blessed_categories()
+        except CoreConfigError as exc:
+            self.call_from_thread(
+                self._on_tag_done, choice, 0, 0, [f"ghstars.toml: {exc}"]
+            )
+            return
+
         outcomes = bulk_tag_stars(
             self._client,
             self._store,
             targets,
             choice.list_name,
             is_private=choice.is_private,
+            categories=categories,
         )
         tagged = 0
         removed_total = 0

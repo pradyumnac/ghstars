@@ -21,8 +21,12 @@ only *where* export config is read from moved, not its shape.
 
 Same loading rule the sibling tiers already follow (`load_tui_config`,
 and the retired `load_export_config` before it): a missing file means
-every default applies, never an error. ghstars never writes into
-`config/` on the user's behalf (ADR 0002).
+every default applies, never an error.
+
+ghstars never writes into `config/` on the user's behalf (ADR 0002). It
+does write on the user's explicit instruction: `ghstars taxonomy bless`
+and the TUI's confirmed equivalent (`core.vocabulary`, ADR 0005). Both
+round-trip through `tomlkit`, so comments and formatting survive.
 """
 
 import tomllib

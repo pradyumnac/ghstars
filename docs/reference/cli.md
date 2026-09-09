@@ -652,3 +652,20 @@ adjacent to clash against.
 Per ticket 30's non-goals: TUI layouts, colours, keybindings, view state,
 the config editor, opening a repository in a browser, and Folder/grid
 presentation are not part of the CLI and are not documented here.
+
+### `ghstars taxonomy bless CATEGORY`
+
+Add a Category to `[taxonomy]` in `ghstars.toml`.
+
+The one command that writes `config/`, and only on your explicit
+instruction — ADR 0002 forbids writing it *on your behalf*, which is a
+different thing (ADR 0005 amends ADR 0009's reading). It round-trips
+through `tomlkit`, so your comments and formatting survive.
+
+Idempotent, and normalizing: an underscore reads as a space, so blessing
+`AI_Agents` blesses `AI Agents`. If `[taxonomy]` does not exist yet, the
+built-in defaults are written out first, so blessing one word never
+silently drops the others.
+
+Rejects a Category that normalizes to nothing (empty, whitespace, or
+underscores only) — it would let `bootstrap` write `Explore: `.

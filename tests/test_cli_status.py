@@ -6,6 +6,7 @@ Offline: builds the report from `StateStore.load_*()` only, no
 
 import json
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -16,11 +17,19 @@ import ghstars.cli as cli_module
 from ghstars.cli import app
 from ghstars.core.models import Intent, List, RetriageEntry, Star
 from ghstars.core.state_store import StateStore
-from ghstars.core.status import (
-    build_status,
-    stale_classification_warning,
-    verify_state,
-)
+from ghstars.core.status import build_status as _build_status
+from ghstars.core.status import stale_classification_warning
+from ghstars.core.status import verify_state as _verify_state
+
+# `categories` is required in core (ADR 0005). These tests mostly exercise the
+# structural checks, so they pass a permissive vocabulary by default; a test
+# asserting an unblessed Category passes its own.
+VOCAB_ALL = ["Tool", "General", "AI Agents", "Library", "Example", "Skills"]
+
+
+verify_state = partial(_verify_state, categories=VOCAB_ALL)
+build_status = partial(_build_status, categories=VOCAB_ALL)
+
 
 runner = CliRunner()
 
@@ -258,11 +267,17 @@ def test_verify_state_accepts_a_blessed_category() -> None:
     assert verify_state([], [lst], categories=["Tool", "General"]) == []
 
 
-def test_verify_state_skips_the_vocabulary_check_without_categories() -> None:
-    """A caller with no config keeps the structural checks alone."""
+def test_verify_state_requires_a_vocabulary() -> None:
+    """`categories` has no default, so no caller can skip the vocabulary
+    check by omission -- the escape hatch that let the TUI bypass it.
+    A missing `ghstars.toml` still yields defaults, so one always exists.
+    """
     lst = _classified("L_1", "Explore: Wombat", "Explore", "Wombat")
 
-    assert verify_state([], [lst]) == []
+    with pytest.raises(TypeError):
+        _verify_state([], [lst])  # type: ignore[call-arg]
+
+    assert verify_state([], [lst], categories=["Tool"]) != []
 
 
 def test_verify_state_flags_a_star_in_the_triage_inbox_and_a_classified_list() -> None:

@@ -123,6 +123,30 @@ A name that already exists on GitHub is different. ghstars keeps it and reports
 it. ADR 0001 makes GitHub the source of truth, so ghstars never rejects what it
 reads.
 
+### The vocabulary is enforced in core, not per caller
+
+`categories` is a required parameter on every core function that needs it:
+`tag_star`, `bulk_tag_stars`, `rename_list`, `check_writable_list_name`,
+`verify_state` and `build_status`. It carries no default.
+
+An optional parameter could only ever mean "the caller forgot", because a
+missing `ghstars.toml` still yields `DEFAULT_CATEGORIES` -- there is always a
+vocabulary. That default was how the TUI bypassed the guard entirely: it
+called `bulk_tag_stars` without `categories` and created Lists the CLI
+refused. Making the parameter required turns that bypass into a type error
+rather than a review finding.
+
+### Blessing a Category writes `ghstars.toml`
+
+`ghstars taxonomy bless CATEGORY` adds a value to `[taxonomy]`. The TUI does
+the same when the user confirms it, acting as their editor.
+
+This amends ADR 0009's reading of ADR 0002. That rule forbids writing
+`config/` *on the user's behalf*; a write the user explicitly asks for is not
+that. Two constraints keep the original property intact: the write happens
+only on an explicit instruction, never as a side effect; and it round-trips
+through `tomlkit`, so comments and formatting survive.
+
 ### `malformed` keeps its ticket 03 meaning
 
 `List.malformed` means that the name attempts the Intent-prefix pattern and

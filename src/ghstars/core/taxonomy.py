@@ -113,8 +113,14 @@ class UnwritableListNameError(Exception):
         super().__init__(f"cannot write List name {list_name!r}: {reason}")
 
 
-def check_writable_list_name(list_name: str, categories: Iterable[str] | None) -> None:
-    """Raise `UnwritableListNameError` unless ghstars may write this name."""
+def check_writable_list_name(list_name: str, categories: Iterable[str]) -> None:
+    """Raise `UnwritableListNameError` unless ghstars may write this name.
+
+    `categories` is required. There is always a vocabulary -- a missing
+    `ghstars.toml` still yields `DEFAULT_CATEGORIES` -- so an optional
+    parameter could only ever mean "the caller forgot", which is how the
+    TUI bypassed this guard entirely.
+    """
     parsed = parse_list_name(list_name)
     if parsed.malformed:
         raise UnwritableListNameError(
@@ -122,7 +128,7 @@ def check_writable_list_name(list_name: str, categories: Iterable[str] | None) -
             "the name attempts the '{Intent}: {Category}' pattern and does not "
             "match it",
         )
-    if categories is None or parsed.category is None:
+    if parsed.category is None:
         return
     if parsed.category not in blessed_categories(categories):
         raise UnwritableListNameError(
