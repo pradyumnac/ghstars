@@ -474,45 +474,71 @@ git binary or an untracked `state/` fails with `tool_unavailable` or
 
 ### `ghstars doctor`
 
-Check the GitHub account against the taxonomy and report a repair plan.
-Reads live Lists, so it diagnoses the account rather than the last sync.
+Report how the GitHub account measures up against the taxonomy. **Read-only,
+always** — every repair is its own command under `ghstars remote`, or
+`ghstars untag`. Reads live Lists, so it diagnoses the account rather than
+the last sync, and never prompts (Scope 0).
+
+It reports three conditions and never picks a repair for you:
+
+| Condition | Repairs | Reported as |
+| --- | --- | --- |
+| **malformed** — name attempts `{Intent}: {Category}` and fails | One: rename it | A `remote rename-list` command, with the new name left for you |
+| **unblessed** — shape fine, Category not in `[taxonomy]` | Two: bless the word, or rename | Prose, both options — ghstars must not choose (ticket 03) |
+| **triage inbox** — a Star in `*: General` and a classified List | One: drop the inbox membership | An exact `ghstars untag` command |
+
+A problem with one possible repair is reported as the command to run. A
+problem with two valid repairs is reported in prose only.
+
+It also lists blessed Categories with no List, which `remote bootstrap`
+creates.
+
+`--json` emits a `DoctorReport` (`ok`, `list_count`, `problems`,
+`star_problems`, `missing_categories`, `create_blocked`, `blocked_reason`),
+not a `FIELD_REGISTRY` field set — the same bespoke-report pattern `status`
+uses. The skill layer reads this plan and calls the repair commands.
+
+Exit code is `1` when the account is not `ok`.
+
+### `ghstars remote`
+
+The write side of `doctor`: one verb per kind of repair. Every verb requires
+`--yes`, since no interactive prompt exists (Scope 0).
+
+#### `ghstars remote bootstrap --yes --intent <Intent>`
+
+Create one List per blessed Category that has none, under `--intent`. It
+creates the *whole* missing set in one call — hence "bootstrap", not
+"create".
 
 | Option | Meaning |
 | --- | --- |
-| `--fix` | Create the missing Lists. Requires `--yes` and `--intent`. |
-| `--yes` | Confirms a write. No interactive prompt exists (Scope 0). |
-| `--intent` | Intent for created Lists. One of Explore/Current/Retired/Reference/Learn. |
+| `--intent` | Required. ghstars never guesses one (ticket 03). |
+| `--yes` | Required. This writes to GitHub. |
 | `--force` | Create even while List names need attention. |
 | `--private` | Create private Lists. |
-| `--json` | Emit the plan as JSON. |
+| `--json` | Emit `{"created", "planned"}`. |
 
-It reports two conditions, and never picks a repair for you:
+A malformed or unblessed List name blocks the run, because a rename can turn
+an unblessed Category into a blessed one and remove the need to create
+anything. Never renames, never deletes.
 
-- **malformed** — the name attempts `{Intent}: {Category}` and fails. One
-  repair: rename the List.
-- **unblessed** — the shape is fine but the Category is not in `[taxonomy]`.
-  Two repairs: bless the word, or rename the List.
+#### `ghstars remote rename-list OLD NEW --yes`
 
-Either condition blocks `--fix`, because a rename can turn an unblessed
-Category into a blessed one and remove the need to create anything. Pass
-`--force` to create anyway.
+Rename exactly one List, **including across Intents** — which is what
+`category rename` cannot do (it renames every Intent-variant of one Category
+at once, always keeping each List's Intent).
 
-`--fix` never renames and never deletes. It only creates, and only for a
-blessed Category that has no List. It refuses without `--intent`, since
-ghstars must not guess an Intent (ticket 03).
+Runs against live GitHub state with no local store and no lock: a rename
+changes List identity, never Star membership, so there is nothing to
+reconcile (ADR 0001). It therefore needs no prior `sync`, unlike
+`category rename`.
 
-`doctor` also reports a Star in the triage inbox (`*: General`) alongside a
-classified List — the same invariant `status`'s `verify` checks, computed
-here from live `List.items` rather than local state. Each one comes with a
-concrete `ghstars untag` command that drops only that membership.
+Refuses a malformed or unblessed `NEW`, with no override — it exists to move
+a List out of a bad name, never into one. Also refuses when `OLD` does not
+exist, or when `NEW` is already another List's name.
 
-`--json` emits a `DoctorReport` (`ok`, `list_count`, `problems`,
-`star_problems`, `missing_categories`, `create_blocked`, `blocked_reason`,
-`created`), not a `FIELD_REGISTRY` field set — the same bespoke-report
-pattern `status` uses. The skill layer reads this plan and walks the user
-through it; the CLI itself never prompts.
-
-Exit code is `1` when the account is not `ok` and nothing was created.
+Local state is stale afterwards. Run `ghstars sync`.
 
 ### `ghstars untag REPO LIST_NAME`
 

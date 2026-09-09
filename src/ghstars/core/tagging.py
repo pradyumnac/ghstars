@@ -8,7 +8,8 @@ from ghstars.core.models import List, Star
 from ghstars.core.state_store import StateStore
 from ghstars.core.sync import apply_membership_diff
 from ghstars.core.taxonomy import (
-    blessed_categories,
+    UnwritableListNameError,
+    check_writable_list_name,
     classify_list,
     parse_list_name,
     strip_lifecycle_siblings,
@@ -49,20 +50,6 @@ class StarListMembershipDriftError(Exception):
             f"{full_name}: local state has drifted from GitHub for {names} "
             "— run `ghstars sync` first, then retry."
         )
-
-
-class UnwritableListNameError(Exception):
-    """`ghstars tag` refused to create a List name ghstars must not write
-    (ADR 0005), same rule ticket 07 holds `category rename`/`drain` to.
-
-    An existing name on GitHub is never judged this way (ADR 0001); this
-    fires only before a `create_list` call.
-    """
-
-    def __init__(self, list_name: str, reason: str) -> None:
-        self.list_name = list_name
-        self.reason = reason
-        super().__init__(f"cannot create List {list_name!r}: {reason}")
 
 
 class TagPushError(Exception):
@@ -121,27 +108,6 @@ def _find_list(lists: list[List], list_name: str) -> List | None:
         ),
         None,
     )
-
-
-def _check_writable_list_name(list_name: str, categories: Iterable[str] | None) -> None:
-    """Refuse a name ghstars must not create (ADR 0005). Runs only before
-    `create_list`; an existing List is never judged here (ADR 0001).
-    """
-    parsed = parse_list_name(list_name)
-    if parsed.malformed:
-        raise UnwritableListNameError(
-            list_name,
-            "the name attempts the '{Intent}: {Category}' pattern and does not "
-            "match it",
-        )
-    if categories is None or parsed.category is None:
-        return
-    if parsed.category not in blessed_categories(categories):
-        raise UnwritableListNameError(
-            list_name,
-            f"Category {parsed.category!r} is not in the [taxonomy] table of "
-            "ghstars.toml -- add it there, or use a blessed Category",
-        )
 
 
 def tag_star(
@@ -206,7 +172,7 @@ def tag_star(
         ]
         lst = _find_list(lists, list_name)
         if lst is None:
-            _check_writable_list_name(list_name, categories)
+            check_writable_list_name(list_name, categories)
             lst = classify_list(client.create_list(list_name, is_private=is_private))
             lists = [*lists, lst]
             # Save newly created Lists before later validation or push steps.

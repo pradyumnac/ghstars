@@ -12,11 +12,11 @@ from ghstars.core.tagging import (
     StarNotFoundError,
     StarNotInListError,
     TagPushError,
-    UnwritableListNameError,
     bulk_tag_stars,
     tag_star,
     untag_star,
 )
+from ghstars.core.taxonomy import UnwritableListNameError
 
 
 def test_tag_star_pushes_to_github_immediately_for_an_existing_list(

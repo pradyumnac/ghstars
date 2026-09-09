@@ -11,35 +11,25 @@ from ghstars.cli.errors import (
     fail,
 )
 from ghstars.core import CoreConfigError, load_core_config
-from ghstars.core.doctor import DoctorReport, bootstrap_lists, diagnose
-from ghstars.core.models import Intent
+from ghstars.core.doctor import DoctorReport, diagnose
 from ghstars.github import GitHubApiError
-
-_INTENTS: tuple[str, ...] = ("Explore", "Current", "Retired", "Reference", "Learn")
 
 
 @app.command("doctor")
 def doctor_cmd(
-    fix: bool = typer.Option(False, "--fix", help="Create missing Lists on GitHub."),
-    yes: bool = typer.Option(False, "--yes", help="Required by --fix."),
-    intent: str = typer.Option(
-        "", "--intent", help="Intent for created Lists. Required by --fix."
-    ),
-    force: bool = typer.Option(
-        False, "--force", help="Create even while List names need attention."
-    ),
-    private: bool = typer.Option(False, "--private", help="Create private Lists."),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
-    """Check the GitHub account against the taxonomy and report a repair plan.
+    """Report how the GitHub account measures up against the taxonomy.
 
-    Reads live Lists, never local state, so it diagnoses the account rather
-    than the last sync. Never prompts (ticket 30 Scope 0) -- the skill layer
-    walks the plan interactively and calls back with explicit flags.
+    Read-only, always: every repair lives in its own command, one per
+    kind of problem (`ghstars remote bootstrap`, `ghstars remote
+    rename-list`, `ghstars untag`). Reads live Lists, so it diagnoses the
+    account rather than the last sync, and never prompts (ticket 30
+    Scope 0) -- the skill layer walks the report and calls the repairs.
 
-    A malformed or unblessed name blocks `--fix`, because a rename can turn
-    an unblessed Category into a blessed one and remove the need to create
-    anything. `--force` proceeds anyway.
+    A problem with one possible repair is reported as the command to
+    run. A problem with two valid repairs is reported in prose, because
+    ghstars must not choose between them (ticket 03).
     """
     try:
         categories = load_core_config(cli.get_core_config_path()).taxonomy.categories
@@ -53,54 +43,16 @@ def doctor_cmd(
 
     report = diagnose(lists, categories=categories)
 
-    created: list[str] = []
-    if fix:
-        if not yes:
-            fail(
-                "--fix requires --yes. It creates Lists on GitHub.",
-                code=CODE_INVALID_INPUT,
-                json_output=json_output,
-            )
-        if intent not in _INTENTS:
-            fail(
-                f"--fix requires --intent, one of {', '.join(_INTENTS)}. "
-                "ghstars never guesses an Intent.",
-                code=CODE_INVALID_INPUT,
-                json_output=json_output,
-            )
-        if report.create_blocked and not force:
-            fail(
-                f"{report.blocked_reason}. Fix the names, or pass --force.",
-                code=CODE_INVALID_INPUT,
-                json_output=json_output,
-            )
-        try:
-            created = bootstrap_lists(
-                cli.get_client(),
-                report,
-                intent=cast_intent(intent),
-                is_private=private,
-            )
-        except GitHubApiError as exc:
-            fail(str(exc), code=CODE_NETWORK_FAILURE, json_output=json_output)
-
     if json_output:
-        typer.echo(
-            json.dumps({**report.model_dump(mode="json"), "created": created})
-        )
+        typer.echo(json.dumps(report.model_dump(mode="json")))
     else:
-        _render(report, created, intent)
+        _render(report)
 
-    if not report.ok and not created:
+    if not report.ok:
         raise typer.Exit(code=EXIT_TERMINAL)
 
 
-def cast_intent(value: str) -> Intent:
-    """Narrow an already-validated `--intent` string for mypy."""
-    return value  # type: ignore[return-value]
-
-
-def _render(report: DoctorReport, created: list[str], intent: str) -> None:
+def _render(report: DoctorReport) -> None:
     typer.echo(f"Lists checked: {report.list_count}")
 
     if report.problems:
@@ -113,7 +65,10 @@ def _render(report: DoctorReport, created: list[str], intent: str) -> None:
         typer.echo("Names: ok")
 
     if report.star_problems:
-        typer.echo(f"Stars in the triage inbox and a classified List: {len(report.star_problems)}")
+        typer.echo(
+            "Stars in the triage inbox and a classified List: "
+            f"{len(report.star_problems)}"
+        )
         for star_problem in report.star_problems:
             typer.echo(
                 f"  - {star_problem.full_name}: in {star_problem.in_triage_inbox} "
@@ -126,16 +81,10 @@ def _render(report: DoctorReport, created: list[str], intent: str) -> None:
         typer.echo(f"Blessed Categories with no List: {len(report.missing_categories)}")
         for category in report.missing_categories:
             typer.echo(f"  - {category}")
-        if not created:
-            hint = intent or "Explore"
-            typer.echo(f"  run: ghstars doctor --fix --yes --intent {hint}")
+        typer.echo("  fix: ghstars remote bootstrap --yes --intent <Intent>")
 
-    if created:
-        typer.echo(f"Created {len(created)} List(s):")
-        for name in created:
-            typer.echo(f"  + {name}")
-    elif report.create_blocked:
-        typer.echo(f"Create blocked: {report.blocked_reason}")
+    if report.create_blocked:
+        typer.echo(f"Bootstrap blocked: {report.blocked_reason}")
 
     if report.ok:
         typer.echo("Doctor: ok")

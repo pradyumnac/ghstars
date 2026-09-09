@@ -98,6 +98,42 @@ def blessed_categories(categories: Iterable[str]) -> frozenset[str]:
     return frozenset(normalize_category(item) for item in categories)
 
 
+class UnwritableListNameError(Exception):
+    """ghstars would have written a List name it cannot parse (ADR 0005).
+
+    Guards every write path that takes a raw name from the user:
+    `tag_star`'s create, and `rename_list`. A name that already exists on
+    GitHub is never judged this way -- ADR 0001 keeps GitHub the source
+    of truth, so `verify`/`doctor` report those instead.
+    """
+
+    def __init__(self, list_name: str, reason: str) -> None:
+        self.list_name = list_name
+        self.reason = reason
+        super().__init__(f"cannot write List name {list_name!r}: {reason}")
+
+
+def check_writable_list_name(
+    list_name: str, categories: Iterable[str] | None
+) -> None:
+    """Raise `UnwritableListNameError` unless ghstars may write this name."""
+    parsed = parse_list_name(list_name)
+    if parsed.malformed:
+        raise UnwritableListNameError(
+            list_name,
+            "the name attempts the '{Intent}: {Category}' pattern and does not "
+            "match it",
+        )
+    if categories is None or parsed.category is None:
+        return
+    if parsed.category not in blessed_categories(categories):
+        raise UnwritableListNameError(
+            list_name,
+            f"Category {parsed.category!r} is not in the [taxonomy] table of "
+            "ghstars.toml -- add it there, or use a blessed Category",
+        )
+
+
 def parse_list_name(name: str) -> ParsedListName:
     """Parse a List's `name` per the `{Intent}: {Category}` convention."""
     for intent in _INTENTS:

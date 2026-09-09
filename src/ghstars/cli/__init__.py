@@ -30,6 +30,7 @@ __all__ = [
     "get_tui_config_path",
     "get_tui_state_path",
     "git_unavailable_reason",
+    "remote_app",
 ]
 
 app = typer.Typer(no_args_is_help=True)
@@ -37,6 +38,12 @@ category_app = typer.Typer(
     no_args_is_help=True, help="Rename or bulk-migrate a Category across its Lists."
 )
 app.add_typer(category_app, name="category")
+remote_app = typer.Typer(
+    no_args_is_help=True,
+    help="Repair the GitHub account's taxonomy. `ghstars doctor` reports; "
+    "these commands write.",
+)
+app.add_typer(remote_app, name="remote")
 
 
 @app.callback()

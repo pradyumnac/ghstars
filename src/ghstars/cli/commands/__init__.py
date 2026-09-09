@@ -18,6 +18,7 @@ from ghstars.cli.commands import (  # noqa: F401
     facets,
     list_lists,
     ratelimit,
+    remote,
     retriage,
     status,
     sync,

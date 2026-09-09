@@ -36,6 +36,32 @@ A rename can turn an unblessed Category into a blessed one. That removes the
 need to create a List for it. Creating first would therefore make Lists the
 user does not want.
 
+## Command shape, settled 2026-09-09
+
+`doctor` is read-only. Every repair is its own verb, named for what it fixes.
+
+| Problem | Repairs | Verb |
+| --- | --- | --- |
+| Blessed Category with no List | one | `remote bootstrap` |
+| Star in the triage inbox and a classified List | one | `untag` |
+| Malformed name | one (rename) | `remote rename-list` |
+| Unblessed Category | two (bless or rename) | none -- prose only |
+
+A repair becomes a command only when the repair *type* is deterministic. Two
+valid repair types means prose, because ghstars must not choose (ticket 03).
+
+`remote` holds administrative, List-shaped writes. `tag`, `untag` and
+`unstar` stay top-level: they act on one Star's membership, not on List
+structure. `category rename`/`drain` stay where they are -- renaming a
+shipped command buys nothing today.
+
+Blessing a Category never becomes a command. ADR 0002 forbids ghstars writing
+to `config/` on the user's behalf, so it stays a hand edit of `ghstars.toml`.
+
+`remote rename-list` closes the gap found renaming `Learning` to
+`Learn: General` by hand: `category rename` keeps each List's Intent, so it
+cannot move a List between Intents.
+
 ## Not built
 
 The interactive wizard. It belongs to the skill layer, not to the CLI, because

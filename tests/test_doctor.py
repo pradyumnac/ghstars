@@ -110,65 +110,6 @@ def test_doctor_reports_without_touching_github(
     assert len(client.fetch_lists()) == 1
 
 
-def test_doctor_fix_requires_yes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    client = FakeGitHubClient(lists=[_list("L1", "Explore: Tool")])
-    _use(monkeypatch, StateStore(tmp_path), client)
-
-    result = runner.invoke(app, ["doctor", "--fix", "--intent", "Explore"])
-
-    assert result.exit_code != 0
-    assert len(client.fetch_lists()) == 1
-
-
-def test_doctor_fix_requires_an_explicit_intent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """ghstars never guesses an Intent (ticket 03)."""
-    client = FakeGitHubClient(lists=[_list("L1", "Explore: Tool")])
-    _use(monkeypatch, StateStore(tmp_path), client)
-
-    result = runner.invoke(app, ["doctor", "--fix", "--yes"])
-
-    assert result.exit_code != 0
-    assert len(client.fetch_lists()) == 1
-
-
-def test_doctor_fix_is_blocked_by_a_name_needing_attention(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A rename can turn an unblessed Category blessed, so names come first."""
-    client = FakeGitHubClient(lists=[_list("L1", "Explore: Wombat")])
-    _use(monkeypatch, StateStore(tmp_path), client)
-
-    result = runner.invoke(
-        app, ["doctor", "--fix", "--yes", "--intent", "Explore"]
-    )
-
-    assert result.exit_code != 0
-    assert len(client.fetch_lists()) == 1
-
-
-def test_doctor_force_overrides_the_block(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    client = FakeGitHubClient(lists=[_list("L1", "Explore: Wombat")])
-    _use(monkeypatch, StateStore(tmp_path), client)
-
-    runner.invoke(
-        app, ["doctor", "--fix", "--yes", "--intent", "Explore", "--force"]
-    )
-
-    names = sorted(lst.name for lst in client.fetch_lists())
-    assert names == [
-        "Explore: General",
-        "Explore: Library",
-        "Explore: Tool",
-        "Explore: Wombat",
-    ]
-
-
 def test_diagnose_flags_a_star_in_the_inbox_and_a_classified_list() -> None:
     inbox = List(
         id="L1", name="Explore: General", slug="explore-general", items=["owner/x"]
@@ -226,4 +167,3 @@ def test_doctor_json_carries_the_plan(
     assert payload["ok"] is False
     assert payload["create_blocked"] is True
     assert payload["problems"][0]["list_name"] == "Explore: Wombat"
-    assert payload["created"] == []

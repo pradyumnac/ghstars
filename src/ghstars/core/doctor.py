@@ -11,7 +11,12 @@ from pydantic import BaseModel
 
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import Intent, List
-from ghstars.core.taxonomy import TRIAGE_CATEGORY, blessed_categories, classify_list
+from ghstars.core.taxonomy import (
+    TRIAGE_CATEGORY,
+    blessed_categories,
+    check_writable_list_name,
+    classify_list,
+)
 
 PROBLEM_MALFORMED = "malformed"
 PROBLEM_UNBLESSED = "unblessed"
@@ -93,7 +98,11 @@ def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
                     list_name=lst.name,
                     problem=PROBLEM_MALFORMED,
                     detail="name attempts '{Intent}: {Category}' and does not match",
-                    repairs=[f"rename {lst.name!r} to a valid '{{Intent}}: {{Category}}'"],
+                    # One repair type, so the command is concrete; only the
+                    # target name is the user's to choose.
+                    repairs=[
+                        f"ghstars remote rename-list {lst.name!r} '<new name>'"
+                    ],
                 )
             )
         elif lst.category is not None and lst.category not in blessed:
@@ -127,6 +136,55 @@ def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
     )
 
 
+class ListNotFoundError(Exception):
+    """`remote rename-list` targeted a List GitHub does not have."""
+
+    def __init__(self, list_name: str) -> None:
+        self.list_name = list_name
+        super().__init__(f"no List named {list_name!r} on GitHub")
+
+
+class ListNameTakenError(Exception):
+    """`remote rename-list`'s target name belongs to a different List."""
+
+    def __init__(self, list_name: str) -> None:
+        self.list_name = list_name
+        super().__init__(f"{list_name!r} is already another List's name")
+
+
+def rename_list(
+    client: GitHubClient,
+    old_name: str,
+    new_name: str,
+    *,
+    categories: Iterable[str] | None = None,
+) -> List:
+    """Rename exactly one List, against live GitHub state only.
+
+    No local store and no lock: a rename changes List identity, never
+    Star membership, so there is nothing to reconcile (ADR 0001). That
+    is why this needs no prior `sync`, unlike `category rename` -- and
+    unlike it, this can change a List's Intent, the gap hit renaming
+    `Learning` to `Learn: General`.
+
+    Refuses a malformed or unblessed `new_name`, with no override: this
+    exists to move a List out of a bad name, never into one.
+
+    `lists.json` is stale afterwards. Run `ghstars sync`.
+    """
+    lists = client.fetch_lists()
+    target = next((lst for lst in lists if lst.name == old_name), None)
+    if target is None:
+        raise ListNotFoundError(old_name)
+    if old_name == new_name:
+        return classify_list(target)
+    if any(lst.name == new_name for lst in lists if lst.id != target.id):
+        raise ListNameTakenError(new_name)
+
+    check_writable_list_name(new_name, categories)
+    return classify_list(client.update_list(target.id, name=new_name))
+
+
 def planned_creates(report: DoctorReport, *, intent: Intent) -> list[str]:
     """The List names `--fix` would create for `intent`."""
     return [f"{intent}: {category}" for category in report.missing_categories]
@@ -151,8 +209,12 @@ __all__ = [
     "PROBLEM_MALFORMED",
     "PROBLEM_UNBLESSED",
     "DoctorReport",
+    "ListNameTakenError",
+    "ListNotFoundError",
     "ListProblem",
+    "StarProblem",
     "bootstrap_lists",
     "diagnose",
     "planned_creates",
+    "rename_list",
 ]
