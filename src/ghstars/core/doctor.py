@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from ghstars.core.github_client import GitHubClient
 from ghstars.core.models import Intent, List
-from ghstars.core.taxonomy import blessed_categories, classify_list
+from ghstars.core.taxonomy import TRIAGE_CATEGORY, blessed_categories, classify_list
 
 PROBLEM_MALFORMED = "malformed"
 PROBLEM_UNBLESSED = "unblessed"
@@ -25,17 +25,63 @@ class ListProblem(BaseModel):
     repairs: list[str]
 
 
+class StarProblem(BaseModel):
+    """A Star in the triage inbox (`*: General`) and a classified List at
+    once -- the same contradiction `verify_state` reports, computed here
+    from live `List.items` rather than local `Star.list_ids`.
+    """
+
+    full_name: str
+    in_triage_inbox: list[str]
+    classified: list[str]
+    # One `ghstars untag` call per inbox membership -- the repair that
+    # only drops that one membership, keeping the rest.
+    repairs: list[str]
+
+
 class DoctorReport(BaseModel):
     ok: bool
     list_count: int
     problems: list[ListProblem] = []
+    star_problems: list[StarProblem] = []
     missing_categories: list[str] = []
     create_blocked: bool = False
     blocked_reason: str | None = None
 
 
+def _star_problems(classified: list[List]) -> list[StarProblem]:
+    membership: dict[str, list[List]] = {}
+    for lst in classified:
+        for full_name in lst.items:
+            membership.setdefault(full_name, []).append(lst)
+
+    found: list[StarProblem] = []
+    for full_name, member_lists in membership.items():
+        inbox = [lst for lst in member_lists if lst.category == TRIAGE_CATEGORY]
+        classified_lists = [
+            lst
+            for lst in member_lists
+            if lst.category is not None and lst.category != TRIAGE_CATEGORY
+        ]
+        if inbox and classified_lists:
+            found.append(
+                StarProblem(
+                    full_name=full_name,
+                    in_triage_inbox=sorted(lst.name for lst in inbox),
+                    classified=sorted(lst.name for lst in classified_lists),
+                    repairs=[
+                        f"ghstars untag {full_name} {lst.name!r}"
+                        for lst in sorted(inbox, key=lambda lst: lst.name)
+                    ],
+                )
+            )
+    return sorted(found, key=lambda p: p.full_name)
+
+
 def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
-    """Check every List name against the shape rules and the vocabulary."""
+    """Check every List name against the shape rules and the vocabulary,
+    and every Star against the triage-inbox invariant.
+    """
     classified = [classify_list(lst) for lst in lists]
     blessed = blessed_categories(categories)
 
@@ -63,13 +109,16 @@ def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
                 )
             )
 
+    star_problems = _star_problems(classified)
+
     present = {lst.category for lst in classified if lst.category is not None}
     missing = sorted(blessed - present)
 
     return DoctorReport(
-        ok=not problems and not missing,
+        ok=not problems and not star_problems and not missing,
         list_count=len(lists),
         problems=problems,
+        star_problems=star_problems,
         missing_categories=missing,
         create_blocked=bool(problems),
         blocked_reason=(

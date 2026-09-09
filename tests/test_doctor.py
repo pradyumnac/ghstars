@@ -169,6 +169,50 @@ def test_doctor_force_overrides_the_block(
     ]
 
 
+def test_diagnose_flags_a_star_in_the_inbox_and_a_classified_list() -> None:
+    inbox = List(
+        id="L1", name="Explore: General", slug="explore-general", items=["owner/x"]
+    )
+    tool = List(id="L2", name="Explore: Tool", slug="explore-tool", items=["owner/x"])
+
+    report = diagnose([inbox, tool], categories=VOCAB)
+
+    assert report.ok is False
+    problem = report.star_problems[0]
+    assert problem.full_name == "owner/x"
+    assert problem.in_triage_inbox == ["Explore: General"]
+    assert problem.classified == ["Explore: Tool"]
+    assert problem.repairs == ["ghstars untag owner/x 'Explore: General'"]
+
+
+def test_diagnose_allows_a_star_in_the_inbox_alone() -> None:
+    inbox = List(
+        id="L1", name="Explore: General", slug="explore-general", items=["owner/x"]
+    )
+
+    report = diagnose([inbox], categories=VOCAB)
+
+    assert report.star_problems == []
+
+
+def test_doctor_cli_suggests_the_untag_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inbox = _list("L1", "Explore: General")
+    tool = _list("L2", "Explore: Tool")
+    client = FakeGitHubClient(
+        lists=[
+            inbox.model_copy(update={"items": ["owner/x"]}),
+            tool.model_copy(update={"items": ["owner/x"]}),
+        ]
+    )
+    _use(monkeypatch, StateStore(tmp_path), client)
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert "ghstars untag owner/x 'Explore: General'" in result.output
+
+
 def test_doctor_json_carries_the_plan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -33,3 +33,7 @@ depends = ["fmt", "lint", "typecheck", "test"]
 [tasks.build]
 description = "Build the wheel and the source distribution"
 run = "uv build"
+
+[tasks.doctor]
+description = "Check the GitHub account against the taxonomy (read-only)"
+run = "uv run ghstars doctor"

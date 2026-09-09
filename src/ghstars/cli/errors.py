@@ -36,6 +36,7 @@ CODE_LIST_MEMBERSHIP_DRIFT = "list_membership_drift"
 CODE_TAG_PUSH_FAILED = "tag_push_failed"
 # Terminal: ghstars refused to create a List name it must not write (ADR 0005).
 CODE_UNWRITABLE_LIST_NAME = "unwritable_list_name"
+CODE_STAR_NOT_IN_LIST = "star_not_in_list"
 CODE_RATE_LIMIT_EXCEEDED = "rate_limit_exceeded"
 CODE_STATE_LOCK_HELD = "state_lock_held"
 CODE_NETWORK_FAILURE = "network_failure"

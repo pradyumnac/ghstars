@@ -112,6 +112,16 @@ def _render(report: DoctorReport, created: list[str], intent: str) -> None:
     else:
         typer.echo("Names: ok")
 
+    if report.star_problems:
+        typer.echo(f"Stars in the triage inbox and a classified List: {len(report.star_problems)}")
+        for star_problem in report.star_problems:
+            typer.echo(
+                f"  - {star_problem.full_name}: in {star_problem.in_triage_inbox} "
+                f"and {star_problem.classified}"
+            )
+            for repair in star_problem.repairs:
+                typer.echo(f"      fix: {repair}")
+
     if report.missing_categories:
         typer.echo(f"Blessed Categories with no List: {len(report.missing_categories)}")
         for category in report.missing_categories:

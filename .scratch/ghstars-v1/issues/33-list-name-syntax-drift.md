@@ -5,9 +5,21 @@ a syntax that the repo does not model. This ticket records the measured
 difference and the direction decision. It does not hold the implementation
 plan.
 
-**Status:** ready-for-human — the code landed on 2026-09-09. Two steps remain,
-and both need the user: run `ghstars sync`, then rename the flagged Lists on
-GitHub in one approved batch. See "Work to do" and "Deferred".
+**Status:** done — the code and the remediation both landed on 2026-09-09.
+
+## Remediation, executed 2026-09-09
+
+The user ran `ghstars sync`, then the four flagged names were resolved:
+
+| List | Repair | How |
+| --- | --- | --- |
+| `Explore: Tool - Dev` | blessed `Tool - Dev` in `[taxonomy]` | config edit, no GitHub write |
+| `Explore: Tool - CLI` | blessed `Tool - CLI` in `[taxonomy]` | config edit, no GitHub write |
+| `Explore: Dev_Library` | renamed to `Explore: Library` | `ghstars category rename "Dev Library" "Library"` |
+| `Learning` | renamed to `Learn: General` | `client.update_list()` directly -- no existing command covers a bare-name-to-`Learn`-prefixed rename |
+
+`ghstars doctor` confirmed `Names: ok` afterward. The rename exposed a
+follow-on finding: see ticket 34.
 
 **Blocked by:** None.
 

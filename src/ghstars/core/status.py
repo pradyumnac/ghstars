@@ -62,7 +62,10 @@ def verify_state(
     (never blocking, per ticket 03): a Category outside the blessed
     vocabulary (needs `categories`; distinct from `List.malformed`, a
     name-shape error), a Star in the triage inbox alongside a classified
-    List, and a Star holding two different lifecycle Intents.
+    List, and a Star holding two different lifecycle Intents. The first
+    two are also in `ghstars doctor`'s report, computed from live List
+    membership rather than local state, and paired with a suggested
+    `ghstars untag` repair for the triage-inbox case.
 
     Args:
         categories: blessed Category vocabulary. `None` skips that one

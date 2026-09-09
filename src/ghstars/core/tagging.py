@@ -244,6 +244,86 @@ def tag_star(
     return TagResult(star=updated, removed_list_ids=removed_list_ids, lists=lists)
 
 
+class StarNotInListError(Exception):
+    """`ghstars untag` targeted a List the Star is not currently in."""
+
+    def __init__(self, full_name: str, list_name: str) -> None:
+        self.full_name = full_name
+        self.list_name = list_name
+        super().__init__(f"{full_name} is not in {list_name!r}")
+
+
+class UntagResult(BaseModel):
+    """The result of `untag_star()`. Every other List membership is kept."""
+
+    star: Star
+    lists: list[List]
+
+
+def untag_star(
+    client: GitHubClient,
+    store: StateStore,
+    full_name: str,
+    list_name: str,
+    *,
+    lists: list[List] | None = None,
+    node_id: str | None = None,
+) -> UntagResult:
+    """Remove `full_name` from `list_name` only, then push immediately.
+
+    The mirror of `tag_star`: same drift check, same push-then-write
+    order, same `TagPushError` on failure. Never creates a List, and
+    never touches any other List the Star belongs to -- this is what
+    `unstar` (removes every membership) and `tag`'s same-Category strip
+    (removes one sibling as a side effect of adding another) cannot do.
+    """
+    with store.lock():
+        stars = store.load_stars()
+        star = next((s for s in stars if s.full_name == full_name), None)
+        if star is None:
+            raise StarNotFoundError(full_name)
+        if star.archived:
+            raise StarArchivedError(full_name)
+
+        lists = [
+            classify_list(lst)
+            for lst in (lists if lists is not None else client.fetch_lists())
+        ]
+        lst = next((item for item in lists if item.name == list_name), None)
+        if lst is None:
+            raise StarNotInListError(full_name, list_name)
+
+        base_ids = star.list_ids
+        remote_ids = [item.id for item in lists if full_name in item.items]
+        if set(base_ids) != set(remote_ids):
+            names_by_id = {item.id: item.name for item in lists}
+            diverged = sorted(
+                names_by_id.get(list_id, list_id)
+                for list_id in set(base_ids) ^ set(remote_ids)
+            )
+            raise StarListMembershipDriftError(full_name, diverged)
+
+        if lst.id not in base_ids:
+            raise StarNotInListError(full_name, list_name)
+        new_ids = [i for i in base_ids if i != lst.id]
+
+        try:
+            if node_id is not None:
+                client.update_list_membership_for_node(node_id, new_ids)
+            else:
+                client.update_list_membership_for_item(full_name, new_ids)
+        except Exception as exc:
+            raise TagPushError(full_name, exc) from exc
+
+        updated = star.model_copy(update={"list_ids": new_ids})
+        store.save_stars([updated if s.full_name == full_name else s for s in stars])
+        lists = apply_membership_diff(
+            lists, full_name, old_ids=base_ids, new_ids=new_ids
+        )
+        store.save_lists(lists)
+    return UntagResult(star=updated, lists=lists)
+
+
 class BulkTagOutcome(BaseModel):
     """One repository's outcome from `bulk_tag_stars()`.
 

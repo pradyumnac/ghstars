@@ -5,8 +5,9 @@ taxonomy rules, reports a repair plan, and creates the Lists a blessed
 Category is missing. The skill layer reads the plan and walks the user
 through it.
 
-**Status:** ready-for-human — the command landed on 2026-09-09. The skill-layer
-wizard is not built.
+**Status:** ready-for-human — the command landed on 2026-09-09, and its Star-
+level check plus `ghstars untag` landed the same day. The skill-layer wizard
+is not built.
 
 **Kind:** enhancement
 

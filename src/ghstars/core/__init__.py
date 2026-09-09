@@ -21,6 +21,7 @@ from ghstars.core.discovery import (
 from ghstars.core.doctor import (
     DoctorReport,
     ListProblem,
+    StarProblem,
     bootstrap_lists,
     diagnose,
     planned_creates,
@@ -59,11 +60,14 @@ from ghstars.core.tagging import (
     StarArchivedError,
     StarListMembershipDriftError,
     StarNotFoundError,
+    StarNotInListError,
     TagPushError,
     TagResult,
+    UntagResult,
     UnwritableListNameError,
     bulk_tag_stars,
     tag_star,
+    untag_star,
 )
 from ghstars.core.taxonomy import (
     DEFAULT_CATEGORIES,
@@ -125,6 +129,8 @@ __all__ = [
     "StarArchivedError",
     "StarListMembershipDriftError",
     "StarNotFoundError",
+    "StarNotInListError",
+    "StarProblem",
     "StarRow",
     "StateStore",
     "StatusReport",
@@ -132,6 +138,7 @@ __all__ = [
     "TagPushError",
     "TagResult",
     "UnstarResult",
+    "UntagResult",
     "UnwritableListNameError",
     "archive_star",
     "available_facets",
@@ -159,5 +166,6 @@ __all__ = [
     "sync",
     "tag_star",
     "unstar_star",
+    "untag_star",
     "verify_state",
 ]

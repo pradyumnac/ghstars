@@ -10,10 +10,12 @@ from ghstars.core.tagging import (
     StarArchivedError,
     StarListMembershipDriftError,
     StarNotFoundError,
+    StarNotInListError,
     TagPushError,
     UnwritableListNameError,
     bulk_tag_stars,
     tag_star,
+    untag_star,
 )
 
 
@@ -563,3 +565,64 @@ def test_tag_star_never_judges_a_list_that_already_exists(
     )
 
     assert result.star.list_ids == ["L_1"]
+
+
+def test_untag_star_removes_only_the_named_list(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    """Every other membership survives -- the one thing `tag` and `unstar`
+    cannot do on their own.
+    """
+    inbox = List(id="L_inbox", name="Explore: General", slug="explore-general")
+    tool = List(id="L_tool", name="Explore: Tool", slug="explore-tool")
+    star = make_star("example-owner/ghstars", list_ids=["L_inbox", "L_tool"])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    client = FakeGitHubClient(
+        stars=[star],
+        lists=[
+            inbox.model_copy(update={"items": [star.full_name]}),
+            tool.model_copy(update={"items": [star.full_name]}),
+        ],
+    )
+
+    result = untag_star(client, store, "example-owner/ghstars", "Explore: General")
+
+    assert result.star.list_ids == ["L_tool"]
+    tool_list = next(lst for lst in client.fetch_lists() if lst.id == "L_tool")
+    inbox_list = next(lst for lst in client.fetch_lists() if lst.id == "L_inbox")
+    assert star.full_name in tool_list.items
+    assert star.full_name not in inbox_list.items
+
+
+def test_untag_star_raises_when_the_star_is_not_in_that_list(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    tool = List(id="L_tool", name="Explore: Tool", slug="explore-tool")
+    star = make_star("example-owner/ghstars", list_ids=[])
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    client = FakeGitHubClient(stars=[star], lists=[tool])
+
+    with pytest.raises(StarNotInListError):
+        untag_star(client, store, "example-owner/ghstars", "Explore: Tool")
+
+
+def test_untag_star_raises_when_the_list_does_not_exist(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("example-owner/ghstars")
+    store = StateStore(tmp_path)
+    store.save_stars([star])
+    client = FakeGitHubClient(stars=[star])
+
+    with pytest.raises(StarNotInListError):
+        untag_star(client, store, "example-owner/ghstars", "Explore: Ghost")
+
+
+def test_untag_star_raises_when_star_not_found_locally(tmp_path: Path) -> None:
+    store = StateStore(tmp_path)
+    client = FakeGitHubClient()
+
+    with pytest.raises(StarNotFoundError):
+        untag_star(client, store, "example-owner/ghost", "Explore: Tool")

@@ -101,6 +101,7 @@ Machine codes:
 | `list_membership_drift` | no | GitHub's live List membership for the target has diverged from local state since the last sync. |
 | `tag_push_failed` | no | The List mutation itself failed on GitHub's side. |
 | `unwritable_list_name` | no | `tag` would have created a List whose name is malformed, or whose Category is outside the `[taxonomy]` table of `ghstars.toml`. Nothing was created. A name that already exists on GitHub is never refused this way. |
+| `star_not_in_list` | no | `untag` targeted a List the repo is not currently a member of. |
 | `rate_limit_exceeded` | yes | GitHub API rate limit hit before the call could complete. |
 | `state_lock_held` | yes | Another `ghstars` process holds the local state lock. |
 | `network_failure` | yes | A GitHub API call failed for a network/transport reason. |
@@ -500,13 +501,29 @@ Category into a blessed one and remove the need to create anything. Pass
 blessed Category that has no List. It refuses without `--intent`, since
 ghstars must not guess an Intent (ticket 03).
 
+`doctor` also reports a Star in the triage inbox (`*: General`) alongside a
+classified List — the same invariant `status`'s `verify` checks, computed
+here from live `List.items` rather than local state. Each one comes with a
+concrete `ghstars untag` command that drops only that membership.
+
 `--json` emits a `DoctorReport` (`ok`, `list_count`, `problems`,
-`missing_categories`, `create_blocked`, `blocked_reason`, `created`), not a
-`FIELD_REGISTRY` field set — the same bespoke-report pattern `status` uses.
-The skill layer reads this plan and walks the user through it; the CLI itself
-never prompts.
+`star_problems`, `missing_categories`, `create_blocked`, `blocked_reason`,
+`created`), not a `FIELD_REGISTRY` field set — the same bespoke-report
+pattern `status` uses. The skill layer reads this plan and walks the user
+through it; the CLI itself never prompts.
 
 Exit code is `1` when the account is not `ok` and nothing was created.
+
+### `ghstars untag REPO LIST_NAME`
+
+Remove one repo from one List, and push it to GitHub immediately. Every
+other List the repo belongs to is left untouched.
+
+Neither `tag` nor `unstar` covers this: `tag`'s same-Category strip removes
+a sibling only as a side effect of adding a new membership, and `unstar`
+removes every membership at once. `untag` is the one command that drops a
+single, specific membership on its own — the repair `doctor` suggests for a
+Star stuck in the triage inbox alongside a real Category.
 
 ### `ghstars tui`
 

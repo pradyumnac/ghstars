@@ -24,4 +24,5 @@ from ghstars.cli.commands import (  # noqa: F401
     tag,
     tui,
     unstar,
+    untag,
 )
