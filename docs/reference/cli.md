@@ -510,12 +510,13 @@ always** — every repair is its own command under `ghstars remote`, or
 `ghstars untag`. Reads live Lists, so it diagnoses the account rather than
 the last sync, and never prompts (Scope 0).
 
-It reports four conditions and never picks a repair for you:
+It reports five conditions and never picks a repair for you:
 
 | Condition | Repairs | Reported as |
 | --- | --- | --- |
 | **malformed** — name attempts `{Intent}: {Category}` and fails | One: rename it | A `remote rename-list` command, with the new name left for you |
 | **unblessed** — shape fine, Category not in `[taxonomy]` | Two: bless the word, or rename | Prose, both options — ghstars must not choose (ticket 03) |
+| **semantic duplicate** — two Lists parse to the same `(intent, category)` (case-insensitively) | Two+: pick a survivor, decide whether membership merges | Prose, naming a List that already matches the blessed spelling as a hint, when one exists |
 | **two lifecycle Intents** — a Star holds more than one of Explore/Current/Retired | Two: which Intent survives is yours | Prose. Same rule `verify` applies to local state |
 | **triage inbox** — a Star in `*: General` and a classified List | One: drop the inbox membership | An exact `ghstars untag` command |
 
@@ -568,6 +569,13 @@ not something to explore — so use `--category` and run it once per Intent.
 A malformed or unblessed List name blocks the run, because a rename can turn
 an unblessed Category into a blessed one and remove the need to create
 anything. Never renames, never deletes.
+
+Omitting `--category` is an explicit exception to Scope 4's rule against a
+wildcard mutation target: the plan is derived from `[taxonomy]`, a local,
+reviewable file, not from a live filter or search against GitHub. Without
+`--yes`, the command fails before mutating anything and lists every planned
+target (`Targets: Explore: Tool, Explore: Library`) — the same
+compute-then-confirm contract as `unstar`'s bulk form.
 
 #### `ghstars remote rename-list OLD NEW --yes`
 

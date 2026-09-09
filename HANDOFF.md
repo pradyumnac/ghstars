@@ -2,9 +2,11 @@
 
 ## Next work
 
-Tickets 33 and 34 landed on 2026-09-09. The taxonomy is flat, the vocabulary
-lives in config, and `ghstars doctor` reports the account against it. See
-ADR 0005 for the model and `docs/reference/cli.md` for the repair loop.
+Tickets 33, 34 and 36 landed on 2026-09-09. The taxonomy is flat, the
+vocabulary lives in config, and `ghstars doctor` reports the account
+against it -- five conditions now, including semantic-duplicate List
+detection (ticket 36). See ADR 0005 for the model and
+`docs/reference/cli.md` for the repair loop.
 
 **Ticket 14, the agent skill, is next and is now the largest open item.** This
 session tripled its surface: the skill must cover `doctor`, `remote
@@ -22,8 +24,8 @@ Seven items, summarized:
 
 | Ref | Item | State |
 | --- | --- | --- |
-| P1 | `remote bootstrap` with no `--category` is a wildcard mutation target, against the explicit-target rule in `docs/reference/cli.md` | Needs a decision |
-| P2 | Existing semantic duplicate Lists: detection is ready, the repair policy is not | Needs a decision |
+| P1 | `remote bootstrap` with no `--category` versus the explicit-target rule in `docs/reference/cli.md` | Resolved -- `--category` stays optional; `--yes` now gates on a computed plan, same as `unstar` |
+| P2 | Existing semantic duplicate Lists: detection landed as ticket 36, the repair policy is not decided | Detection done, repair needs a decision |
 | P3 | `bootstrap` cannot bind to a reviewed `doctor` plan | Needs a decision |
 | P4 | Stale classification: detect the drift, or remove the duplication that causes it | Needs a decision |
 | P5 | `List.items` and `Star.list_ids` are the two stored sides of one relationship, and nothing checks they agree | Ready to build |

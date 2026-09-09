@@ -73,16 +73,16 @@ def bootstrap_cmd(
     turn an unblessed Category into a blessed one and remove the need to
     create anything; `--force` proceeds anyway.
 
-    Never renames and never deletes. `ghstars doctor` reports what this
-    would create.
+    Never renames and never deletes. Without `--yes`, the command fails
+    before mutating anything and lists every planned target -- the same
+    contract as `unstar` (Scope 4). There is no interactive prompt;
+    `--yes` is the whole confirmation, so a non-interactive caller can
+    review the listed plan and pass it back unattended. `--category`
+    narrows the plan; omitting it is not a wildcard, because the plan is
+    derived from `[taxonomy]`, a local, reviewable file, not a live
+    filter against GitHub.
     """
     categories = _categories(json_output)
-    if not yes:
-        fail(
-            "--yes is required. This creates Lists on GitHub.",
-            code=CODE_INVALID_INPUT,
-            json_output=json_output,
-        )
     if intent not in _INTENTS:
         fail(
             f"--intent is required, one of {', '.join(_INTENTS)}. "
@@ -113,6 +113,23 @@ def bootstrap_cmd(
                 json_output=json_output,
             )
         planned = planned_creates(report, intent=_cast_intent(intent), only=category)
+
+        if not yes:
+            if not planned:
+                typer.echo(
+                    "Nothing to create: every blessed Category already has a List."
+                )
+                return
+            fail(
+                "--yes is required. This creates Lists on GitHub. "
+                "Targets: " + ", ".join(planned) + ".",
+                code=CODE_INVALID_INPUT,
+                json_output=json_output,
+            )
+
+        if len(planned) > 1 and not json_output:
+            typer.echo(f"Targets: {', '.join(planned)}")
+
         created = bootstrap_lists(
             cli.get_client(),
             report,

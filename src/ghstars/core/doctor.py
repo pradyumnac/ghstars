@@ -23,6 +23,7 @@ from ghstars.github import GitHubApiError
 
 PROBLEM_MALFORMED = "malformed"
 PROBLEM_UNBLESSED = "unblessed"
+PROBLEM_SEMANTIC_DUPLICATE = "semantic_duplicate"
 PROBLEM_INBOX_AND_CLASSIFIED = "inbox_and_classified"
 PROBLEM_TWO_LIFECYCLES = "two_lifecycle_intents"
 
@@ -120,6 +121,51 @@ def _star_problems(classified: list[List]) -> list[StarProblem]:
     return sorted(found, key=lambda p: (p.full_name, p.problem))
 
 
+def _duplicate_problems(
+    classified: list[List], blessed: frozenset[str]
+) -> list[ListProblem]:
+    """Two Lists that parse to the same `(intent, category)` are one
+    identity (ADR 0005). `normalize_category` already folds underscore and
+    whitespace variants into one `category` value, so grouping by the
+    existing fields catches those for free; case is the one fold added
+    here, scoped to this grouping key only (ticket 36).
+    """
+    groups: dict[tuple[Intent | None, str], list[List]] = {}
+    for lst in classified:
+        if lst.malformed or lst.category is None:
+            continue
+        groups.setdefault((lst.intent, lst.category.casefold()), []).append(lst)
+
+    found: list[ListProblem] = []
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        names = sorted(lst.name for lst in group)
+        # Ticket 03: never choose a survivor. Name a blessed-spelling match
+        # only as a hint -- the group may hold none.
+        preferred = next((lst.name for lst in group if lst.category in blessed), None)
+        for lst in group:
+            others = [name for name in names if name != lst.name]
+            detail = f"parses the same as {', '.join(others)}"
+            if preferred is not None:
+                detail += f"; {preferred!r} matches the blessed spelling"
+            found.append(
+                ListProblem(
+                    list_name=lst.name,
+                    problem=PROBLEM_SEMANTIC_DUPLICATE,
+                    detail=detail,
+                    repairs=[
+                        (
+                            "pick one List to keep, migrate membership onto it "
+                            "by hand, then delete the other on GitHub -- no "
+                            "ghstars command does this yet"
+                        )
+                    ],
+                )
+            )
+    return sorted(found, key=lambda p: p.list_name)
+
+
 def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
     """Check every List name against the shape rules and the vocabulary,
     and every Star against the triage-inbox invariant.
@@ -159,6 +205,8 @@ def diagnose(lists: list[List], *, categories: Iterable[str]) -> DoctorReport:
                     ],
                 )
             )
+
+    problems.extend(_duplicate_problems(classified, blessed))
 
     star_problems = _star_problems(classified)
 

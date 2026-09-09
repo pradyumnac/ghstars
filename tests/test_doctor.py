@@ -83,6 +83,85 @@ def test_diagnose_is_ok_when_every_category_has_a_list() -> None:
     assert report.create_blocked is False
 
 
+def test_diagnose_flags_two_lists_with_the_same_parsed_identity() -> None:
+    """A bare name and its explicit `Reference:` form are one identity
+    (ADR 0005), so two live Lists spelling it differently is a defect.
+    """
+    bare = _list("L1", "Skills")
+    explicit = _list("L2", "Reference: Skills")
+
+    report = diagnose([bare, explicit], categories=["Skills"])
+
+    duplicates = [p for p in report.problems if p.problem == "semantic_duplicate"]
+    assert {p.list_name for p in duplicates} == {"Skills", "Reference: Skills"}
+
+
+def test_diagnose_folds_underscore_and_whitespace_for_duplicate_detection() -> None:
+    """`normalize_category` already folds these into one `category` value
+    (ticket 33 Findings 2 and 3); grouping by `(intent, category)` catches
+    them for free -- this is a regression test, not new behavior.
+    """
+    spaced = _list("L1", "AI Agents")
+    underscored = _list("L2", "AI_Agents")
+
+    report = diagnose([spaced, underscored], categories=["AI Agents"])
+
+    duplicates = [p for p in report.problems if p.problem == "semantic_duplicate"]
+    assert {p.list_name for p in duplicates} == {"AI Agents", "AI_Agents"}
+
+
+def test_diagnose_folds_case_for_duplicate_detection() -> None:
+    lower = _list("L1", "Explore: tool")
+    title = _list("L2", "Explore: Tool")
+
+    report = diagnose([lower, title], categories=VOCAB)
+
+    duplicates = [p for p in report.problems if p.problem == "semantic_duplicate"]
+    assert {p.list_name for p in duplicates} == {"Explore: tool", "Explore: Tool"}
+
+
+def test_diagnose_names_the_blessed_spelling_as_a_hint() -> None:
+    lower = _list("L1", "Explore: tool")
+    title = _list("L2", "Explore: Tool")
+
+    report = diagnose([lower, title], categories=VOCAB)
+
+    hint = next(
+        p
+        for p in report.problems
+        if p.list_name == "Explore: tool" and p.problem == "semantic_duplicate"
+    )
+    assert "Explore: Tool" in hint.detail
+
+
+def test_diagnose_does_not_fold_the_subcategory_separator() -> None:
+    """Finding 1: `Tool` and `Tool - Dev` are a genuinely different Category,
+    never a duplicate -- the flat-Category model's boundary case.
+    """
+    parent = _list("L1", "Explore: Tool")
+    child = _list("L2", "Explore: Tool - Dev")
+
+    report = diagnose([parent, child], categories=["Tool", "Tool - Dev"])
+
+    assert not any(p.problem == "semantic_duplicate" for p in report.problems)
+
+
+def test_semantic_duplicate_repair_is_prose_not_a_command() -> None:
+    report = diagnose(
+        [_list("L1", "Skills"), _list("L2", "Reference: Skills")],
+        categories=["Skills"],
+    )
+
+    duplicate = next(p for p in report.problems if p.problem == "semantic_duplicate")
+    assert not duplicate.repairs[0].startswith("ghstars")
+
+
+def test_diagnose_does_not_flag_a_lone_list_as_a_duplicate() -> None:
+    report = diagnose([_list("L1", "Explore: Tool")], categories=VOCAB)
+
+    assert not any(p.problem == "semantic_duplicate" for p in report.problems)
+
+
 def test_planned_creates_uses_the_given_intent() -> None:
     report = diagnose([_list("L1", "Explore: Tool")], categories=VOCAB)
 

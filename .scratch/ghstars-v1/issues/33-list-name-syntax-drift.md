@@ -6,8 +6,8 @@ difference and the direction decision. It does not hold the implementation
 plan.
 
 **Status:** ready-for-human — the code and the remediation landed on
-2026-09-09. Seven items remain open; see "Pending" below. Four need a product
-decision, one is ready to build, two ride with ticket 14.
+2026-09-09. Six items remain open; see "Pending" below. Three need a product
+decision, one is ready to build, two ride with ticket 14. P1 is resolved.
 
 ## Remediation, executed 2026-09-09
 
@@ -353,23 +353,39 @@ triage inbox, and the six missing blessed Categories were created --
 Everything still open across this work, in one place. Ticket 35 was folded
 in here on 2026-09-09; it holds nothing this section does not.
 
-## Needs a product decision (4)
+## Resolved, 2026-09-09
 
-**P1 — `remote bootstrap` versus the explicit-target contract.**
-`docs/reference/cli.md` states a global rule: "A mutation always names its
-target explicitly. No command accepts a Filter, a search term, standard
-input, or a wildcard as a mutation target (Scope 4)." `bootstrap` with no
-`--category` mutates every missing Category, which is a wildcard target.
-Require at least one `--category`, or document `bootstrap` as an explicit
-exception.
+**P1 — `remote bootstrap` versus the explicit-target contract.** Decided:
+`--category` stays optional. Omitting it is not a wildcard target, because
+`bootstrap`'s plan is derived from `[taxonomy]`, a local, reviewable file --
+not from a live filter or search against GitHub, which is what Scope 4's
+rule guards against.
 
-**P2 — Existing semantic duplicate Lists.** `rename_list` stops a new
-duplicate. Nothing reports a pair already on GitHub that parses to one
-`(intent, category)`, and `tag`'s `_find_list` binds to whichever GitHub
-returns first. ADR 0005 makes bare and explicit forms one List, which makes
-a duplicate a defect by that decision's own logic. Detection can land now.
-The repair cannot: which List survives, and whether membership merges, is
-the decision.
+The gap was the confirmation order, not the target selection: `--yes` was
+checked before the plan existed, so a caller learned what was created only
+after the mutation. Fixed to match `unstar`'s bulk contract --
+`bootstrap` now computes the plan first and, without `--yes`, fails before
+mutating anything and lists every planned target (`Targets: Explore: Tool,
+Explore: Library`). `--yes` bypasses that listing for a non-interactive
+caller, same as everywhere else in the CLI.
+
+Changed: `src/ghstars/cli/commands/remote.py` (`bootstrap_cmd`),
+`docs/reference/cli.md`.
+
+## Needs a product decision (3)
+
+**P2 — Existing semantic duplicate Lists. Split into ticket 36,
+2026-09-09.** Detection landed there: `PROBLEM_SEMANTIC_DUPLICATE` in
+`core/doctor.py`, TDD, full test suite and `mise run check` green. Ticket 36
+holds the rule table and the worked examples. The repair half stays
+undecided -- which List survives, and whether membership merges -- and
+stays here as the open question. Ticket 36 blocks closing this ticket only
+insofar as the detection needed to exist; it does not block anything else
+in this "Pending" section.
+
+New `PROBLEM_SEMANTIC_DUPLICATE` in `core/doctor.py`, added to `diagnose()`'s
+existing loop, surfaced through the existing `DoctorReport.problems` --
+same `ghstars doctor` output, same `--json` shape, no new report type.
 
 **P3 — `bootstrap` cannot bind to a reviewed plan.** `doctor` fetches, then
 `bootstrap` fetches again and re-derives its own target set. A List created
