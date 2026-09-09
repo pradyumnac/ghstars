@@ -27,7 +27,8 @@ delivered.
 starting anything in this area. Ticket 35 was folded into it; ticket 34 and
 ticket 14 point at it rather than repeating it.
 
-Seven items, summarized:
+Seven items were tracked. Four remain open (P4, P3, P6, P7); P1, P2, and
+P5 are resolved. Summarized:
 
 | Ref | Item | State |
 | --- | --- | --- |

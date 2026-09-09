@@ -29,6 +29,12 @@ where it did). Reordering the two fetches would only move the race,
 not remove it (an unstar between the calls creates the same problem
 in the other direction), so reordering was not attempted.
 
+Read `state-dataflow.md` for the full picture: why `List.items` and
+`Star.list_ids` are two separately written fields, and the structural
+check that catches the other kind of disagreement between them (not
+this race — a Star and a List that both already exist locally, but
+disagree about membership).
+
 ## Sync always re-fetches everything
 
 `sync()` has no incremental path. Every `ghstars sync` re-fetches all
