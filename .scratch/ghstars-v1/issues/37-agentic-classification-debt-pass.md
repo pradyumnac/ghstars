@@ -413,6 +413,30 @@ The end-to-end approval and adoption flow remains agent-harness work. The CLI
 only performs the deterministic extraction, validation, join, and render
 steps. It does not apply proposals.
 
+## Corrective RCA pass
+
+The first clean-context review found defects in the proposal and reconciliation
+trust boundary. The corrective pass fixed them before the next commit:
+
+- Extraction reads Stars and Lists under one local lock.
+- Extraction rejects duplicate records, unresolved List IDs, and asymmetric
+  membership.
+- The manifest hash binds the manifest, classifier input, and current mapping.
+- Proposal models reject extra fields and coerced score types.
+- Work files and the Markdown report use atomic writes.
+- Rendering rejects duplicate, missing, and unknown repository keys.
+- Rendering follows manifest order, so row numbers stay stable.
+- Markdown control characters are escaped.
+- `classify extract --json` converts corrupt state and lock errors to the CLI
+  error envelope instead of exposing a traceback.
+
+The first code commit was `740795a`. The corrective commit follows this ticket
+update. The skill is committed separately in the `env/ai` repository as
+`3c10412` (`Add ghstars classification skill`).
+
+Verification after the corrective pass: 559 tests pass, `mise run check` passes,
+and Ruff and mypy pass.
+
 ## Comments
 
 This design replaces the earlier three-slot pilot format. The old pilot mixed

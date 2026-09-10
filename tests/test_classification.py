@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Protocol
 
 import pytest
+from pydantic import ValidationError
 
 from ghstars.core.classification import (  # pyright: ignore[reportMissingImports]
     CategoryProposal,
@@ -60,7 +61,14 @@ def test_write_and_render_joins_by_repo_and_marks_low_scores(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     star = make_star("owner/repo", list_ids=["list-1"])
-    lists = [List(id="list-1", name="Explore: Tool", slug="explore-tool")]
+    lists = [
+        List(
+            id="list-1",
+            name="Explore: Tool",
+            slug="explore-tool",
+            items=["owner/repo"],
+        )
+    ]
     manifest = extract_work([star], lists, tmp_path)
 
     assert (
@@ -106,3 +114,79 @@ def test_render_rejects_missing_proposal(
 
     with pytest.raises(ClassificationError, match="missing proposals"):
         render_markdown(tmp_path, tmp_path / "out.md", 70)
+
+
+def test_extract_rejects_unresolved_membership(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    star = make_star("owner/repo", list_ids=["missing-list"])
+
+    with pytest.raises(ClassificationError, match="unknown List"):
+        extract_work([star], [], tmp_path)
+
+
+def test_proposal_schema_rejects_extra_fields_and_coerced_scores() -> None:
+    with pytest.raises(ValidationError):
+        ProposalRecord.model_validate(
+            {
+                "repo": "owner/repo",
+                "explanation": "not allowed",
+                "intent": {"value": "Explore", "score": True},
+                "categories": [
+                    {"value": "Tool", "score": 90},
+                    {"value": "Library", "score": 70},
+                    {"value": "Example", "score": 40},
+                ],
+            }
+        )
+
+
+def test_render_rejects_duplicate_and_unknown_persisted_keys(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    manifest = extract_work([make_star("owner/repo")], [], tmp_path)
+    payload = proposal("owner/repo").model_dump(mode="json")
+    line = json.dumps({"snapshot": manifest.snapshot, "proposal": payload})
+    (tmp_path / "proposals.jsonl").write_text(f"{line}\n{line}\n")
+
+    with pytest.raises(ClassificationError, match="duplicate proposal"):
+        render_markdown(tmp_path, tmp_path / "out.md", 70)
+
+    unknown = proposal("other/repo").model_dump(mode="json")
+    (tmp_path / "proposals.jsonl").write_text(
+        json.dumps({"snapshot": manifest.snapshot, "proposal": unknown}) + "\n"
+    )
+    with pytest.raises(ClassificationError, match="unknown proposals"):
+        render_markdown(tmp_path, tmp_path / "out.md", 70)
+
+
+def test_render_rejects_tampered_manifest_contents(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    extract_work([make_star("owner/repo")], [], tmp_path)
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    manifest["current"]["owner/repo"]["lists"] = ["Explore: Tampered"]
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ClassificationError, match="snapshot"):
+        render_markdown(tmp_path, tmp_path / "out.md", 70)
+
+
+def test_markdown_escapes_classifier_text(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    manifest = extract_work([make_star("owner/repo")], [], tmp_path)
+    record = ProposalRecord(
+        repo="owner/repo",
+        intent=IntentGuess(value="Reference", score=10),
+        categories=[
+            CategoryProposal(value="[x] | `raw`", score=90),
+            CategoryProposal(value="Other", score=70),
+            CategoryProposal(value="Third", score=40),
+        ],
+    )
+    write_proposals(tmp_path, manifest.snapshot, [record])
+    render_markdown(tmp_path, tmp_path / "out.md", 70)
+    text = (tmp_path / "out.md").read_text()
+
+    assert "\\[x\\] \\| \\`raw\\`" in text

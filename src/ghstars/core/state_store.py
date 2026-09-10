@@ -43,7 +43,7 @@ class StateStore:
         with self.lock(timeout=lock_timeout):
             if not self._stars_path.exists():
                 return []
-            data = json.loads(self._stars_path.read_text())
+            data = _read_json(self._stars_path)
         return [Star.model_validate(item) for item in data]
 
     def save_stars(
@@ -57,8 +57,17 @@ class StateStore:
         with self.lock(timeout=lock_timeout):
             if not self._lists_path.exists():
                 return []
-            data = json.loads(self._lists_path.read_text())
+            data = _read_json(self._lists_path)
         return [List.model_validate(item) for item in data]
+
+    def load_stars_and_lists(
+        self, *, lock_timeout: float = _DEFAULT_TIMEOUT
+    ) -> tuple[list[Star], list[List]]:
+        """Read Stars and Lists under one lock for a consistent snapshot."""
+        with self.lock(timeout=lock_timeout):
+            return self.load_stars(lock_timeout=lock_timeout), self.load_lists(
+                lock_timeout=lock_timeout
+            )
 
     def save_lists(
         self, lists: list[List], *, lock_timeout: float = _DEFAULT_TIMEOUT
@@ -77,7 +86,7 @@ class StateStore:
         with self.lock(timeout=lock_timeout):
             if not self._retriage_path.exists():
                 return []
-            data = json.loads(self._retriage_path.read_text())
+            data = _read_json(self._retriage_path)
         return [RetriageEntry.model_validate(item) for item in data]
 
     def save_retriage(
@@ -86,6 +95,16 @@ class StateStore:
         with self.lock(timeout=lock_timeout):
             payload = [entry.model_dump(mode="json") for entry in entries]
             atomic_write(self._retriage_path, json.dumps(payload, indent=2))
+
+
+def _read_json(path: Path) -> list[object]:
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, list):
+            raise TypeError(f"state file {path} must contain a JSON array")
+        return data
+    except (OSError, json.JSONDecodeError) as exc:
+        raise exc from None
 
 
 def atomic_write(path: Path, content: str) -> None:

@@ -45,6 +45,23 @@ def test_classify_extract_is_offline_and_writes_runtime_snapshot(
     )
 
 
+def test_classify_extract_reports_corrupt_state_as_json_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = StateStore(tmp_path / "state")
+    (store.base_dir / "stars.json").write_text("{not valid json")
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(
+        app,
+        ["classify", "extract", "--work-dir", str(tmp_path / "work"), "--json"],
+    )
+
+    assert result.exit_code == 1
+    assert '"error"' in result.output
+    assert "Traceback" not in result.output
+
+
 def test_classify_write_and_render_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:

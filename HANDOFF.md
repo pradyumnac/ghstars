@@ -58,6 +58,12 @@ untracked `.scratch/ghstars-v1/triage/` sample data was not committed and was
 removed during cleanup. Existing edits in `spec.md` and `CONTEXT.md` remain
 uncommitted.
 
+The first clean-context review found trust-boundary defects in ticket 37. The
+corrective pass now validates local membership, strict proposal input, snapshot
+content, exact proposal keys, atomic work files, Markdown escaping, and JSON
+error handling. The ghstars corrective commit is pending. The dedicated skill
+is committed separately in `env/ai` as `3c10412`.
+
 ### Notes repository split
 
 Resolved 2026-09-09. ghstars does not depend on the old notes path or on

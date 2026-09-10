@@ -5,11 +5,12 @@ from pathlib import Path
 from typing import NoReturn
 
 import typer
+from filelock import Timeout
 from pydantic import ValidationError
 
 from ghstars import cli
 from ghstars.cli import classify_app
-from ghstars.cli.errors import CODE_INVALID_INPUT, fail
+from ghstars.cli.errors import CODE_INVALID_INPUT, CODE_STATE_LOCK_HELD, fail
 from ghstars.core.classification import (  # pyright: ignore[reportMissingImports]
     ClassificationError,
     ProposalRecord,
@@ -36,8 +37,22 @@ def extract_cmd(
     """Write the offline classifier input and hidden current mapping."""
     try:
         store = cli.get_store()
-        manifest = extract_work(store.load_stars(), store.load_lists(), work_dir)
-    except (OSError, ClassificationError) as exc:
+        stars, lists = store.load_stars_and_lists()
+        manifest = extract_work(stars, lists, work_dir)
+    except Timeout:
+        fail(
+            "could not acquire the local state lock — another ghstars command "
+            "may be running. Try again.",
+            code=CODE_STATE_LOCK_HELD,
+            json_output=json_output,
+        )
+    except (
+        OSError,
+        TypeError,
+        json.JSONDecodeError,
+        ValidationError,
+        ClassificationError,
+    ) as exc:
         _classification_fail(str(exc), json_output)
     payload = {
         "work_dir": str(work_dir),
