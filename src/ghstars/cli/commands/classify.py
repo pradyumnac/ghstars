@@ -77,7 +77,7 @@ def write_cmd(
     try:
         raw_records = [
             json.loads(line)
-            for line in input_path.read_text().splitlines()
+            for line in input_path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
         if not all(isinstance(item, dict) for item in raw_records):
@@ -90,7 +90,13 @@ def write_cmd(
             code=CODE_STATE_LOCK_HELD,
             json_output=json_output,
         )
-    except (OSError, json.JSONDecodeError, ValidationError, ClassificationError) as exc:
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValidationError,
+        ClassificationError,
+    ) as exc:
         _classification_fail(str(exc), json_output)
     payload = {"accepted": count, "snapshot": snapshot}
     if json_output:
@@ -109,6 +115,12 @@ def render_cmd(
     """Join proposals with current Lists and write the review table."""
     try:
         summary = render_markdown(work_dir, output, threshold)
+    except Timeout:
+        fail(
+            "could not acquire the classification work lock. Try again.",
+            code=CODE_STATE_LOCK_HELD,
+            json_output=json_output,
+        )
     except (OSError, ClassificationError) as exc:
         _classification_fail(str(exc), json_output)
     payload = {"output": str(output), **summary}

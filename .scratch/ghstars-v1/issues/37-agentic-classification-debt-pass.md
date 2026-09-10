@@ -363,8 +363,9 @@ intentional because the workflow must not read beyond stored pull data.
 - [x] Add the `ghstars classify` command group with `extract`, `write`, and
       `render` subcommands.
 - [x] Require a runtime work directory. Add no fixed output location.
-- [x] Keep Nodes A through H offline and non-mutating outside the runtime work
-      directory.
+- [x] Keep Nodes A through H offline. Extraction and proposal writes change
+      only the work directory and its transient state lock. Rendering also
+      writes the explicit user-selected report path.
 - [x] Hide current classification and blessed Categories from the LLM input.
 - [x] Enforce the Node E output shape through `classify write`.
 - [x] Store separate scores for the Intent guess and each Category.
@@ -403,7 +404,7 @@ and was removed during cleanup.
 - `ghstars classify render --work-dir PATH --output REPORT.md --threshold 70`
   writes the numbered three-column report.
 - Focused classification and CLI tests pass.
-- The full suite passes: 553 tests.
+- The full suite passes: 560 tests.
 - `mise run check` passes: tests, Ruff, formatting, and mypy.
 - LSP and pi-lens diagnostics pass for the changed implementation.
 
@@ -412,7 +413,8 @@ The skill lives at
 `skills/ghstars/SKILL.md`.
 The end-to-end approval and adoption flow remains agent-harness work. The CLI
 only performs the deterministic extraction, validation, join, and render
-steps. It does not apply proposals.
+steps. It does not apply proposals. Rendering writes the explicit report path;
+other work files stay in the runtime directory.
 
 ## Corrective RCA pass
 
@@ -430,13 +432,16 @@ trust boundary. The corrective pass fixed them before the next commit:
 - Markdown control characters are escaped.
 - `classify extract --json` converts corrupt state and lock errors to the CLI
   error envelope instead of exposing a traceback.
+- Work-directory extraction, writing, and rendering use bounded locks.
+- Proposal input handles invalid UTF-8 through the CLI error envelope.
+- The report path is an explicit user-selected output exception.
 
 The first code commit was `740795a`. The corrective commits are `a55d27e`
 (`Harden classification reconciliation`) and `e8d2651` (`Prevent
 classification side effects`). The skill is committed with this project under
 `skills/ghstars-bulk-classify/SKILL.md`. The old `env/ai` copy was removed.
 
-Verification after the corrective pass: 559 tests pass, `mise run check` passes,
+Verification after the corrective pass: 560 tests pass, `mise run check` passes,
 and Ruff and mypy pass.
 
 ## Comments

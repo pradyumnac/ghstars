@@ -315,7 +315,7 @@ def _load_proposals(
 
 def _read_json(path: Path) -> object:
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ClassificationError(f"cannot read {path}: {exc}") from exc
 
@@ -323,7 +323,9 @@ def _read_json(path: Path) -> object:
 def _read_jsonl(path: Path) -> list[JsonObject]:
     try:
         values = [
-            json.loads(line) for line in path.read_text().splitlines() if line.strip()
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
         ]
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ClassificationError(f"cannot read {path}: {exc}") from exc

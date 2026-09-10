@@ -72,14 +72,15 @@ class StateStore:
             )
 
     def read_existing_stars_and_lists(self) -> tuple[list[Star], list[List]]:
-        """Read an existing snapshot without creating directories or locks."""
+        """Read an existing snapshot under one lock.
+
+        A lock file is created only when the state directory already exists.
+        An empty home remains untouched.
+        """
         if not self.base_dir.exists():
             return [], []
-        lock_path = self.base_dir / ".lock"
-        if lock_path.exists():
-            with FileLock(str(lock_path)).acquire(timeout=_DEFAULT_TIMEOUT):
-                return self._read_existing_stars_and_lists()
-        return self._read_existing_stars_and_lists()
+        with FileLock(str(self.base_dir / ".lock")).acquire(timeout=_DEFAULT_TIMEOUT):
+            return self._read_existing_stars_and_lists()
 
     def _read_existing_stars_and_lists(self) -> tuple[list[Star], list[List]]:
         stars_data = _read_json(self._stars_path) if self._stars_path.exists() else []
@@ -119,7 +120,7 @@ class StateStore:
 
 def _read_json(path: Path) -> list[object]:
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise TypeError(f"state file {path} must contain a JSON array")
         return data

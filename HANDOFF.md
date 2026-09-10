@@ -62,8 +62,10 @@ uncommitted.
 The first clean-context review found trust-boundary defects in ticket 37. The
 corrective pass now validates local membership, strict proposal input, snapshot
 content, exact proposal keys, atomic work files, Markdown escaping, and JSON
-error handling. The ghstars corrective commits are `a55d27e` and `e8d2651`. The bulk skill is now
-versioned in this project at `skills/ghstars-bulk-classify/SKILL.md`.
+error handling. The ghstars corrective commits are `a55d27e`, `e8d2651`, and `9524ea4`. The final
+work-directory and error-boundary fixes are pending commit. The bulk skill is
+versioned in this project at `skills/ghstars-bulk-classify/SKILL.md`, and the
+Ticket 14 stub is at `skills/ghstars/SKILL.md`.
 
 ### Notes repository split
 

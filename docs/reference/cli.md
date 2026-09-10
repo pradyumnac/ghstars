@@ -689,8 +689,10 @@ numbered row per active Star with three Markdown columns: Repository, Current
 Lists, and Target Classifications. A top Category score below `--threshold`
 keeps the Star Unclassified. Rendering does not choose or apply a proposal.
 
-All three commands are local and non-mutating outside the runtime work
-directory. They do not create a GitHub client.
+All commands are local and do not create a GitHub client. Extraction and
+proposal writes change only the work directory, apart from a transient lock
+file for an existing state directory. Rendering also writes the explicit
+user-selected `--output` path.
 
 ## What this document does not cover
 
