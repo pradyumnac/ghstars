@@ -22,6 +22,7 @@ from ghstars.core.classification import (  # pyright: ignore[reportMissingImport
     compare_source,
     extract_work,
     load_run_info,
+    load_work,
     refresh_work,
     render_markdown,
     supersede_run,
@@ -102,13 +103,24 @@ def _managed_runs(root: Path) -> list[Path]:
     )
 
 
-def _best_active_run(paths: list[Path], snapshot: str) -> Path | None:
+def _best_active_run(
+    paths: list[Path],
+    snapshot: str,
+    *,
+    unclassified_only: bool,
+    limit: int | None,
+) -> Path | None:
     infos = [load_run_info(path) for path in paths]
     active = [info for info in infos if info.metadata.state != "superseded"]
-    if not active:
+    same_scope = []
+    for info in active:
+        manifest = load_work(info.path).manifest
+        if manifest.unclassified_only == unclassified_only and manifest.limit == limit:
+            same_scope.append(info)
+    if not same_scope:
         return None
-    matching = [info for info in active if info.metadata.snapshot == snapshot]
-    candidates = matching or active
+    matching = [info for info in same_scope if info.metadata.snapshot == snapshot]
+    candidates = matching or same_scope
     return max(
         candidates,
         key=lambda info: (
@@ -126,6 +138,17 @@ def extract_cmd(
     resume: Path | None = _RESUME_OPTION,
     new: bool = typer.Option(False, "--new", help="Start without reused work."),
     classifier: str = _CLASSIFIER_OPTION,
+    unclassified_only: bool = typer.Option(
+        False,
+        "--unclassified-only",
+        help="Include only Stars with no Category or only General.",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        min=1,
+        help="Maximum Stars after the scope filter.",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
     """Create, resume, or refresh an offline classification run."""
@@ -136,7 +159,12 @@ def extract_cmd(
     try:
         store = cli.get_read_only_store()
         stars, lists = store.read_existing_stars_and_lists()
-        current = build_work(stars, lists)
+        current = build_work(
+            stars,
+            lists,
+            unclassified_only=unclassified_only,
+            limit=limit,
+        )
         root = _classification_root()
         # An explicit work directory is an isolated component run. It must not
         # inspect or supersede managed runs under the user's ghstars home.
@@ -149,7 +177,12 @@ def extract_cmd(
         ):
             selected = work_dir
         if selected is None and not new and work_dir is None:
-            selected = _best_active_run(runs, current.manifest.snapshot)
+            selected = _best_active_run(
+                runs,
+                current.manifest.snapshot,
+                unclassified_only=unclassified_only,
+                limit=limit,
+            )
         if selected is None and work_dir is not None and not new:
             active = [
                 path
@@ -201,7 +234,14 @@ def extract_cmd(
                 raise ClassificationError(
                     f"classification work directory already exists: {target}"
                 )
-            manifest = extract_work(stars, lists, target, classifier=classifier)
+            manifest = extract_work(
+                stars,
+                lists,
+                target,
+                classifier=classifier,
+                unclassified_only=unclassified_only,
+                limit=limit,
+            )
             work_dir = target
             for path in runs:
                 info = load_run_info(path)
@@ -238,6 +278,8 @@ def extract_cmd(
         "reused_proposals": reused_proposals,
         "reused_reviews": reused_reviews,
         "changes": changes,
+        "unclassified_only": manifest.unclassified_only,
+        "limit": manifest.limit,
     }
     if json_output:
         typer.echo(json.dumps(payload))

@@ -26,7 +26,7 @@ from ghstars.core.state_store import atomic_write
 JsonObject = dict[str, object]
 
 from ghstars.core.models import Intent, List, Star
-from ghstars.core.taxonomy import classify_list, normalize_category
+from ghstars.core.taxonomy import TRIAGE_CATEGORY, classify_list, normalize_category
 
 
 class ClassificationError(ValueError):
@@ -113,6 +113,8 @@ class Manifest(BaseModel):
     snapshot: str
     repos: list[str]
     current: dict[str, CurrentMapping]
+    unclassified_only: bool = False
+    limit: int | None = None
 
 
 class StoredWork(BaseModel):
@@ -196,23 +198,50 @@ def _snapshot_content(
     repos: list[str],
     records: list[ClassifierRecord],
     current: dict[str, CurrentMapping],
+    *,
+    unclassified_only: bool,
+    limit: int | None,
 ) -> str:
     payload = {
         "repos": repos,
         "classifier_input": [item.model_dump(mode="json") for item in records],
         "current": {repo: current[repo].model_dump(mode="json") for repo in repos},
     }
+    if unclassified_only or limit is not None:
+        payload["selection"] = {
+            "unclassified_only": unclassified_only,
+            "limit": limit,
+        }
     return hashlib.sha256(_canonical(payload).encode()).hexdigest()
 
 
-def build_work(stars: list[Star], lists: list[List]) -> StoredWork:
+def build_work(
+    stars: list[Star],
+    lists: list[List],
+    *,
+    unclassified_only: bool = False,
+    limit: int | None = None,
+) -> StoredWork:
     """Build one validated classification snapshot without writing it."""
+    if limit is not None and limit <= 0:
+        raise ClassificationError("classification limit must be greater than zero")
     active = sorted(
         (star for star in stars if not star.archived), key=lambda s: s.full_name
     )
     classified_lists = [classify_list(item) for item in lists]
     _validate_inputs(active, classified_lists)
     by_id = {item.id: item for item in classified_lists}
+    if unclassified_only:
+        active = [
+            star
+            for star in active
+            if not any(
+                by_id[list_id].category not in (None, TRIAGE_CATEGORY)
+                for list_id in star.list_ids
+            )
+        ]
+    if limit is not None:
+        active = active[:limit]
     current: dict[str, CurrentMapping] = {}
     classifier_input: list[ClassifierRecord] = []
     for star in active:
@@ -233,9 +262,17 @@ def build_work(stars: list[Star], lists: list[List]) -> StoredWork:
 
     repos = [item.full_name for item in active]
     manifest = Manifest(
-        snapshot=_snapshot_content(repos, classifier_input, current),
+        snapshot=_snapshot_content(
+            repos,
+            classifier_input,
+            current,
+            unclassified_only=unclassified_only,
+            limit=limit,
+        ),
         repos=repos,
         current=current,
+        unclassified_only=unclassified_only,
+        limit=limit,
     )
     return StoredWork(manifest=manifest, classifier_input=classifier_input)
 
@@ -247,9 +284,16 @@ def extract_work(
     *,
     classifier: str = "unspecified",
     parent_run: str | None = None,
+    unclassified_only: bool = False,
+    limit: int | None = None,
 ) -> Manifest:
     """Write one stable, offline classification snapshot."""
-    work = build_work(stars, lists)
+    work = build_work(
+        stars,
+        lists,
+        unclassified_only=unclassified_only,
+        limit=limit,
+    )
     now = datetime.now(UTC)
     metadata = RunMetadata(
         created_at=now,
@@ -288,7 +332,13 @@ def load_work(work_dir: Path) -> StoredWork:
         raise ClassificationError(
             "current mapping does not match manifest repositories"
         )
-    expected = _snapshot_content(manifest.repos, records, manifest.current)
+    expected = _snapshot_content(
+        manifest.repos,
+        records,
+        manifest.current,
+        unclassified_only=manifest.unclassified_only,
+        limit=manifest.limit,
+    )
     if manifest.snapshot != expected:
         raise ClassificationError("manifest snapshot does not match work contents")
     return StoredWork(manifest=manifest, classifier_input=records)
@@ -388,7 +438,12 @@ def compare_source(
 ) -> SourceChanges:
     """Compare a saved run with the current local snapshot."""
     old = load_work(work_dir)
-    current = build_work(stars, lists)
+    current = build_work(
+        stars,
+        lists,
+        unclassified_only=old.manifest.unclassified_only,
+        limit=old.manifest.limit,
+    )
     old_records = {item.repo: item for item in old.classifier_input}
     new_records = {item.repo: item for item in current.classifier_input}
     old_repos = set(old_records)
@@ -421,7 +476,12 @@ def refresh_work(
 ) -> RefreshResult:
     """Create a fresh snapshot and carry forward only valid work."""
     old = load_work(source_dir)
-    current = build_work(stars, lists)
+    current = build_work(
+        stars,
+        lists,
+        unclassified_only=old.manifest.unclassified_only,
+        limit=old.manifest.limit,
+    )
     changes = compare_source(source_dir, stars, lists)
     old_records = {item.repo: item for item in old.classifier_input}
     new_records = {item.repo: item for item in current.classifier_input}
@@ -449,6 +509,8 @@ def refresh_work(
         target_dir,
         classifier=classifier,
         parent_run=str(source_dir),
+        unclassified_only=old.manifest.unclassified_only,
+        limit=old.manifest.limit,
     )
     if reusable:
         write_proposals(

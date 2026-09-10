@@ -11,6 +11,7 @@ from ghstars.core.classification import (  # pyright: ignore[reportMissingImport
     IntentGuess,
     ProposalRecord,
     ReviewRecord,
+    build_work,
     compare_source,
     extract_work,
     load_run_info,
@@ -60,6 +61,55 @@ def test_extract_excludes_archived_and_keeps_current_lists(
         json.loads((tmp_path / "classifier-input.jsonl").read_text())["repo"]
         == "zeta/repo"
     )
+
+
+def test_build_work_limits_unclassified_stars_after_sorting(
+    make_star: StarFactory,
+) -> None:
+    stars = [
+        make_star("owner/classified", list_ids=["real"]),
+        make_star("owner/general", list_ids=["general"]),
+        make_star("owner/none"),
+        make_star("owner/z-last"),
+    ]
+    lists = [
+        List(
+            id="real",
+            name="Explore: Tool",
+            slug="explore-tool",
+            items=["owner/classified"],
+        ),
+        List(
+            id="general",
+            name="Explore: General",
+            slug="explore-general",
+            items=["owner/general"],
+        ),
+    ]
+
+    work = build_work(stars, lists, unclassified_only=True, limit=2)
+
+    assert work.manifest.repos == ["owner/general", "owner/none"]
+    assert work.manifest.unclassified_only is True
+    assert work.manifest.limit == 2
+
+
+def test_scoped_snapshot_rejects_selection_tampering(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    extract_work(
+        [make_star("owner/repo")],
+        [],
+        tmp_path,
+        unclassified_only=True,
+        limit=1,
+    )
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    manifest["limit"] = 2
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ClassificationError, match="snapshot"):
+        render_markdown(tmp_path, tmp_path / "out.md", 70)
 
 
 def test_render_supports_ten_item_review_batches(
@@ -267,6 +317,33 @@ def test_review_state_is_keyed_by_repo_and_pending_render_keeps_item_numbers(
     assert "## 1. owner/repo-0" not in text
     assert "## 2. owner/repo-1" in text
     assert "## 3. owner/repo-2" in text
+
+
+def test_refresh_preserves_unclassified_scope_and_limit(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    extract_work(
+        [make_star("owner/b")],
+        [],
+        source,
+        classifier="model-a",
+        unclassified_only=True,
+        limit=1,
+    )
+
+    result = refresh_work(
+        source,
+        target,
+        [make_star("owner/a"), make_star("owner/b")],
+        [],
+        classifier="model-a",
+    )
+
+    assert result.manifest.repos == ["owner/a"]
+    assert result.manifest.unclassified_only is True
+    assert result.manifest.limit == 1
 
 
 def test_refresh_reuses_only_valid_proposals_and_reviews(

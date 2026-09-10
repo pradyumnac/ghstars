@@ -665,7 +665,7 @@ The skill runs an approved `ghstars sync` before it calls this command group.
 It runs another approved sync before any mutation.
 
 ```sh
-ghstars classify extract [--new | --resume PATH] [--classifier ID] --json
+ghstars classify extract [--new | --resume PATH] [--classifier ID] [--unclassified-only] [--limit N] --json
 ghstars classify write --work-dir PATH --snapshot ID --input BATCH.jsonl --json
 ghstars classify review --work-dir PATH --snapshot ID --input REVIEWS.jsonl --json
 ghstars classify render --work-dir PATH --output REPORT.md --pending --limit 10 --threshold 70 --json
@@ -675,6 +675,11 @@ ghstars classify check --work-dir PATH --json
 `extract` excludes Archived Stars. It stores managed runs under
 `~/.ghstars/data/classify/`. It returns `new`, `resume`, or `refresh` in the
 JSON `action` field.
+
+`--unclassified-only` includes Stars with no Category or only the reserved
+`General` Category. `--limit N` applies after that filter and repository-name
+sorting. Omit `--unclassified-only` to include all active Stars. The JSON
+result reports `unclassified_only` and `limit` with the selected run scope.
 
 Without `--new`, `extract` resumes the most advanced active run. It compares
 the run snapshot with current local state. If the state changed, it creates a
@@ -702,15 +707,21 @@ run.json
 The manifest retains current List names and parsed Categories. The classifier
 input does not contain those fields or the blessed Category vocabulary.
 
+A proposal contains a Category, not a GitHub List name. Adoption combines the
+approved Intent and Category as `{Intent}: {Category}`. A bare existing List
+has the implied `Reference` Intent. Bless only the Category value.
+
 `write` accepts one JSON object per line with this shape:
 
 ```json
-{"repo":"owner/name","intent":{"value":"Explore","score":34},"categories":[{"value":"CLI","score":91},{"value":"Tool","score":82},{"value":"Example","score":55}]}
+{"repo":"owner/name","intent":{"value":"Explore","score":34},"categories":[{"value":"Tool - Developer Workflow","score":91},{"value":"Library - Web Development","score":82},{"value":"Example - Dotfiles","score":55}]}
 ```
 
 It requires three distinct Category proposals in descending score order. It
-validates repository keys, scores, Intent, and snapshot identity. An identical
-retry succeeds. A conflicting proposal fails.
+validates repository keys, scores, Intent, and snapshot identity. The bulk
+classification skill prompts for `<Type> - <Specific purpose>` Category names.
+The CLI does not enforce that naming convention. An identical retry succeeds.
+A conflicting proposal fails.
 
 `review` stores user decisions by repository instead of row number. It accepts
 selected and skipped records:

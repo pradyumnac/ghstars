@@ -4,7 +4,8 @@ description: |
   Classify active GitHub Stars from a managed local classification run. Use
   this skill for a one-time or resumed classification debt pass. It preserves
   valid proposals and review decisions when source data changes. It presents
-  ten pending Stars at a time. Do not use it for normal Star discovery or
+  a user-selected number of pending Stars at a time. Do not use it for normal
+  Star discovery or
   automatic taxonomy repair.
 ---
 
@@ -34,6 +35,18 @@ classification. The `ghstars classify` commands perform deterministic work.
 Set `CLASSIFIER` to the current provider and model identifier. Keep this value
 for the complete run.
 
+Before the first command, show these run assumptions:
+
+- the classifier identifier
+- whether the run includes only unclassified Stars or all active Stars
+- the maximum number of Stars, or `all` when there is no limit
+- the review batch size, from 1 through the selected Star count
+- whether prior proposals and reviews can be reused
+
+Ask the user to confirm these assumptions. By default, include only Stars with
+no Category or only `General`. Include classified Stars only when the user asks
+to redo them. Apply a requested limit after this scope filter.
+
 Ask for approval to run a fresh sync. Do not extract before this approval.
 
 ```sh
@@ -44,8 +57,15 @@ Stop if the user declines or the sync fails. Then run `extract` without
 `--new`:
 
 ```sh
-ghstars classify extract --classifier "$CLASSIFIER" --json
+ghstars classify extract \
+  --classifier "$CLASSIFIER" \
+  --unclassified-only \
+  --limit "$LIMIT" \
+  --json
 ```
+
+Omit `--limit` when the user approves all matching Stars. Omit
+`--unclassified-only` only when the user asks to redo classified Stars.
 
 The command returns `action`, `snapshot`, `resume_path`, and progress counts.
 Use `resume_path` as `WORK_DIR`. Use `snapshot` as `SNAPSHOT`.
@@ -65,14 +85,15 @@ after the approved sync.
 
 ### 2. Classify missing proposals
 
-Compare `classifier-input.jsonl` with the accepted keys in `proposals.jsonl`.
-Classify only records without an accepted proposal. Process bounded batches.
+Compare `classifier-input.jsonl` repository keys with `proposal.repo` in each
+`proposals.jsonl` envelope. Classify only records without an accepted proposal.
+Process bounded batches.
 
 Give the classifier only the selected `classifier-input.jsonl` records. For
 each input record, produce one JSONL record with this shape:
 
 ```json
-{"repo":"owner/name","intent":{"value":"Explore","score":34},"categories":[{"value":"CLI","score":91},{"value":"Tool","score":82},{"value":"Example","score":55}]}
+{"repo":"owner/name","intent":{"value":"Explore","score":34},"categories":[{"value":"Tool - Developer Workflow","score":91},{"value":"Library - Web Development","score":82},{"value":"Example - Dotfiles","score":55}]}
 ```
 
 Apply these rules:
@@ -80,6 +101,28 @@ Apply these rules:
 - Copy `repo` exactly.
 - Use `Explore`, `Current`, `Retired`, `Reference`, or `Learn` as Intent.
 - Return exactly three distinct, non-empty Categories.
+- Format every Category as `<Type> - <Specific purpose>`.
+- Choose the Type from this list:
+  - `Application`: A complete program for an end user.
+  - `Service`: A hosted, networked, or background system.
+  - `Tool`: A focused utility that performs a task.
+  - `Library`: Reusable code that another program imports.
+  - `Framework`: A foundation that controls an application's structure.
+  - `Plugin`: An extension for another application or platform.
+  - `Example`: A demonstration, tutorial, or reference implementation.
+  - `Configuration`: Settings or dotfiles for another system.
+  - `Documentation`: Explanatory or reference content.
+  - `Dataset`: A machine-readable data collection.
+  - `Theme`: Visual styles for another application or platform.
+- Describe the main user utility as the Specific purpose.
+- Do not use a programming language, `Open Source`, `Software`, `General`,
+  or a Type without a Specific purpose.
+- Do not use bare `AI`; use a specific value such as `Tool - AI Coding`.
+- Use `Configuration - Dotfiles` for personal configuration repositories.
+  Use `Example - Dotfiles` only for repositories that demonstrate a setup.
+- Prefer utility-driven names such as `Tool - Note Taking`,
+  `Service - Self Hosting`, `Tool - Backup`, or `Tool - Hardware Driver`.
+- Give a low score when no strong user purpose matches.
 - Sort Categories by descending score.
 - Use integer scores from 0 through 100.
 - Permit Categories outside the blessed vocabulary.
@@ -98,23 +141,28 @@ ghstars classify write \
 Do not write `proposals.jsonl` directly. Stop and report a validation or
 conflict error.
 
-### 3. Review ten pending Stars
+### 3. Review pending Stars
 
-After all active Stars have proposals, render the next review batch:
+Ask the user for a review batch size before the first render. Set
+`REVIEW_BATCH_SIZE` to that value. Accept values from 1 through the selected
+Star count. Reject a value above the selected Star count.
+
+After all Stars in the selected run have proposals, render the next review
+batch:
 
 ```sh
 ghstars classify render \
   --work-dir "$WORK_DIR" \
   --output "$OUTPUT" \
   --pending \
-  --limit 10 \
+  --limit "$REVIEW_BATCH_SIZE" \
   --threshold 70 \
   --json
 ```
 
-Show the rendered Markdown. Do not show more than ten pending Stars. A score
-below the threshold marks a Category as unclassified. It does not make a user
-decision.
+Show the rendered Markdown. Do not show more than `REVIEW_BATCH_SIZE` pending
+Stars. When Category A is below the threshold, the renderer marks the
+repository target as unclassified. This marker does not make a user decision.
 
 Ask the user to select a Category or skip each displayed Star. Accept tokens
 such as `adopt 1A, 5C` and `skip 2-4`. A selection does not authorize a
@@ -138,9 +186,9 @@ ghstars classify review \
   --json
 ```
 
-Do not write `reviews.jsonl` directly. Render the next batch. Continue until
-no pending reviews remain. Use repository keys, not old item numbers, after a
-refresh.
+Do not write `reviews.jsonl` directly. Render the next batch with
+`REVIEW_BATCH_SIZE`. Continue until no pending reviews remain. Use repository
+keys, not old item numbers, after a refresh.
 
 ### 4. Resolve each selected target
 
@@ -162,9 +210,16 @@ Ask the user to choose `Add`, `Replace`, or `Skip` for each target.
 - `Replace` removes only Lists that the user names.
 - `Skip` makes no change.
 
-For a new List, ask whether it is public or private. For an unblessed Category,
-ask the user to bless it, select another proposal, or skip it. Never infer
-these decisions.
+A proposal value is a Category, not a List name. Bless only the Category value.
+Build a target List as `{Intent}: {Category}`. A bare existing List implies the
+`Reference` Intent. Reuse its exact name when it matches the approved target.
+Use the explicit form when a new List is required.
+
+For a new List, ask whether it is public or private. After all target decisions,
+collect the distinct unblessed Categories. Show the count and the complete
+Category list. Ask the user to approve that blessing set. The user can remove a
+Category, select another proposal, or skip its repositories. Never infer these
+decisions.
 
 ### 5. Build and approve the plan
 
@@ -193,9 +248,10 @@ ghstars classify check --work-dir "$WORK_DIR" --json
 ```
 
 Stop if the sync fails. If `matches` is false, do not use the approved plan.
-Run `classify extract` without `--new`. Use its returned `resume_path` and
-snapshot. Rebuild the plan from the refreshed manifest. Request final approval
-again.
+Run `classify extract` without `--new`. Pass the same `--classifier`, scope,
+and limit arguments as the approved run assumptions. Use its returned
+`resume_path` and snapshot. Rebuild the plan from the refreshed manifest.
+Request final approval again.
 
 Run only the explicit commands in the current approved plan. Use only approved
 repository names. Stop after an unexpected result or state drift. Report

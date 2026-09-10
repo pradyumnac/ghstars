@@ -71,6 +71,59 @@ def test_classify_extract_defaults_to_persistent_data_path(
     assert (work / "manifest.json").exists()
 
 
+def test_classify_extract_limits_unclassified_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("GHSTARS_HOME", str(home))
+    store = StateStore(home / "state")
+    store.save_stars(
+        [
+            make_star("owner/classified", list_ids=["real"]),
+            make_star("owner/general", list_ids=["general"]),
+            make_star("owner/none"),
+        ]
+    )
+    store.save_lists(
+        [
+            List(
+                id="real",
+                name="Explore: Tool",
+                slug="explore-tool",
+                items=["owner/classified"],
+            ),
+            List(
+                id="general",
+                name="Explore: General",
+                slug="explore-general",
+                items=["owner/general"],
+            ),
+        ]
+    )
+    _use_store(monkeypatch, store)
+
+    result = runner.invoke(
+        app,
+        [
+            "classify",
+            "extract",
+            "--unclassified-only",
+            "--limit",
+            "1",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["count"] == 1
+    assert payload["unclassified_only"] is True
+    assert payload["limit"] == 1
+    work = Path(payload["work_dir"])
+    record = json.loads((work / "classifier-input.jsonl").read_text())
+    assert record["repo"] == "owner/general"
+
+
 def test_classify_extract_is_offline_and_writes_runtime_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
@@ -193,6 +246,29 @@ def test_classify_extract_resumes_matching_run_with_most_progress(
     assert payload["action"] == "resume"
     assert payload["resume_path"] == str(progressed)
     assert payload["proposals"] == 1
+
+
+def test_classify_extract_resumes_only_the_same_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("GHSTARS_HOME", str(home))
+    store = StateStore(home / "state")
+    star = make_star("owner/repo")
+    store.save_stars([star])
+    _use_store(monkeypatch, store)
+    scoped = home / "data" / "classify" / "scoped"
+    extract_work([star], [], scoped, unclassified_only=True, limit=1)
+
+    result = runner.invoke(
+        app,
+        ["classify", "extract", "--unclassified-only", "--limit", "1", "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["action"] == "resume"
+    assert payload["resume_path"] == str(scoped)
 
 
 def test_classify_extract_new_supersedes_active_run(
