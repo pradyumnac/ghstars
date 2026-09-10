@@ -408,7 +408,8 @@ and was removed during cleanup.
 - LSP and pi-lens diagnostics pass for the changed implementation.
 
 The skill lives at
-`/home/doe/repos/env/ai/personal/ghstars-classify/SKILL.md`.
+`skills/ghstars-bulk-classify/SKILL.md`. Ticket 14 has a separate stub at
+`skills/ghstars/SKILL.md`.
 The end-to-end approval and adoption flow remains agent-harness work. The CLI
 only performs the deterministic extraction, validation, join, and render
 steps. It does not apply proposals.
@@ -432,8 +433,8 @@ trust boundary. The corrective pass fixed them before the next commit:
 
 The first code commit was `740795a`. The corrective commits are `a55d27e`
 (`Harden classification reconciliation`) and `e8d2651` (`Prevent
-classification side effects`). The skill is committed separately in the
-`env/ai` repository as `3c10412` (`Add ghstars classification skill`).
+classification side effects`). The skill is committed with this project under
+`skills/ghstars-bulk-classify/SKILL.md`. The old `env/ai` copy was removed.
 
 Verification after the corrective pass: 559 tests pass, `mise run check` passes,
 and Ruff and mypy pass.

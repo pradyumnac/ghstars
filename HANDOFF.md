@@ -48,9 +48,10 @@ Ticket 37's offline classification-debt workflow is implemented. The CLI
 commands are `ghstars classify extract`, `write`, and `render`. They read only
 local pull data, use a runtime work directory, join by exact `owner/name`, and
 write a numbered three-column review report. The dedicated harness skill is at
-`/home/doe/repos/env/ai/personal/ghstars-classify/SKILL.md`. It keeps Intent as
-a low-confidence guess, presents three Category choices, and requires final
-user approval before any adoption commands run. The CLI does not apply
+`skills/ghstars-bulk-classify/SKILL.md`. Ticket 14 has a separate stub at
+`skills/ghstars/SKILL.md`. The bulk skill keeps Intent as a low-confidence
+guess, presents three Category choices, and requires final user approval before
+any adoption commands run. The CLI does not apply
 proposals.
 
 Committed as `740795a` (`Add offline Star classification workflow`). The
@@ -61,8 +62,8 @@ uncommitted.
 The first clean-context review found trust-boundary defects in ticket 37. The
 corrective pass now validates local membership, strict proposal input, snapshot
 content, exact proposal keys, atomic work files, Markdown escaping, and JSON
-error handling. The ghstars corrective commits are `a55d27e` and `e8d2651`. The dedicated skill is
-committed separately in `env/ai` as `3c10412`.
+error handling. The ghstars corrective commits are `a55d27e` and `e8d2651`. The bulk skill is now
+versioned in this project at `skills/ghstars-bulk-classify/SKILL.md`.
 
 ### Notes repository split
 

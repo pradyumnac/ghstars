@@ -659,7 +659,7 @@ adjacent to clash against.
 
 Build an offline classification-debt work directory. This command group reads
 only local `state/stars.json` and `state/lists.json`. It never calls GitHub.
-The complete LLM workflow runs in the `ghstars-classify` agent skill.
+The complete LLM workflow runs in the `ghstars-bulk-classify` agent skill.
 
 The caller must provide a runtime work directory. ghstars does not choose one.
 

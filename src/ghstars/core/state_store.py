@@ -1,4 +1,5 @@
 import json
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -76,7 +77,7 @@ class StateStore:
             return [], []
         lock_path = self.base_dir / ".lock"
         if lock_path.exists():
-            with FileLock(str(lock_path)):
+            with FileLock(str(lock_path)).acquire(timeout=_DEFAULT_TIMEOUT):
                 return self._read_existing_stars_and_lists()
         return self._read_existing_stars_and_lists()
 
@@ -122,7 +123,7 @@ def _read_json(path: Path) -> list[object]:
         if not isinstance(data, list):
             raise TypeError(f"state file {path} must contain a JSON array")
         return data
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise exc from None
 
 
@@ -135,6 +136,17 @@ def atomic_write(path: Path, content: str) -> None:
     of the user's own, needs the same guarantee as `stars.json`/
     `lists.json` here.
     """
-    tmp_path = path.with_name(f"{path.name}.tmp")
-    tmp_path.write_text(content)
-    tmp_path.replace(path)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        tmp_path = Path(handle.name)
+        handle.write(content)
+    try:
+        tmp_path.replace(path)
+    finally:
+        tmp_path.unlink(missing_ok=True)

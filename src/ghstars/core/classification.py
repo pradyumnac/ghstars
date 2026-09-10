@@ -170,9 +170,10 @@ def extract_work(stars: list[Star], lists: list[List], work_dir: Path) -> Manife
         current=current,
     )
     work_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(work_dir / "manifest.json", manifest.model_dump(mode="json"))
-    _write_raw_jsonl(work_dir / "classifier-input.jsonl", classifier_input)
-    (work_dir / "proposals.jsonl").unlink(missing_ok=True)
+    with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
+        _write_json(work_dir / "manifest.json", manifest.model_dump(mode="json"))
+        _write_raw_jsonl(work_dir / "classifier-input.jsonl", classifier_input)
+        (work_dir / "proposals.jsonl").unlink(missing_ok=True)
     return manifest
 
 
@@ -205,7 +206,7 @@ def write_proposals(
     work_dir: Path, snapshot: str, records: list[ProposalRecord]
 ) -> int:
     """Validate and idempotently append a classifier batch."""
-    with FileLock(str(work_dir / ".lock")):
+    with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
         work = load_work(work_dir)
         if snapshot != work.manifest.snapshot:
             raise ClassificationError("snapshot does not match manifest")
@@ -236,6 +237,13 @@ def render_markdown(work_dir: Path, output: Path, threshold: int) -> dict[str, i
     """Join validated proposals with current mappings and write Markdown."""
     if not 0 <= threshold <= 100:
         raise ClassificationError("threshold must be between 0 and 100")
+    with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
+        return _render_markdown_locked(work_dir, output, threshold)
+
+
+def _render_markdown_locked(
+    work_dir: Path, output: Path, threshold: int
+) -> dict[str, int]:
     work = load_work(work_dir)
     proposals = _load_proposals(work_dir, expected_snapshot=work.manifest.snapshot)
     proposal_repos = [item.repo for item in proposals]
@@ -308,7 +316,7 @@ def _load_proposals(
 def _read_json(path: Path) -> object:
     try:
         return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ClassificationError(f"cannot read {path}: {exc}") from exc
 
 
@@ -317,7 +325,7 @@ def _read_jsonl(path: Path) -> list[JsonObject]:
         values = [
             json.loads(line) for line in path.read_text().splitlines() if line.strip()
         ]
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ClassificationError(f"cannot read {path}: {exc}") from exc
     if not all(isinstance(value, dict) for value in values):
         raise ClassificationError(f"{path} must contain JSON objects")

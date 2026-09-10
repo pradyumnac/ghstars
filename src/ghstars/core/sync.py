@@ -88,7 +88,7 @@ def _load_self_healing[T](loader: Callable[[], list[T]]) -> list[T]:
     """
     try:
         return loader()
-    except OSError, json.JSONDecodeError, ValidationError:
+    except OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError:
         return []
 
 
