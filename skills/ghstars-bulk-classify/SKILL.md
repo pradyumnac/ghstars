@@ -1,11 +1,11 @@
 ---
 name: ghstars-bulk-classify
 description: |
-  Classify active GitHub Stars from ghstars local pull data. Use this skill for
-  a one-time or occasional classification debt pass. It reads only stored Star
-  and List data, asks the agent to propose one low-confidence Intent and three
-  ranked Categories, and presents a numbered Markdown review table. Do not use
-  it for normal Star discovery, synchronization, or automatic taxonomy repair.
+  Classify active GitHub Stars from a fresh ghstars sync. Use this skill for a
+  one-time or resumed classification debt pass. It resumes valid proposals and
+  user selections, refreshes changed source data, and presents ten pending
+  Stars at a time. Do not use it for normal Star discovery or automatic
+  taxonomy repair.
 ---
 
 # ghstars classify
@@ -16,8 +16,10 @@ separately.
 
 ## Hard rules
 
-- Read only data already stored by ghstars.
-- Do not read README files, repository topics, web pages, or GitHub APIs.
+- Get approval before each `ghstars sync` call.
+- Stop if the fresh sync fails.
+- Give only data from `classifier-input.jsonl` to the classifier.
+- Do not read README files, repository topics, or web pages.
 - Do not show current Lists or blessed Categories to the classifier.
 - Use the exact `owner/name` value as the join key.
 - Keep Intent as a low-confidence guess.
@@ -29,30 +31,64 @@ separately.
 
 ## Workflow
 
-### 1. Create a runtime work directory
+### 1. Sync, then create, resume, or refresh the run
 
-Ask for or create a temporary directory. Do not use a fixed project path.
-Keep the directory if the user wants an audit record.
+Ask the user for approval to run a fresh sync. Stop if the user declines.
 
 ```sh
-ghstars classify extract --work-dir "$WORK_DIR" --json
+ghstars sync --json
 ```
 
-Read the returned `snapshot` and `count`.
+Stop if the sync fails. Then call `extract` without `--new`:
 
-The command writes:
+```sh
+ghstars classify extract --classifier "$CLASSIFIER" --json
+```
+
+Use a stable provider and model identifier for `CLASSIFIER`. Keep that value
+for all batches in the run.
+
+Do not scan run directories yourself. The command selects the valid active
+run. Read `action`, `snapshot`, `resume_path`, and all progress counts.
+
+The `action` value has these meanings:
+
+- `new`: The command created the first run.
+- `resume`: The saved snapshot matches the fresh local state.
+- `refresh`: The fresh sync changed the source snapshot.
+
+A refresh keeps proposals for unchanged classifier facts. It also keeps user
+selections for those proposals. It removes archived Stars and adds new Stars.
+It invalidates every prior reconciliation plan and approval.
+
+Use `--new` only after the user asks to discard reusable work:
+
+```sh
+ghstars classify extract --new --classifier "$CLASSIFIER" --json
+```
+
+Use `--resume PATH` only when the user names an older run. The CLI validates
+and refreshes that run before use.
+
+Set `WORK_DIR` to `resume_path`. The run can contain these files:
 
 ```text
 $WORK_DIR/manifest.json
 $WORK_DIR/classifier-input.jsonl
+$WORK_DIR/proposals.jsonl
+$WORK_DIR/reviews.jsonl
+$WORK_DIR/run.json
 ```
 
-`classifier-input.jsonl` is the only file sent to the classifier.
+Give only `classifier-input.jsonl` records to the classifier. Keep all work
+files and review reports in `WORK_DIR`.
 
 ### 2. Classify in bounded batches
 
-Read `classifier-input.jsonl` in bounded batches. For each repository return
-one JSON object with this exact shape:
+Compare `classifier-input.jsonl` with the accepted repository keys in
+`proposals.jsonl`. Classify only repositories without an accepted proposal.
+Read those records in bounded batches. For each repository, return one JSON
+object with this exact shape:
 
 ```json
 {
@@ -91,20 +127,26 @@ Do not write `proposals.jsonl` by hand. The command validates repository keys,
 scores, rank order, duplicate Categories, snapshot identity, and conflicting
 retries.
 
-### 3. Render the numbered review table
+### 3. Render and present ten rows at a time
 
-After every active Star has a proposal, render the report:
+After every active Star has a proposal, render the next ten pending Stars:
 
 ```sh
 ghstars classify render \
   --work-dir "$WORK_DIR" \
   --output "$OUTPUT" \
+  --pending \
+  --limit 10 \
   --threshold 70 \
   --json
 ```
 
-Read the Markdown output. It has exactly three columns and one stable numbered
-row per active Star:
+Show the Markdown output to the user. Do not show the full report at once.
+The command excludes repositories with stored review decisions. Keep the same
+`WORK_DIR` and snapshot for each review batch.
+
+Read the Markdown output. It has exactly three columns and stable numbered
+rows:
 
 ```markdown
 | Repository | Current Lists | Target Classifications |
@@ -117,7 +159,8 @@ make an adoption decision.
 
 ### 4. Ask for user selections
 
-Show the numbered table. Ask the user to select rows and choices, for example:
+Show only the current ten-row table. Ask the user to select rows and choices,
+for example:
 
 ```text
 Adopt 1A, 5C, 43B. Skip 2-4.
@@ -125,13 +168,37 @@ Adopt 1A, 5C, 43B. Skip 2-4.
 
 A selection identifies a proposal. It does not authorize a mutation.
 
-For each selected row, ask for or confirm:
+For each selected row, confirm the final Intent. The displayed Intent is only
+a low-confidence guess. Store all selected and skipped decisions in a JSONL
+batch:
 
-1. The final Intent. The displayed Intent is only a low-confidence guess.
-2. `Add`, `Replace`, or `Skip`.
-3. Every current List to remove for `Replace`.
-4. Public or private status if a new List will be created.
-5. Whether an unblessed Category can be added to the taxonomy.
+```json
+{"repo":"owner/name","status":"selected","choice":"A","intent":"Reference"}
+{"repo":"owner/skip","status":"skipped","choice":null,"intent":null}
+```
+
+Pass the batch through the CLI:
+
+```sh
+ghstars classify review \
+  --work-dir "$WORK_DIR" \
+  --snapshot "$SNAPSHOT" \
+  --input "$REVIEW_BATCH" \
+  --json
+```
+
+Do not write `reviews.jsonl` by hand. The command validates repository keys,
+accepted proposals, choices, confirmed Intents, and snapshot identity.
+
+Render the next pending batch after each accepted review batch. Continue until
+`pending` is zero. Repository keys preserve decisions if row numbers change.
+
+For each selected repository, ask for or confirm:
+
+1. `Add`, `Replace`, or `Skip`.
+2. Every current List to remove for `Replace`.
+3. Public or private status if a new List will be created.
+4. Whether an unblessed Category can be added to the taxonomy.
 
 ### 5. Build the action plan
 
@@ -168,29 +235,48 @@ that approval.
 If the user changes the plan, rebuild it and show it again. Do not reuse a
 previous approval after the plan changes.
 
-### 7. Apply explicit operations
+### 7. Recheck freshness and apply explicit operations
+
+Ask for approval to run one more fresh sync immediately before mutation:
+
+```sh
+ghstars sync --json
+ghstars classify check --work-dir "$WORK_DIR" --json
+```
+
+Stop if the sync fails. If `matches` is false, do not use the approved plan.
+Run `classify extract` without `--new`. The refresh keeps valid selections.
+Rebuild the reconciliation plan from the new manifest. Get new final approval.
 
 Run only explicit commands for approved repository names. Use existing ghstars
 commands. Never turn a Filter, search, or table selection into an implicit
 mutation target.
 
 Stop on an unexpected failure or state drift. Report completed and pending
-operations separately. Run `ghstars sync` after successful GitHub mutations and
-report the resulting state.
+operations separately. Run `ghstars sync` after successful GitHub mutations.
+Report the resulting state.
 
 ## Re-run behavior
 
-The runtime snapshot owns row numbering. A new extraction creates a new snapshot
-and can change row numbers. Do not apply an old selection to a new snapshot.
+Start each skill session with an approved fresh sync. Then call `extract`
+without `--new`. Use the returned `resume_path` even if a refresh changes it.
+
+A refresh can change row numbers. Use repository keys in `reviews.jsonl` to
+preserve decisions. Never apply row tokens from an older snapshot.
+
+A changed repository description or classifier fact invalidates its proposal
+and review. A List-only change preserves the proposal and review. It invalidates
+the reconciliation plan.
 
 An identical proposal retry is safe. A different proposal for the same
-repository is a conflict and must be reviewed again.
+repository is a conflict and must be reviewed again. Do not delete superseded
+runs. They are audit records.
 
 ## Output
 
 Report:
 
-- work directory
+- persistent work directory and resume path
 - snapshot ID
 - number of active Stars
 - number of proposals accepted

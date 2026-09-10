@@ -5,9 +5,8 @@ commands. The skill classifies every active Star from stored pull data. It
 proposes three ranked classifications, then writes a three-column Markdown
 report.
 
-**Status:** implemented — offline extraction, proposal validation, deterministic
-rendering, CLI commands, and the dedicated skill are in place. The user must
-approve every adoption plan before implementation.
+**Status:** implemented — managed resume, scoped refresh, and persistent review
+state are in place. The user must approve every adoption plan before use.
 
 **Kind:** enhancement
 
@@ -142,26 +141,33 @@ taxonomy from anchoring the proposals.
 └──────────────────────────────────────────────┘
 ```
 
-## Runtime work directory
+## Managed work directory
 
-Node B requires `--work-dir PATH`. The project defines no default location.
-The caller can use a temporary directory or a retained audit directory.
+Node B stores runs under `~/.ghstars/data/classify/` by default. Each run has
+an immutable source snapshot. A refreshed run links to its superseded parent.
 
-The directory contains these files:
+A run can contain these files:
 
 ```text
 PATH/
 ├── manifest.json
 ├── classifier-input.jsonl
-└── proposals.jsonl
+├── proposals.jsonl
+├── reviews.jsonl
+└── run.json
 ```
 
-`manifest.json` holds the snapshot identifier and the current mappings.
+`manifest.json` holds the snapshot identifier and current mappings.
 `classifier-input.jsonl` holds the LLM-visible records. `proposals.jsonl`
-holds only records accepted by Node F.
+holds records accepted by Node F. `reviews.jsonl` holds decisions by
+repository. `run.json` holds run state, classifier identity, and lineage.
 
-The snapshot identifier is a content hash of the extracted active Stars and
-Lists. Nodes F and G refuse work when the manifest does not match their input.
+The snapshot identifier is a content hash of active Stars and Lists. Nodes F
+and G refuse work when the manifest does not match their input.
+
+The skill runs an approved fresh sync before it calls Node B. Plain `extract`
+resumes a matching run. It refreshes a changed run and reuses proposals for
+unchanged classifier facts. `extract --new` starts without reused work.
 
 ## Node C: classifier input shape
 
@@ -265,19 +271,24 @@ operational skill from ticket 14.
 
 The skill performs these steps:
 
-1. Ask the user for the runtime work directory, output path, and threshold.
-2. Run Node B once.
-3. Read Node C in bounded batches.
+1. Ask for approval to run a fresh sync.
+2. Run Node B without `--new`.
+3. Read only classifier records without accepted proposals.
 4. Run Node E inside the current agent harness.
 5. Send each batch through Node F.
-6. Run Node G after every Star has an accepted result.
-7. Present the numbered Node H report and summary counts.
+6. Render ten repositories without review decisions.
+7. Present the numbered Node H report.
 8. Accept selections such as `adopt 1A, 5C, 43B`.
-9. Ask the user to confirm or override each low-confidence Intent.
-10. Ask whether each selected target is an addition or a replacement.
-11. Build an exact operation plan and present it without running it.
-12. Run the plan only after the final user approval in Node K.
-13. Synchronize and report the resulting state.
+9. Ask the user to confirm or replace each Intent.
+10. Store selected and skipped decisions by repository.
+11. Ask whether each selected target is an addition or replacement.
+12. Build an exact operation plan and present it without running it.
+13. Get final approval for the plan.
+14. Ask for approval to run another fresh sync.
+15. Check the run against the fresh local snapshot.
+16. Refresh and rebuild the plan when the check fails.
+17. Run only a current, approved plan.
+18. Synchronize and report the resulting state.
 
 The helper commands remain usable without the skill. Only the skill provides
 the end-to-end LLM orchestration and approval conversation.
@@ -362,7 +373,12 @@ intentional because the workflow must not read beyond stored pull data.
 
 - [x] Add the `ghstars classify` command group with `extract`, `write`, and
       `render` subcommands.
-- [x] Require a runtime work directory. Add no fixed output location.
+- [x] Store managed runs under ghstars data by default.
+- [x] Support explicit `--work-dir` paths for deterministic component tests.
+- [x] Resume the most advanced matching active run by default.
+- [x] Require `--new` to discard reusable work.
+- [x] Refresh changed source data and preserve valid proposals.
+- [x] Store review decisions by repository.
 - [x] Keep Nodes A through H offline. Extraction and proposal writes change
       only the work directory and its transient state lock. Rendering also
       writes the explicit user-selected report path.
@@ -446,7 +462,18 @@ classification side effects`). The skill is committed with this project under
 Verification after the corrective pass: 562 tests pass, `mise run check` passes,
 and Ruff and mypy pass.
 
+The managed resume extension adds twelve tests. The full suite now has 574
+tests. `mise run check` passes with Ruff, formatting, mypy, and all tests.
+
 ## Comments
+
+Explicit `--work-dir` runs stay isolated from managed user runs. They do not
+inspect or supersede runs under the ghstars data directory.
+
+The managed resume extension separates proposal validity from List-state
+validity. Repository fact changes invalidate one proposal and its review.
+List-only changes preserve both, but invalidate all reconciliation plans.
+Superseded runs remain available as audit records.
 
 This design replaces the earlier three-slot pilot format. The old pilot mixed
 one bounded Category with two free-text subject suggestions. This workflow

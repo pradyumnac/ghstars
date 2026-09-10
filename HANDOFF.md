@@ -1,5 +1,36 @@
 # Handoff
 
+## Latest work
+
+Ticket 37 now has managed classification runs. Plain `classify extract` resumes
+the most advanced active run. A changed local snapshot creates a refreshed
+child run and reuses proposals for unchanged repository facts. Use `--new` to
+discard reusable work. Use `--resume PATH` to select an older run.
+
+Review decisions now persist in `reviews.jsonl` by repository. Use `classify
+review` to write selected or skipped decisions. Use `classify render --pending
+--limit 10` to show the next review batch. Use `classify check` after the
+approved pre-mutation sync.
+
+The bulk-classify skill now asks for sync approval before extraction. It asks
+again before mutation, then checks the selected run. A stale plan requires a
+refresh, a rebuilt plan, and new approval.
+
+The implementation and documentation changes are uncommitted. The focused
+classification suite passes with 28 tests. The full suite passes with 574
+tests. `mise run check` passes. No real sync, List mutation, or unstar operation
+ran.
+
+A final retrofit check found and fixed an isolation defect. An explicit
+`--work-dir` test could inspect and supersede managed user runs. Explicit work
+directories now stay isolated from the managed run directory. A regression
+test protects this boundary.
+
+An empty run from the earlier failed resume attempt remains at
+`~/.ghstars/data/classify/20260910T170810Z`. The valid prior run remains at
+`~/.ghstars/data/classify/20260910T2215Z`. The empty run is now superseded. The valid run is active in `reviewing` state.
+An offline resume test selected it and rendered pending rows 1 through 10.
+
 ## Next work
 
 Tickets 33, 34 and 36 landed on 2026-09-09. The taxonomy is flat, the

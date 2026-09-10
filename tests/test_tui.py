@@ -591,7 +591,7 @@ async def test_lists_overview_shows_public_and_private_explicitly(
 ) -> None:
     public_list = List(id="L_pub", name="Reference: Docs", slug="reference-docs")
     private_list = List(
-        id="L_priv", name="Current: Secret", slug="current-secret", is_private=True
+        id="L_priv", name="Current: Internal", slug="current-internal", is_private=True
     )
     store = StateStore(tmp_path)
     store.save_stars([make_star("example-owner/ghstars")])
@@ -608,7 +608,7 @@ async def test_lists_overview_shows_public_and_private_explicitly(
 
     by_name = {str(row[0]): row for row in rows}
     assert _visibility_label(False) in by_name["Reference: Docs"][3]
-    assert _visibility_label(True) in by_name["Current: Secret"][3]
+    assert _visibility_label(True) in by_name["Current: Internal"][3]
 
 
 async def test_tag_with_no_star_selected_does_not_open_the_picker(

@@ -6,8 +6,10 @@ import hashlib
 import html
 import json
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
+from typing import Literal
 
 from filelock import FileLock
 from pydantic import (
@@ -120,6 +122,72 @@ class StoredWork(BaseModel):
     classifier_input: list[ClassifierRecord]
 
 
+RunState = Literal["classifying", "reviewing", "complete", "superseded"]
+ReviewStatus = Literal["selected", "skipped"]
+ReviewChoice = Literal["A", "B", "C"]
+
+
+class RunMetadata(BaseModel):
+    """Persistent identity and lineage for one classification snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    created_at: datetime
+    updated_at: datetime
+    state: RunState
+    snapshot: str
+    classifier: str = "unspecified"
+    prompt_version: Literal[1] = 1
+    parent_run: str | None = None
+    superseded_by: str | None = None
+
+
+class ReviewRecord(BaseModel):
+    """One repository-keyed user decision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    repo: str
+    status: ReviewStatus
+    choice: ReviewChoice | None = None
+    intent: Intent | None = None
+
+
+class SourceChanges(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    added: list[str] = Field(default_factory=list)
+    removed: list[str] = Field(default_factory=list)
+    classifier_changed: list[str] = Field(default_factory=list)
+    mapping_changed: list[str] = Field(default_factory=list)
+
+    @property
+    def changed(self) -> bool:
+        return any(
+            (self.added, self.removed, self.classifier_changed, self.mapping_changed)
+        )
+
+
+class RunInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: Path
+    metadata: RunMetadata
+    proposals: int
+    reviewed: int
+    total: int
+
+
+class RefreshResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    manifest: Manifest
+    reused_proposals: int
+    reused_reviews: int
+    changes: SourceChanges
+
+
 def _canonical(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
@@ -137,8 +205,8 @@ def _snapshot_content(
     return hashlib.sha256(_canonical(payload).encode()).hexdigest()
 
 
-def extract_work(stars: list[Star], lists: list[List], work_dir: Path) -> Manifest:
-    """Write one stable, offline classification snapshot."""
+def build_work(stars: list[Star], lists: list[List]) -> StoredWork:
+    """Build one validated classification snapshot without writing it."""
     active = sorted(
         (star for star in stars if not star.archived), key=lambda s: s.full_name
     )
@@ -169,12 +237,36 @@ def extract_work(stars: list[Star], lists: list[List], work_dir: Path) -> Manife
         repos=repos,
         current=current,
     )
+    return StoredWork(manifest=manifest, classifier_input=classifier_input)
+
+
+def extract_work(
+    stars: list[Star],
+    lists: list[List],
+    work_dir: Path,
+    *,
+    classifier: str = "unspecified",
+    parent_run: str | None = None,
+) -> Manifest:
+    """Write one stable, offline classification snapshot."""
+    work = build_work(stars, lists)
+    now = datetime.now(UTC)
+    metadata = RunMetadata(
+        created_at=now,
+        updated_at=now,
+        state="classifying" if work.manifest.repos else "complete",
+        snapshot=work.manifest.snapshot,
+        classifier=classifier,
+        parent_run=parent_run,
+    )
     work_dir.mkdir(parents=True, exist_ok=True)
     with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
-        _write_json(work_dir / "manifest.json", manifest.model_dump(mode="json"))
-        _write_raw_jsonl(work_dir / "classifier-input.jsonl", classifier_input)
+        _write_json(work_dir / "manifest.json", work.manifest.model_dump(mode="json"))
+        _write_raw_jsonl(work_dir / "classifier-input.jsonl", work.classifier_input)
+        _write_json(work_dir / "run.json", metadata.model_dump(mode="json"))
         (work_dir / "proposals.jsonl").unlink(missing_ok=True)
-    return manifest
+        (work_dir / "reviews.jsonl").unlink(missing_ok=True)
+    return work.manifest
 
 
 def load_work(work_dir: Path) -> StoredWork:
@@ -230,26 +322,352 @@ def write_proposals(
         _write_jsonl(
             work_dir / "proposals.jsonl", payload, extra={"snapshot": snapshot}
         )
+        _write_run_state_locked(work_dir, work, len(payload))
         return len(records)
 
 
-def render_markdown(work_dir: Path, output: Path, threshold: int) -> dict[str, int]:
-    """Join validated proposals with current mappings and write Markdown."""
+def write_reviews(work_dir: Path, snapshot: str, records: list[ReviewRecord]) -> int:
+    """Validate and store repository-keyed review decisions."""
+    with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
+        work = load_work(work_dir)
+        if snapshot != work.manifest.snapshot:
+            raise ClassificationError("snapshot does not match manifest")
+        proposals = {
+            item.repo: item
+            for item in _load_proposals(
+                work_dir, expected_snapshot=work.manifest.snapshot
+            )
+        }
+        existing = {
+            item.repo: item
+            for item in _load_reviews(
+                work_dir,
+                expected_snapshot=work.manifest.snapshot,
+                proposals=proposals,
+            )
+        }
+        for record in records:
+            _validate_review(record, proposals)
+            existing[record.repo] = record
+        payload = [existing[repo] for repo in work.manifest.repos if repo in existing]
+        _write_review_jsonl(work_dir / "reviews.jsonl", snapshot, payload)
+        _write_run_state_locked(work_dir, work, len(proposals), reviewed=len(payload))
+        return len(records)
+
+
+def load_run_info(work_dir: Path) -> RunInfo:
+    """Load one run and derive progress from validated work files."""
+    work = load_work(work_dir)
+    proposals = _load_proposals(work_dir, expected_snapshot=work.manifest.snapshot)
+    proposal_map = {item.repo: item for item in proposals}
+    reviews = _load_reviews(
+        work_dir,
+        expected_snapshot=work.manifest.snapshot,
+        proposals=proposal_map,
+    )
+    metadata = _load_run_metadata(work_dir, work)
+    if metadata.state != "superseded":
+        metadata = metadata.model_copy(
+            update={
+                "state": _run_state(
+                    len(work.manifest.repos), len(proposals), len(reviews)
+                )
+            }
+        )
+    return RunInfo(
+        path=work_dir,
+        metadata=metadata,
+        proposals=len(proposals),
+        reviewed=len(reviews),
+        total=len(work.manifest.repos),
+    )
+
+
+def compare_source(
+    work_dir: Path, stars: list[Star], lists: list[List]
+) -> SourceChanges:
+    """Compare a saved run with the current local snapshot."""
+    old = load_work(work_dir)
+    current = build_work(stars, lists)
+    old_records = {item.repo: item for item in old.classifier_input}
+    new_records = {item.repo: item for item in current.classifier_input}
+    old_repos = set(old_records)
+    new_repos = set(new_records)
+    common = old_repos & new_repos
+    return SourceChanges(
+        added=sorted(new_repos - old_repos),
+        removed=sorted(old_repos - new_repos),
+        classifier_changed=sorted(
+            repo
+            for repo in common
+            if old_records[repo].model_dump() != new_records[repo].model_dump()
+        ),
+        mapping_changed=sorted(
+            repo
+            for repo in common
+            if old.manifest.current[repo].model_dump()
+            != current.manifest.current[repo].model_dump()
+        ),
+    )
+
+
+def refresh_work(
+    source_dir: Path,
+    target_dir: Path,
+    stars: list[Star],
+    lists: list[List],
+    *,
+    classifier: str,
+) -> RefreshResult:
+    """Create a fresh snapshot and carry forward only valid work."""
+    old = load_work(source_dir)
+    current = build_work(stars, lists)
+    changes = compare_source(source_dir, stars, lists)
+    old_records = {item.repo: item for item in old.classifier_input}
+    new_records = {item.repo: item for item in current.classifier_input}
+    old_proposals = {
+        item.repo: item
+        for item in _load_proposals(source_dir, expected_snapshot=old.manifest.snapshot)
+    }
+    reusable = {
+        repo: proposal
+        for repo, proposal in old_proposals.items()
+        if repo in new_records
+        and repo in old_records
+        and old_records[repo].model_dump() == new_records[repo].model_dump()
+    }
+    old_reviews = _load_reviews(
+        source_dir,
+        expected_snapshot=old.manifest.snapshot,
+        proposals=old_proposals,
+    )
+    reusable_reviews = [item for item in old_reviews if item.repo in reusable]
+
+    extract_work(
+        stars,
+        lists,
+        target_dir,
+        classifier=classifier,
+        parent_run=str(source_dir),
+    )
+    if reusable:
+        write_proposals(
+            target_dir,
+            current.manifest.snapshot,
+            [reusable[repo] for repo in current.manifest.repos if repo in reusable],
+        )
+    if reusable_reviews:
+        write_reviews(target_dir, current.manifest.snapshot, reusable_reviews)
+    supersede_run(source_dir, target_dir)
+    return RefreshResult(
+        manifest=current.manifest,
+        reused_proposals=len(reusable),
+        reused_reviews=len(reusable_reviews),
+        changes=changes,
+    )
+
+
+def claim_run(work_dir: Path, classifier: str) -> RunInfo:
+    """Persist legacy metadata and bind an unspecified classifier."""
+    with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
+        info = load_run_info(work_dir)
+        metadata = info.metadata
+        if metadata.classifier not in ("unspecified", classifier):
+            raise ClassificationError(
+                "classifier identity differs from the saved run; use --new"
+            )
+        metadata = metadata.model_copy(
+            update={
+                "classifier": classifier,
+                "state": info.metadata.state,
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        _write_json(work_dir / "run.json", metadata.model_dump(mode="json"))
+    return info.model_copy(update={"metadata": metadata})
+
+
+def supersede_run(work_dir: Path, replacement: Path) -> None:
+    """Mark one run as inactive without deleting its audit files."""
+    with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
+        work = load_work(work_dir)
+        metadata = _load_run_metadata(work_dir, work)
+        metadata = metadata.model_copy(
+            update={
+                "state": "superseded",
+                "superseded_by": str(replacement),
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        _write_json(work_dir / "run.json", metadata.model_dump(mode="json"))
+
+
+def _run_state(total: int, proposals: int, reviewed: int) -> RunState:
+    if reviewed == total:
+        return "complete"
+    if proposals == total:
+        return "reviewing"
+    return "classifying"
+
+
+def _load_run_metadata(work_dir: Path, work: StoredWork) -> RunMetadata:
+    path = work_dir / "run.json"
+    if path.exists():
+        try:
+            metadata = RunMetadata.model_validate(_read_json(path))
+        except (OSError, json.JSONDecodeError, ValidationError) as exc:
+            raise ClassificationError(f"invalid run metadata: {exc}") from exc
+        if metadata.snapshot != work.manifest.snapshot:
+            raise ClassificationError("run metadata snapshot does not match manifest")
+        return metadata
+    created_at = datetime.fromtimestamp(
+        (work_dir / "manifest.json").stat().st_mtime, tz=UTC
+    )
+    return RunMetadata(
+        created_at=created_at,
+        updated_at=created_at,
+        state="classifying",
+        snapshot=work.manifest.snapshot,
+    )
+
+
+def _write_run_state_locked(
+    work_dir: Path,
+    work: StoredWork,
+    proposals: int,
+    *,
+    reviewed: int | None = None,
+) -> None:
+    metadata = _load_run_metadata(work_dir, work)
+    if metadata.state == "superseded":
+        raise ClassificationError("cannot modify a superseded classification run")
+    if reviewed is None:
+        proposal_map = {
+            item.repo: item
+            for item in _load_proposals(
+                work_dir, expected_snapshot=work.manifest.snapshot
+            )
+        }
+        reviewed = len(
+            _load_reviews(
+                work_dir,
+                expected_snapshot=work.manifest.snapshot,
+                proposals=proposal_map,
+            )
+        )
+    metadata = metadata.model_copy(
+        update={
+            "state": _run_state(len(work.manifest.repos), proposals, reviewed),
+            "updated_at": datetime.now(UTC),
+        }
+    )
+    _write_json(work_dir / "run.json", metadata.model_dump(mode="json"))
+
+
+def _validate_review(
+    record: ReviewRecord, proposals: dict[str, ProposalRecord]
+) -> None:
+    proposal = proposals.get(record.repo)
+    if proposal is None:
+        raise ClassificationError(
+            f"review has no accepted proposal for {record.repo!r}"
+        )
+    if record.status == "skipped":
+        if record.choice is not None or record.intent is not None:
+            raise ClassificationError(
+                "a skipped review must not contain a choice or Intent"
+            )
+        return
+    if record.choice is None or record.intent is None:
+        raise ClassificationError(
+            "a selected review requires a Category choice and confirmed Intent"
+        )
+
+
+def _load_reviews(
+    work_dir: Path,
+    *,
+    expected_snapshot: str,
+    proposals: dict[str, ProposalRecord],
+) -> list[ReviewRecord]:
+    path = work_dir / "reviews.jsonl"
+    if not path.exists():
+        return []
+    try:
+        result: list[ReviewRecord] = []
+        seen: set[str] = set()
+        for item in _read_jsonl(path):
+            if item.get("snapshot") != expected_snapshot:
+                raise ClassificationError("review snapshot does not match manifest")
+            payload = item.get("review")
+            if not isinstance(payload, dict):
+                raise ClassificationError("review entry must contain a review object")
+            review = ReviewRecord.model_validate(payload)
+            if review.repo in seen:
+                raise ClassificationError(f"duplicate review for {review.repo!r}")
+            _validate_review(review, proposals)
+            seen.add(review.repo)
+            result.append(review)
+        return result
+    except (OSError, json.JSONDecodeError, ValidationError) as exc:
+        raise ClassificationError(f"invalid reviews file: {exc}") from exc
+
+
+def _write_review_jsonl(
+    path: Path, snapshot: str, records: Sequence[ReviewRecord]
+) -> None:
+    lines = [
+        json.dumps(
+            {"snapshot": snapshot, "review": record.model_dump(mode="json")},
+            separators=(",", ":"),
+        )
+        for record in records
+    ]
+    atomic_write(path, "\n".join(lines) + ("\n" if lines else ""))
+
+
+def render_markdown(
+    work_dir: Path,
+    output: Path,
+    threshold: int,
+    *,
+    offset: int = 0,
+    limit: int | None = None,
+    pending_only: bool = False,
+) -> dict[str, int | None]:
+    """Join validated proposals with current mappings and write one review page."""
     if not 0 <= threshold <= 100:
         raise ClassificationError("threshold must be between 0 and 100")
+    if offset < 0:
+        raise ClassificationError("offset must not be negative")
+    if limit is not None and limit <= 0:
+        raise ClassificationError("limit must be greater than zero")
     protected = {
         (work_dir / name).resolve()
-        for name in ("manifest.json", "classifier-input.jsonl", "proposals.jsonl")
+        for name in (
+            "manifest.json",
+            "classifier-input.jsonl",
+            "proposals.jsonl",
+            "reviews.jsonl",
+            "run.json",
+        )
     }
     if output.resolve() in protected:
         raise ClassificationError("report output must not overwrite a work file")
     with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
-        return _render_markdown_locked(work_dir, output, threshold)
+        return _render_markdown_locked(
+            work_dir, output, threshold, offset, limit, pending_only
+        )
 
 
 def _render_markdown_locked(
-    work_dir: Path, output: Path, threshold: int
-) -> dict[str, int]:
+    work_dir: Path,
+    output: Path,
+    threshold: int,
+    offset: int,
+    limit: int | None,
+    pending_only: bool,
+) -> dict[str, int | None]:
     work = load_work(work_dir)
     proposals = _load_proposals(work_dir, expected_snapshot=work.manifest.snapshot)
     proposal_repos = [item.repo for item in proposals]
@@ -267,12 +685,26 @@ def _render_markdown_locked(
             "; ".join(details) or "proposal keys do not match manifest"
         )
     by_repo = {item.repo: item for item in proposals}
+    reviews = _load_reviews(
+        work_dir,
+        expected_snapshot=work.manifest.snapshot,
+        proposals=by_repo,
+    )
+    reviewed_repos = {item.repo for item in reviews}
+    row_indices = [
+        index
+        for index, repo in enumerate(work.manifest.repos)
+        if not pending_only or repo not in reviewed_repos
+    ]
     rows: list[str] = [
         "| Repository | Current Lists | Target Classifications |",
         "| --- | --- | --- |",
     ]
     unclassified = 0
-    for index, repo in enumerate(work.manifest.repos, 1):
+    total = len(row_indices)
+    end = total if limit is None else min(offset + limit, total)
+    for index in row_indices[offset:end]:
+        repo = work.manifest.repos[index]
         record = by_repo[repo]
         mapping = work.manifest.current[record.repo]
         current = "; ".join(mapping.lists) or "—"
@@ -286,10 +718,28 @@ def _render_markdown_locked(
             target = f"Unclassified; {intent}; {choices}"
         else:
             target = f"{intent}; {choices}"
-        rows.append(f"| {index}. {_md(record.repo)} | {_md(current)} | {_md(target)} |")
+        rows.append(
+            f"| {index + 1}. {_md(record.repo)} | {_md(current)} | {_md(target)} |"
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(output, "\n".join(rows) + "\n")
-    return {"rows": len(proposals), "unclassified": unclassified}
+    summary: dict[str, int | None] = {
+        "rows": end - offset,
+        "unclassified": unclassified,
+    }
+    if offset or limit is not None or pending_only:
+        summary.update(
+            {
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "next_offset": end if end < total else None,
+                "remaining": total - end,
+            }
+        )
+    if pending_only:
+        summary["pending"] = len(work.manifest.repos) - len(reviewed_repos)
+    return summary
 
 
 def _load_proposals(

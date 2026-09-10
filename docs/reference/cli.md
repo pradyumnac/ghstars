@@ -657,22 +657,50 @@ adjacent to clash against.
 
 ### `ghstars classify`
 
-Build an offline classification-debt work directory. This command group reads
-only local `state/stars.json` and `state/lists.json`. It never calls GitHub.
-The complete LLM workflow runs in the `ghstars-bulk-classify` agent skill.
+Manage an offline classification run. This command group reads only local
+`state/stars.json` and `state/lists.json`. It never calls GitHub. The
+`ghstars-bulk-classify` skill runs the complete workflow.
 
-The caller must provide a runtime work directory. ghstars does not choose one.
+The skill runs an approved `ghstars sync` before it calls this command group.
+It runs another approved sync before any mutation.
 
 ```sh
-ghstars classify extract --work-dir PATH --json
+ghstars classify extract [--new | --resume PATH] [--classifier ID] --json
 ghstars classify write --work-dir PATH --snapshot ID --input BATCH.jsonl --json
-ghstars classify render --work-dir PATH --output REPORT.md --threshold 70 --json
+ghstars classify review --work-dir PATH --snapshot ID --input REVIEWS.jsonl --json
+ghstars classify render --work-dir PATH --output REPORT.md --pending --limit 10 --threshold 70 --json
+ghstars classify check --work-dir PATH --json
 ```
 
-`extract` excludes Archived Stars. It writes `manifest.json` and
-`classifier-input.jsonl`. The manifest retains current List names and parsed
-Categories for the deterministic join. The classifier input does not contain
-those fields or the blessed Category vocabulary.
+`extract` excludes Archived Stars. It stores managed runs under
+`~/.ghstars/data/classify/`. It returns `new`, `resume`, or `refresh` in the
+JSON `action` field.
+
+Without `--new`, `extract` resumes the most advanced active run. It compares
+the run snapshot with current local state. If the state changed, it creates a
+refreshed run and returns its new `resume_path`.
+
+A refresh reuses proposals whose classifier facts did not change. It also
+reuses their stored review decisions. A List-only change does not invalidate a
+proposal or review decision. It does invalidate any later reconciliation plan.
+
+Use `--new` to start without reusable proposals or review decisions. The
+command marks prior active runs as superseded but does not delete them. Use
+`--resume PATH` to select an older run. The command validates or refreshes that
+run before use.
+
+Each managed run can contain these files:
+
+```text
+manifest.json
+classifier-input.jsonl
+proposals.jsonl
+reviews.jsonl
+run.json
+```
+
+The manifest retains current List names and parsed Categories. The classifier
+input does not contain those fields or the blessed Category vocabulary.
 
 `write` accepts one JSON object per line with this shape:
 
@@ -680,19 +708,32 @@ those fields or the blessed Category vocabulary.
 {"repo":"owner/name","intent":{"value":"Explore","score":34},"categories":[{"value":"CLI","score":91},{"value":"Tool","score":82},{"value":"Example","score":55}]}
 ```
 
-It requires exactly three distinct, descending Category proposals. It validates
-the exact `owner/name` keys, scores, Intent, and snapshot. An identical retry
-succeeds. A conflicting proposal fails.
+It requires three distinct Category proposals in descending score order. It
+validates repository keys, scores, Intent, and snapshot identity. An identical
+retry succeeds. A conflicting proposal fails.
 
-`render` joins proposals to the manifest by exact `owner/name`. It writes one
-numbered row per active Star with three Markdown columns: Repository, Current
-Lists, and Target Classifications. A top Category score below `--threshold`
-keeps the Star Unclassified. Rendering does not choose or apply a proposal.
+`review` stores user decisions by repository instead of row number. It accepts
+selected and skipped records:
 
-All commands are local and do not create a GitHub client. Extraction and
-proposal writes change only the work directory, apart from a transient lock
-file for an existing state directory. Rendering also writes the explicit
-user-selected `--output` path.
+```json
+{"repo":"owner/name","status":"selected","choice":"A","intent":"Reference"}
+{"repo":"owner/skip","status":"skipped","choice":null,"intent":null}
+```
+
+A selected record requires a Category choice and a confirmed Intent. A skipped
+record must not contain either value.
+
+`render --pending` excludes repositories that have stored review decisions.
+It keeps each displayed row number tied to the current manifest. Use
+`--limit 10` to show one review batch. A Category score below `--threshold`
+keeps the Star Unclassified.
+
+`check` compares a run with current local state. It returns `matches: false`
+and structured changes when the run is stale. Run this command after the
+pre-mutation sync. Do not use an old plan when the check fails.
+
+All `classify` commands are local and do not create a GitHub client. They write
+only run files, locks, and the explicit `--output` report path.
 
 ## What this document does not cover
 
