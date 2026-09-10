@@ -44,6 +44,15 @@ Beyond those: ticket 14's skill, ticket 34's wizard, and the triage pass for
 the unclassified Stars. That pass needs a *method*, not a command -- ghstars
 must never guess an Intent or a Category (ticket 03).
 
+Ticket 37's offline classification-debt workflow is implemented. The CLI
+commands are `ghstars classify extract`, `write`, and `render`. They read only
+local pull data, use a runtime work directory, join by exact `owner/name`, and
+write a numbered three-column review report. The dedicated harness skill is at
+`/home/doe/repos/env/ai/personal/ghstars-classify/SKILL.md`. It keeps Intent as
+a low-confidence guess, presents three Category choices, and requires final
+user approval before any adoption commands run. The CLI does not apply
+proposals.
+
 ### Notes repository split
 
 Resolved 2026-09-09. ghstars does not depend on the old notes path or on

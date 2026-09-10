@@ -484,7 +484,7 @@ git binary or an untracked `state/` fails with `tool_unavailable` or
 `doctor` reports; one command repairs each kind of problem; `sync` puts local
 state back in step. In order:
 
-```
+```text
 ghstars sync                     # untag reads local state, so start here
 ghstars doctor                   # read-only; exits 0, branch on `ok`
   ├─ malformed name          →  ghstars remote rename-list OLD NEW --yes
@@ -655,6 +655,43 @@ Every other command name (`sync`, `tag`, `unstar`, `status`, `ratelimit`,
 `export`, `diff`, `tui`) is a single unambiguous word with nothing
 adjacent to clash against.
 
+### `ghstars classify`
+
+Build an offline classification-debt work directory. This command group reads
+only local `state/stars.json` and `state/lists.json`. It never calls GitHub.
+The complete LLM workflow runs in the `ghstars-classify` agent skill.
+
+The caller must provide a runtime work directory. ghstars does not choose one.
+
+```sh
+ghstars classify extract --work-dir PATH --json
+ghstars classify write --work-dir PATH --snapshot ID --input BATCH.jsonl --json
+ghstars classify render --work-dir PATH --output REPORT.md --threshold 70 --json
+```
+
+`extract` excludes Archived Stars. It writes `manifest.json` and
+`classifier-input.jsonl`. The manifest retains current List names and parsed
+Categories for the deterministic join. The classifier input does not contain
+those fields or the blessed Category vocabulary.
+
+`write` accepts one JSON object per line with this shape:
+
+```json
+{"repo":"owner/name","intent":{"value":"Explore","score":34},"categories":[{"value":"CLI","score":91},{"value":"Tool","score":82},{"value":"Example","score":55}]}
+```
+
+It requires exactly three distinct, descending Category proposals. It validates
+the exact `owner/name` keys, scores, Intent, and snapshot. An identical retry
+succeeds. A conflicting proposal fails.
+
+`render` joins proposals to the manifest by exact `owner/name`. It writes one
+numbered row per active Star with three Markdown columns: Repository, Current
+Lists, and Target Classifications. A top Category score below `--threshold`
+keeps the Star Unclassified. Rendering does not choose or apply a proposal.
+
+All three commands are local and non-mutating outside the runtime work
+directory. They do not create a GitHub client.
+
 ## What this document does not cover
 
 Per ticket 30's non-goals: TUI layouts, colours, keybindings, view state,
@@ -676,4 +713,4 @@ built-in defaults are written out first, so blessing one word never
 silently drops the others.
 
 Rejects a Category that normalizes to nothing (empty, whitespace, or
-underscores only) — it would let `bootstrap` write `Explore: `.
+underscores only) — it would let `bootstrap` write `Explore:`.

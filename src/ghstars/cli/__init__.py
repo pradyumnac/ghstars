@@ -22,6 +22,7 @@ __all__ = [
     "app",
     "category_app",
     "check_stale_export_config",
+    "classify_app",
     "ensure_config_dir",
     "get_cli_config_path",
     "get_client",
@@ -50,6 +51,11 @@ taxonomy_app = typer.Typer(
     help="Edit the Category vocabulary in ghstars.toml.",
 )
 app.add_typer(taxonomy_app, name="taxonomy")
+classify_app = typer.Typer(
+    no_args_is_help=True,
+    help="Extract and reconcile an offline classification work snapshot.",
+)
+app.add_typer(classify_app, name="classify")
 
 
 @app.callback()

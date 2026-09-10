@@ -12,6 +12,7 @@ that side effect only.
 
 from ghstars.cli.commands import (  # noqa: F401
     category,
+    classify,
     diff,
     doctor,
     export,
