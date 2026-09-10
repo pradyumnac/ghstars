@@ -1,11 +1,11 @@
 ---
 name: ghstars-bulk-classify
 description: |
-  Classify active GitHub Stars from a fresh ghstars sync. Use this skill for a
-  one-time or resumed classification debt pass. It resumes valid proposals and
-  user selections, refreshes changed source data, and presents ten pending
-  Stars at a time. Do not use it for normal Star discovery or automatic
-  taxonomy repair.
+  Classify active GitHub Stars from a managed local classification run. Use
+  this skill for a one-time or resumed classification debt pass. It resumes
+  valid proposals and user selections, refreshes changed source data when
+  requested, and presents ten pending Stars at a time. Do not use it for normal
+  Star discovery or automatic taxonomy repair.
 ---
 
 # ghstars classify
@@ -31,31 +31,44 @@ separately.
 
 ## Workflow
 
-### 1. Sync, then create, resume, or refresh the run
+### 1. Resume first, then create or refresh the run
 
-Ask the user for approval to run a fresh sync. Stop if the user declines.
+Use a stable provider and model identifier for `CLASSIFIER`. Keep that value
+for all batches in the run.
 
-```sh
-ghstars sync --json
-```
-
-Stop if the sync fails. Then call `extract` without `--new`:
+First call `extract` without `--new`:
 
 ```sh
 ghstars classify extract --classifier "$CLASSIFIER" --json
 ```
 
-Use a stable provider and model identifier for `CLASSIFIER`. Keep that value
-for all batches in the run.
+This command selects the valid active run. Do not ask for a sync before this
+check. Read `action`, `snapshot`, `resume_path`, and all progress counts.
 
-Do not scan run directories yourself. The command selects the valid active
-run. Read `action`, `snapshot`, `resume_path`, and all progress counts.
+If `action` is `resume`, tell the user that an existing run is available.
+Ask: “A sync is available. Do you want to run it and resume the existing run?”
+
+- If the user says yes, run `sync`, then run `extract` again without `--new`.
+- If the user explicitly requests a new run, run `extract` with `--new`.
+- If the user says no without requesting a new run, do not run a command. Suggest
+  that the user request a new run if the existing run is not wanted.
+
+If `action` is `new`, ask for sync approval before creating classifier input.
+Stop if the user declines. Then run:
+
+```sh
+ghstars sync --json
+ghstars classify extract --classifier "$CLASSIFIER" --json
+```
+
+Stop if the sync fails. If `action` is `refresh`, use the returned
+`resume_path` and continue with the refreshed run.
 
 The `action` value has these meanings:
 
-- `new`: The command created the first run.
-- `resume`: The saved snapshot matches the fresh local state.
-- `refresh`: The fresh sync changed the source snapshot.
+- `new`: No reusable active run existed.
+- `resume`: The command selected a reusable active run.
+- `refresh`: A fresh sync changed the source snapshot.
 
 A refresh keeps proposals for unchanged classifier facts. It also keeps user
 selections for those proposals. It removes archived Stars and adds new Stars.
@@ -127,7 +140,7 @@ Do not write `proposals.jsonl` by hand. The command validates repository keys,
 scores, rank order, duplicate Categories, snapshot identity, and conflicting
 retries.
 
-### 3. Render and present ten rows at a time
+### 3. Render and present ten items at a time
 
 After every active Star has a proposal, render the next ten pending Stars:
 
@@ -145,13 +158,15 @@ Show the Markdown output to the user. Do not show the full report at once.
 The command excludes repositories with stored review decisions. Keep the same
 `WORK_DIR` and snapshot for each review batch.
 
-Read the Markdown output. It has exactly three columns and stable numbered
-rows:
+Read the Markdown output. It has one block for each repository. Each block
+has a stable number and the facts that the user needs for review:
 
 ```markdown
-| Repository | Current Lists | Target Classifications |
-| --- | --- | --- |
-| 1. owner/name | Explore: Tool | Intent guess: Explore (34); A. CLI (91); B. Tool (82); C. Example (55) |
+## 1. owner/name
+- **Description:** A command-line tool for example tasks.
+- **Language:** Python
+- **Current Lists:** Explore: Tool
+- **Target Classifications:** Intent guess: Explore (34); A. CLI (91); B. Tool (82); C. Example (55)
 ```
 
 A Category below the threshold remains `Unclassified`. The threshold does not
@@ -159,8 +174,8 @@ make an adoption decision.
 
 ### 4. Ask for user selections
 
-Show only the current ten-row table. Ask the user to select rows and choices,
-for example:
+Show only the current ten-item review batch. Ask the user to select numbered
+items and choices, for example:
 
 ```text
 Adopt 1A, 5C, 43B. Skip 2-4.
@@ -168,7 +183,7 @@ Adopt 1A, 5C, 43B. Skip 2-4.
 
 A selection identifies a proposal. It does not authorize a mutation.
 
-For each selected row, confirm the final Intent. The displayed Intent is only
+For each selected item, confirm the final Intent. The displayed Intent is only
 a low-confidence guess. Store all selected and skipped decisions in a JSONL
 batch:
 
@@ -191,7 +206,7 @@ Do not write `reviews.jsonl` by hand. The command validates repository keys,
 accepted proposals, choices, confirmed Intents, and snapshot identity.
 
 Render the next pending batch after each accepted review batch. Continue until
-`pending` is zero. Repository keys preserve decisions if row numbers change.
+`pending` is zero. Repository keys preserve decisions if item numbers change.
 
 For each selected repository, ask for or confirm:
 
@@ -237,7 +252,8 @@ previous approval after the plan changes.
 
 ### 7. Recheck freshness and apply explicit operations
 
-Ask for approval to run one more fresh sync immediately before mutation:
+Ask for approval to run one more fresh sync immediately before mutation. This
+approval is required even when the run resumed without a fresh sync:
 
 ```sh
 ghstars sync --json
@@ -249,7 +265,7 @@ Run `classify extract` without `--new`. The refresh keeps valid selections.
 Rebuild the reconciliation plan from the new manifest. Get new final approval.
 
 Run only explicit commands for approved repository names. Use existing ghstars
-commands. Never turn a Filter, search, or table selection into an implicit
+commands. Never turn a Filter, search, or report selection into an implicit
 mutation target.
 
 Stop on an unexpected failure or state drift. Report completed and pending
@@ -258,11 +274,14 @@ Report the resulting state.
 
 ## Re-run behavior
 
-Start each skill session with an approved fresh sync. Then call `extract`
-without `--new`. Use the returned `resume_path` even if a refresh changes it.
+Start each skill session by calling `extract` without `--new`. If it returns
+an existing run, ask whether to sync and resume it. If the user says no,
+accept `--new` only after an explicit request. If no reusable run exists, get
+sync approval and then extract again.
 
-A refresh can change row numbers. Use repository keys in `reviews.jsonl` to
-preserve decisions. Never apply row tokens from an older snapshot.
+A refresh can change item numbers. Use repository keys in `reviews.jsonl` to
+preserve decisions. Never apply item tokens from an older snapshot. Use the
+returned `resume_path` even if a refresh changes it.
 
 A changed repository description or classifier fact invalidates its proposal
 and review. A List-only change preserves the proposal and review. It invalidates

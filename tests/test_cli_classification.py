@@ -330,7 +330,7 @@ def test_classify_review_persists_selection_and_pending_render_skips_it(
     assert reviewed.exit_code == 0
     assert json.loads(reviewed.output)["state"] == "complete"
     assert rendered.exit_code == 0
-    assert json.loads(rendered.output)["rows"] == 0
+    assert json.loads(rendered.output)["items"] == 0
 
 
 def test_classify_check_reports_local_source_drift(
@@ -359,7 +359,15 @@ def test_classify_write_and_render_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_star: StarFactory
 ) -> None:
     store = StateStore(tmp_path / "state")
-    store.save_stars([make_star("owner/repo")])
+    store.save_stars(
+        [
+            make_star(
+                "owner/repo",
+                description="A repository description",
+                language="Python",
+            )
+        ]
+    )
     _use_store(monkeypatch, store)
     work = tmp_path / "work"
     extracted = runner.invoke(
@@ -412,5 +420,8 @@ def test_classify_write_and_render_cli(
     assert written.exit_code == 0
     assert json.loads(written.output)["accepted"] == 1
     assert rendered.exit_code == 0
-    assert json.loads(rendered.output)["rows"] == 1
-    assert "| 1. owner/repo |" in (tmp_path / "classification.md").read_text()
+    assert json.loads(rendered.output)["items"] == 1
+    report = (tmp_path / "classification.md").read_text()
+    assert "## 1. owner/repo" in report
+    assert "**Description:** A repository description" in report
+    assert "**Language:** Python" in report

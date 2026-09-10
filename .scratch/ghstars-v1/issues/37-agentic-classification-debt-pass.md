@@ -97,13 +97,13 @@ taxonomy from anchoring the proposals.
                       │
                       ▼
 ┌──────────────────────────────────────────────┐
-│ [H. Numbered Review Table]                   │
+│ [H. Numbered Review Items]                   │
 │                                              │
-│ Three columns; one numbered row per Star.     │
+│ Show one numbered block per Star.             │
+│ Show description, language, and current Lists.│
 │ Show Intent guess and Category choices A-C.   │
-│ User is the primary decision-maker.           │
 └─────────────────────┬────────────────────────┘
-                      │ user selects rows and choices
+                      │ user selects items and choices
                       ▼
 ┌──────────────────────────────────────────────┐
 │ [I. User Selection]                          │
@@ -243,21 +243,29 @@ selection.
 
 ## Node H: numbered Markdown shape
 
-Write exactly three columns. Put the stable row number in the Repository cell.
-Label the three Category choices `A`, `B`, and `C`.
+Write one block for each repository. Put the stable number in the block
+heading. Include the description, language, current Lists, and target
+classifications. Label the three Category choices `A`, `B`, and `C`.
 
 ```markdown
-| Repository | Current Lists | Target Classifications |
-| --- | --- | --- |
-| 1. owner/name | Explore: Tool | Intent guess: Explore (34); A. CLI (91); B. Tool (82); C. Example (55) |
-| 2. owner/unclear | — | Unclassified; Intent guess: Reference (28); A. Protocol (58); B. Tool (44); C. Library (31) |
+## 1. owner/name
+- **Description:** A command-line tool for example tasks.
+- **Language:** Python
+- **Current Lists:** Explore: Tool
+- **Target Classifications:** Intent guess: Explore (34); A. CLI (91); B. Tool (82); C. Example (55)
+
+## 2. owner/unclear
+- **Description:** —
+- **Language:** —
+- **Current Lists:** —
+- **Target Classifications:** Unclassified; Intent guess: Reference (28); A. Protocol (58); B. Tool (44); C. Library (31)
 ```
 
 Escape pipes, newlines, and Markdown control characters. Keep repository order
-stable. Write one row for every active Star in the manifest.
+stable. Write one block for every active Star in the manifest.
 
-The row number is stable only inside one runtime snapshot. The user selects a
-proposal with the row number and choice letter, for example `1A` or `43B`.
+The item number is stable only inside one runtime snapshot. The user selects a
+proposal with the item number and choice letter, for example `1A` or `43B`.
 The user can override the Intent during selection.
 
 The current Categories remain structured join data. The report normally shows
@@ -295,7 +303,7 @@ the end-to-end LLM orchestration and approval conversation.
 
 ## Adoption reconciliation
 
-The user is the primary decision-maker. Selecting a row does not authorize a
+The user is the primary decision-maker. Selecting an item does not authorize a
 mutation. It identifies a proposal for the action-planning step.
 
 For each selected proposal, the skill determines one of these mechanical
@@ -391,7 +399,7 @@ intentional because the workflow must not read beyond stored pull data.
 - [x] Reject missing, extra, duplicate, and drifted records.
 - [x] Write the exact three-column, numbered Markdown report.
 - [x] Keep low-confidence Stars unclassified.
-- [x] Accept row-and-choice selections such as `1A` and `43B`.
+- [x] Accept item-and-choice selections such as `1A` and `43B`.
 - [x] Require the user to confirm or replace every selected Intent.
 - [x] Ask for Add, Replace, or Skip for every selected target.
 - [x] Require explicit source List names for each replacement.
@@ -418,7 +426,7 @@ and was removed during cleanup.
 - `ghstars classify write --work-dir PATH --snapshot ID --input BATCH.jsonl`
   validates and accumulates proposals.
 - `ghstars classify render --work-dir PATH --output REPORT.md --threshold 70`
-  writes the numbered three-column report.
+  writes the numbered review blocks.
 - Focused classification and CLI tests pass.
 - The full suite passes: 562 tests.
 - `mise run check` passes: tests, Ruff, formatting, and mypy.
@@ -444,7 +452,7 @@ trust boundary. The corrective pass fixed them before the next commit:
 - Proposal models reject extra fields and coerced score types.
 - Work files and the Markdown report use atomic writes.
 - Rendering rejects duplicate, missing, and unknown repository keys.
-- Rendering follows manifest order, so row numbers stay stable.
+- Rendering follows manifest order, so item numbers stay stable.
 - Markdown control characters are escaped.
 - `classify extract --json` converts corrupt state and lock errors to the CLI
   error envelope instead of exposing a traceback.

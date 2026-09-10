@@ -62,10 +62,17 @@ def test_extract_excludes_archived_and_keeps_current_lists(
     )
 
 
-def test_render_supports_ten_row_review_batches(
+def test_render_supports_ten_item_review_batches(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    stars = [make_star(f"owner/repo-{index:02d}") for index in range(12)]
+    stars = [
+        make_star(
+            f"owner/repo-{index:02d}",
+            description=f"Repository {index}",
+            language="Python",
+        )
+        for index in range(12)
+    ]
     manifest = extract_work(stars, [], tmp_path)
     write_proposals(
         tmp_path,
@@ -77,7 +84,7 @@ def test_render_supports_ten_row_review_batches(
     summary = render_markdown(tmp_path, output, 70, offset=10, limit=10)
 
     assert summary == {
-        "rows": 2,
+        "items": 2,
         "unclassified": 0,
         "total": 12,
         "offset": 10,
@@ -86,15 +93,22 @@ def test_render_supports_ten_row_review_batches(
         "remaining": 0,
     }
     text = output.read_text()
-    assert "| 11. owner/repo-10 |" in text
-    assert "| 12. owner/repo-11 |" in text
-    assert "| 10. owner/repo-09 |" not in text
+    assert "## 11. owner/repo-10" in text
+    assert "**Description:** Repository 10" in text
+    assert "**Language:** Python" in text
+    assert "## 12. owner/repo-11" in text
+    assert "## 10. owner/repo-09" not in text
 
 
 def test_write_and_render_joins_by_repo_and_marks_low_scores(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
-    star = make_star("owner/repo", list_ids=["list-1"])
+    star = make_star(
+        "owner/repo",
+        list_ids=["list-1"],
+        description="A useful tool",
+        language="Rust",
+    )
     lists = [
         List(
             id="list-1",
@@ -111,11 +125,13 @@ def test_write_and_render_joins_by_repo_and_marks_low_scores(
     output = tmp_path / "classification.md"
     summary = render_markdown(tmp_path, output, 70)
 
-    assert summary == {"rows": 1, "unclassified": 1}
+    assert summary == {"items": 1, "unclassified": 1}
     text = output.read_text()
-    assert "1. owner/repo" in text
-    assert "Explore: Tool" in text
-    assert "Unclassified" in text
+    assert "## 1. owner/repo" in text
+    assert "**Description:** A useful tool" in text
+    assert "**Language:** Rust" in text
+    assert "**Current Lists:** Explore: Tool" in text
+    assert "**Target Classifications:** Unclassified" in text
     assert "A. Tool (69)" in text
 
 
@@ -216,7 +232,7 @@ def test_render_rejects_work_file_output_path(
         render_markdown(tmp_path, tmp_path / "manifest.json", 70)
 
 
-def test_review_state_is_keyed_by_repo_and_pending_render_keeps_row_numbers(
+def test_review_state_is_keyed_by_repo_and_pending_render_keeps_item_numbers(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
     stars = [make_star(f"owner/repo-{index}") for index in range(3)]
@@ -248,9 +264,9 @@ def test_review_state_is_keyed_by_repo_and_pending_render_keeps_row_numbers(
     assert summary["pending"] == 2
     assert load_run_info(tmp_path).reviewed == 1
     text = (tmp_path / "pending.md").read_text()
-    assert "1. owner/repo-0" not in text
-    assert "2. owner/repo-1" in text
-    assert "3. owner/repo-2" in text
+    assert "## 1. owner/repo-0" not in text
+    assert "## 2. owner/repo-1" in text
+    assert "## 3. owner/repo-2" in text
 
 
 def test_refresh_reuses_only_valid_proposals_and_reviews(

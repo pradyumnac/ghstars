@@ -354,9 +354,9 @@ def render_cmd(
     work_dir: Path | None = _WORK_DIR_OPTION,
     output: Path = _OUTPUT_OPTION,
     threshold: int = typer.Option(70, "--threshold", help="Minimum Category score."),
-    offset: int = typer.Option(0, "--offset", help="First numbered row to render."),
+    offset: int = typer.Option(0, "--offset", help="First numbered item to render."),
     limit: int | None = typer.Option(
-        None, "--limit", help="Maximum rows to render in this review batch."
+        None, "--limit", help="Maximum items to render in this review batch."
     ),
     pending: bool = typer.Option(
         False, "--pending", help="Render only repositories without a review."
@@ -387,5 +387,5 @@ def render_cmd(
     if json_output:
         typer.echo(json.dumps(payload))
     else:
-        typer.echo(f"Wrote {summary['rows']} rows to {output}.")
+        typer.echo(f"Wrote {summary['items']} items to {output}.")
         typer.echo(f"Unclassified below threshold: {summary['unclassified']}.")

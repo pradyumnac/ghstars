@@ -685,6 +685,7 @@ def _render_markdown_locked(
             "; ".join(details) or "proposal keys do not match manifest"
         )
     by_repo = {item.repo: item for item in proposals}
+    source_by_repo = {item.repo: item for item in work.classifier_input}
     reviews = _load_reviews(
         work_dir,
         expected_snapshot=work.manifest.snapshot,
@@ -696,17 +697,17 @@ def _render_markdown_locked(
         for index, repo in enumerate(work.manifest.repos)
         if not pending_only or repo not in reviewed_repos
     ]
-    rows: list[str] = [
-        "| Repository | Current Lists | Target Classifications |",
-        "| --- | --- | --- |",
-    ]
+    blocks: list[str] = []
     unclassified = 0
     total = len(row_indices)
     end = total if limit is None else min(offset + limit, total)
     for index in row_indices[offset:end]:
         repo = work.manifest.repos[index]
         record = by_repo[repo]
+        source = source_by_repo[repo]
         mapping = work.manifest.current[record.repo]
+        description = source.description or "—"
+        language = source.language or "—"
         current = "; ".join(mapping.lists) or "—"
         intent = f"Intent guess: {record.intent.value} ({record.intent.score})"
         choices = "; ".join(
@@ -718,13 +719,20 @@ def _render_markdown_locked(
             target = f"Unclassified; {intent}; {choices}"
         else:
             target = f"{intent}; {choices}"
-        rows.append(
-            f"| {index + 1}. {_md(record.repo)} | {_md(current)} | {_md(target)} |"
+        blocks.extend(
+            [
+                f"## {index + 1}. {_md(record.repo)}",
+                f"- **Description:** {_md(description)}",
+                f"- **Language:** {_md(language)}",
+                f"- **Current Lists:** {_md(current)}",
+                f"- **Target Classifications:** {_md(target)}",
+                "",
+            ]
         )
     output.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(output, "\n".join(rows) + "\n")
+    atomic_write(output, "\n".join(blocks) + "\n")
     summary: dict[str, int | None] = {
-        "rows": end - offset,
+        "items": end - offset,
         "unclassified": unclassified,
     }
     if offset or limit is not None or pending_only:
