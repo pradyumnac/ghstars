@@ -23,7 +23,7 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
 1. As a developer, I want ghstars to fetch all my starred repos from GitHub, so that I have an up-to-date local view of everything I've starred.
 2. As a developer, I want ghstars to fetch my existing GitHub Lists and their membership, so that classification I've already done on github.com is respected, not overwritten.
 3. As a developer, I want newly starred repos (starred from my phone or the GitHub web UI) pulled in automatically on the next sync, so that I never have to remember to add them manually.
-4. As a developer, I want unclassified new stars to be visible as Unclassified rather than slip through unnoticed, so that I always know what still needs a decision — without ghstars writing anything to my real GitHub Lists on my behalf (superseded by ADR 0007: never pushed to `Explore: General` or anywhere else; "Unclassified" is a derived local view, `ghstars status`'s `unclassified_count`).
+4. As a developer, I want unclassified new stars to be visible as Unclassified rather than slip through unnoticed, so that I always know what still needs a decision — without ghstars writing anything to my real GitHub Lists on my behalf.
 5. As a developer, I want ghstars to detect when I've unstarred a repo on GitHub, so that its local record is marked Archived rather than silently vanishing.
 6. As a developer, I want ghstars to never delete history for an unstarred repo, so that I can still see when and why I once starred something.
 7. As a developer, I want local retagging changes to sync out to GitHub, so that my phone/web view of my Lists matches what I did in the TUI/CLI.
@@ -37,62 +37,62 @@ The old `gh-stars.py` script and `github-stars` skill are retired once ghstars r
 
 ### Taxonomy
 
- 1. As a developer, I want to classify a Star using `Explore`, `Current`, `Retired`, `Reference`, or `Learn` Intent prefixes on List names, so that the List name itself fully encodes my relationship to that Category.
- 2. As a developer, I want `Explore`, `Current`, and `Retired` to be mutually exclusive across every List a Star belongs to, so that a Star's adoption status is always unambiguous. `verify` reports a Star that breaks this rule; no command blocks on it, because only I know which Intent is right (ADR 0005). `tag` still strips a same-Category sibling, so a Current-to-Retired move stays one call (stories 3, 16, 17).
- 3. As a developer, I want to move a Star from `Current` to `Retired` without unstarring it, so that I can keep a record of things I used to rely on without cluttering my active tool lists.
- 4. As a developer, I want `Reference` and `Learn` Lists to have no adoption lifecycle, so that informational collections (e.g. "Reference: AI Agents") and things I am studying (e.g. "Learn: Example") aren't forced into a Current/Explore choice that doesn't apply.
- 5. As a developer, I want a List with no Intent prefix to take the `Reference` Intent and use its whole name as its Category, so that every List sits in the taxonomy without me prefixing every one (ADR 0005).
- 6. As a developer, I want to add a new Category by editing the `[taxonomy]` table in `ghstars.toml`, so that my taxonomy grows without a release. An unlisted Category is reported as *unblessed*, never rejected — a separate condition from `malformed`, which means the name shape is wrong (ADR 0005).
- 7. As a developer, I want to rename a Category and have all its Lists (across Intents) renamed consistently, so that I don't have to manually update Current/Explore/Retired variants separately.
- 8. As a developer, I want to "drain" (bulk-migrate) all Stars from one Category into another, so that I can reorganize my taxonomy without manually moving each Star.
- 9. As a developer, I want ghstars to validate that List names conform to the `{Intent}: {Category}` convention and that each Category is one the `[taxonomy]` table blesses, so that a malformed name doesn't silently break sync or export. A malformed name is always kept and reported, never rejected.
+1. As a developer, I want to classify a Star using `Explore`, `Current`, `Retired`, `Reference`, or `Learn` Intent prefixes on List names, so that the List name itself fully encodes my relationship to that Category.
+2. As a developer, I want `Explore`, `Current`, and `Retired` to be mutually exclusive across every List a Star belongs to, so that a Star's adoption status is always unambiguous. `verify` reports a Star that breaks this rule; no command blocks on it, because only I know which Intent is right (ADR 0005). `tag` still strips a same-Category sibling, so a Current-to-Retired move stays one call (stories 3, 16, 17).
+3. As a developer, I want to move a Star from `Current` to `Retired` without unstarring it, so that I can keep a record of things I used to rely on without cluttering my active tool lists.
+4. As a developer, I want `Reference` and `Learn` Lists to have no adoption lifecycle, so that informational collections (e.g. "Reference: AI Agents") and things I am studying (e.g. "Learn: Example") aren't forced into a Current/Explore choice that doesn't apply.
+5. As a developer, I want a List with no Intent prefix to take the `Reference` Intent and use its whole name as its Category, so that every List sits in the taxonomy without me prefixing every one (ADR 0005).
+6. As a developer, I want to add a new Category by editing the `[taxonomy]` table in `ghstars.toml`, so that my taxonomy grows without a release. An unlisted Category is reported as _unblessed_, never rejected — a separate condition from `malformed`, which means the name shape is wrong (ADR 0005).
+7. As a developer, I want to rename a Category and have all its Lists (across Intents) renamed consistently, so that I don't have to manually update Current/Explore/Retired variants separately.
+8. As a developer, I want to "drain" (bulk-migrate) all Stars from one Category into another, so that I can reorganize my taxonomy without manually moving each Star.
+9. As a developer, I want ghstars to validate that List names conform to the `{Intent}: {Category}` convention and that each Category is one the `[taxonomy]` table blesses, so that a malformed name doesn't silently break sync or export. A malformed name is always kept and reported, never rejected.
 10. As a developer, I want a Star to never sit in the `Explore: General` triage inbox and a classified List at the same time, so that "undecided" means what it says. `verify` reports each Star that breaks this rule.
 
 ### TUI
 
- 1. As a developer, I want a TUI for fast interactive tagging, so that I can quickly triage a batch of unclassified stars without leaving the terminal.
- 2. As a developer, I want bulk tagging in the TUI, so that reclassifying many repos at once doesn't require repetitive single-item actions.
- 3. As a developer, I want retagging support in the TUI, so that I can move a Star between Categories or Intents as my usage of it evolves.
- 4. As a developer, I want the TUI to show each List's public/private status explicitly, so that I never mistake a private List for a public one or vice versa.
+1. As a developer, I want a TUI for fast interactive tagging, so that I can quickly triage a batch of unclassified stars without leaving the terminal.
+2. As a developer, I want bulk tagging in the TUI, so that reclassifying many repos at once doesn't require repetitive single-item actions.
+3. As a developer, I want retagging support in the TUI, so that I can move a Star between Categories or Intents as my usage of it evolves.
+4. As a developer, I want the TUI to show each List's public/private status explicitly, so that I never mistake a private List for a public one or vice versa.
 
 ### CLI & agent integration
 
- 1. As an agent driving ghstars via scripts, I want a `--json` flag on every subcommand, so that I get structured, parseable output instead of scraping human-formatted text.
- 2. As an agent, I want a `--fields` selector on list-returning commands, so that I only pay the token cost for the fields I actually need.
- 3. As an agent, I want agent-mode output to never include interactive prompts, so that a missing required decision fails hard with a clear error instead of hanging.
- 4. As an agent, I want a single `ghstars status --json` command reporting last sync time, Retriage Queue count, and unclassified-star count, so that I can decide what to do next without pulling full records.
- 5. As an agent, I want write operations to be idempotent where feasible, so that retrying a call after a timeout doesn't manufacture a spurious conflict against my own prior attempt.
- 6. As a developer running concurrent ghstars invocations (human + agent, or two agent sessions), I want a local lockfile around state writes, so that concurrent operations never corrupt local state.
+1. As an agent driving ghstars via scripts, I want a `--json` flag on every subcommand, so that I get structured, parseable output instead of scraping human-formatted text.
+2. As an agent, I want a `--fields` selector on list-returning commands, so that I only pay the token cost for the fields I actually need.
+3. As an agent, I want agent-mode output to never include interactive prompts, so that a missing required decision fails hard with a clear error instead of hanging.
+4. As an agent, I want a single `ghstars status --json` command reporting last sync time, Retriage Queue count, and unclassified-star count, so that I can decide what to do next without pulling full records.
+5. As an agent, I want write operations to be idempotent where feasible, so that retrying a call after a timeout doesn't manufacture a spurious conflict against my own prior attempt.
+6. As a developer running concurrent ghstars invocations (human + agent, or two agent sessions), I want a local lockfile around state writes, so that concurrent operations never corrupt local state.
 
 ### Export
 
- 1. As a developer, I want to define a generic mapping from a List (or Category) to an output file and format, so that I can drive my own downstream pipelines (`tools.yaml`, skill vendor lists) without ghstars hardcoding my specific use cases.
- 2. As a developer, I want to ask "what tools am I currently exploring but haven't tried yet," so that I have an easy on-ramp into repos I starred but never followed up on.
+1. As a developer, I want to define a generic mapping from a List (or Category) to an output file and format, so that I can drive my own downstream pipelines (`tools.yaml`, skill vendor lists) without ghstars hardcoding my specific use cases.
+2. As a developer, I want to ask "what tools am I currently exploring but haven't tried yet," so that I have an easy on-ramp into repos I starred but never followed up on.
 
 ### State & diffing
 
- 1. As a developer, I want ghstars to never auto-commit `state/`, so that I retain full control over when history is recorded — even when `state/` is already a git repo, committing stays my responsibility, not ghstars'.
- 2. As a developer, I want ghstars to never run `git init` on its own, so that git-tracking `state/` is something I opt into deliberately, not an unrequested side effect.
- 3. As a developer, I want a `ghstars diff` command, so that I (or an agent) can see exactly what changed in my classification since the last sync.
- 4. As a developer, I want `config/` to stay plain files, never auto-committed by ghstars, so that stowing it into my dotfiles repo doesn't create a nested-repo conflict.
+1. As a developer, I want ghstars to never auto-commit `state/`, so that I retain full control over when history is recorded — even when `state/` is already a git repo, committing stays my responsibility, not ghstars'.
+2. As a developer, I want ghstars to never run `git init` on its own, so that git-tracking `state/` is something I opt into deliberately, not an unrequested side effect.
+3. As a developer, I want a `ghstars diff` command, so that I (or an agent) can see exactly what changed in my classification since the last sync.
+4. As a developer, I want `config/` to stay plain files, never auto-committed by ghstars, so that stowing it into my dotfiles repo doesn't create a nested-repo conflict.
 
 ### Agent observations
 
- 1. As a developer, I want the agent skill to tell me about relevant workflow friction directly, without persisting or applying the observation, so that I retain control over any response.
+1. As a developer, I want the agent skill to tell me about relevant workflow friction directly, without persisting or applying the observation, so that I retain control over any response.
 
 ### Distribution & retirement
 
- 1. As a developer, I want ghstars installable via `uv tool install`, PyPI, and GitHub Releases with per-platform tar.gz binaries, so that I have flexible install paths from day one.
- 2. As a developer, I want an accompanying agent skill shipped alongside ghstars, mirroring the existing `github-stars` skill's structure, so that Claude and other agents know how to drive and monitor it correctly.
- 3. As a developer, I want the old `gh-stars.py` script and `github-stars` skill retired once ghstars is stable, so that I'm not maintaining two overlapping GitHub-stars fetchers.
+1. As a developer, I want ghstars installable via `uv tool install`, PyPI, and GitHub Releases with per-platform tar.gz binaries, so that I have flexible install paths from day one.
+2. As a developer, I want an accompanying agent skill shipped alongside ghstars, mirroring the existing `github-stars` skill's structure, so that Claude and other agents know how to drive and monitor it correctly.
+3. As a developer, I want the old `gh-stars.py` script and `github-stars` skill retired once ghstars is stable, so that I'm not maintaining two overlapping GitHub-stars fetchers.
 
 ### Privacy
 
- 1. As a developer, I want new Lists to default to public, matching my existing Lists, with an explicit `isPrivate` override available per List, so that I can keep sensitive groupings private without changing my established default.
+1. As a developer, I want new Lists to default to public, matching my existing Lists, with an explicit `isPrivate` override available per List, so that I can keep sensitive groupings private without changing my established default.
 
 ### TUI (addendum)
 
- 1. As a developer, I want the TUI to show my remaining GitHub API rate limit, so that I can tell when I'm approaching a sync-blocking limit before it happens. Numbered out of sequence with the rest of the TUI section (24-27) to avoid renumbering every other story's cross-references elsewhere in this doc and the codebase.
+1. As a developer, I want the TUI to show my remaining GitHub API rate limit, so that I can tell when I'm approaching a sync-blocking limit before it happens. Numbered out of sequence with the rest of the TUI section (24-27) to avoid renumbering every other story's cross-references elsewhere in this doc and the codebase.
 
 ### TUI: navigation, presentation, and configuration
 
@@ -102,10 +102,10 @@ cross-reference reason.
 
 **Finding Stars**
 
- 1. As a developer, I want to filter the Stars on screen by Category, Intent, List, Language, License, Owner, Fork, Follow, and repository metadata, so that I can narrow a large account to the set I care about.
- 3. As a developer, I want to search Stars by name and description as I type, so that I can reach one repo out of 1530 without scrolling. Search composes with every Filter.
- 4. As a developer, I want a Filter for unclassified Stars only, so that I have a direct triage queue.
- 5. As a developer, I want to sort by name, star date, stargazer count, language, List count, and List name, and to reverse any of them, so that I can order the view for the task at hand. Star date descending is the default, because the newest Stars are the ones that need classification.
+1. As a developer, I want to filter the Stars on screen by Category, Intent, List, Language, License, Owner, Fork, Follow, and repository metadata, so that I can narrow a large account to the set I care about.
+2. As a developer, I want to search Stars by name and description as I type, so that I can reach one repo out of 1530 without scrolling. Search composes with every Filter.
+3. As a developer, I want a Filter for unclassified Stars only, so that I have a direct triage queue.
+4. As a developer, I want to sort by name, star date, stargazer count, language, List count, and List name, and to reverse any of them, so that I can order the view for the task at hand. Star date descending is the default, because the newest Stars are the ones that need classification.
 
 **Finding Stars filter design:**
 
@@ -127,32 +127,32 @@ cross-reference reason.
   result. Escape clears Search. Enter keeps Search active and returns focus
   to the Star table.
 
- 1. As a developer, I want a detail pane for the Star under the cursor, showing every field the last sync stored, so that I can judge a repo without opening a browser.
+1. As a developer, I want a detail pane for the Star under the cursor, showing every field the last sync stored, so that I can judge a repo without opening a browser.
 
 **Presentation**
 
- 1. As a developer, I want List and Category names shown in colour, so that I can tell groups apart at a glance. A stable digest of the Category name picks its default colour. The Category text always stays visible, so colour is never the only cue (ticket 28, WCAG 2.2).
- 2. As a developer, I want to set a Category's colour in config, so that the colours suit my terminal. ghstars offers a fixed set of named colours. Every colour in that set reaches 3:1 contrast on a light background and on a dark background. ghstars does not ship an application theme or palette — the TUI uses the active Textual theme (ticket 28, ADR 0008).
- 3. As a developer, I want to set header height, row height, and whether the clock shows, so that I can trade screen density against readability. Row height belongs to a layout preset. Header height and the clock are global (ADR 0008).
- 4. As a developer, I want a top bar showing remaining API rate limit, last sync time, and List count, so that I can see account state without leaving the TUI.
- 5. As a developer, I want a bottom status bar showing the visible and total Star count, the pending-edit count, the active sort, and the active Filter, so that I always know what the view is showing me. The sort and the Filter appear last, each with its key, for example `sort: newest [s]`.
+1. As a developer, I want List and Category names shown in colour, so that I can tell groups apart at a glance. A stable digest of the Category name picks its default colour. The Category text always stays visible, so colour is never the only cue (ticket 28, WCAG 2.2).
+2. As a developer, I want to set a Category's colour in config, so that the colours suit my terminal. ghstars offers a fixed set of named colours. Every colour in that set reaches 3:1 contrast on a light background and on a dark background. ghstars does not ship an application theme or palette — the TUI uses the active Textual theme (ticket 28, ADR 0008).
+3. As a developer, I want to set header height, row height, and whether the clock shows, so that I can trade screen density against readability. Row height belongs to a layout preset. Header height and the clock are global (ADR 0008).
+4. As a developer, I want a top bar showing remaining API rate limit, last sync time, and List count, so that I can see account state without leaving the TUI.
+5. As a developer, I want a bottom status bar showing the visible and total Star count, the pending-edit count, the active sort, and the active Filter, so that I always know what the view is showing me. The sort and the Filter appear last, each with its key, for example `sort: newest [s]`.
 
 **Actions**
 
- 1. As a developer, I want the `y` key to start a full sync from inside the TUI, so that I can refresh stale data where I noticed it was stale. ghstars only syncs when I press the key (see ADR 0006). The TUI shows each sync stage, completion, and errors. It never starts sync automatically.
- 2. As a developer, I want a separate, short-named key that refreshes the API rate limit alone, so that a cheap check stays distinct from a full sync.
- 3. As a developer, I want to open the Star under the cursor in my browser, so that I can read the repo itself. ghstars uses the XDG default handler.
- 4. As a developer, I want to unstar the Star under the cursor after I confirm in a dialog, so that a real, irreversible GitHub change can never happen from one keypress.
+1. As a developer, I want the `y` key to start a full sync from inside the TUI, so that I can refresh stale data where I noticed it was stale. ghstars only syncs when I press the key (see ADR 0006). The TUI shows each sync stage, completion, and errors. It never starts sync automatically.
+2. As a developer, I want a separate, short-named key that refreshes the API rate limit alone, so that a cheap check stays distinct from a full sync.
+3. As a developer, I want to open the Star under the cursor in my browser, so that I can read the repo itself. ghstars uses the XDG default handler.
+4. As a developer, I want to unstar the Star under the cursor after I confirm in a dialog, so that a real, irreversible GitHub change can never happen from one keypress.
 
 **Configuration**
 
- 1. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use. ghstars reserves `ctrl+q`, `ctrl+c`, `ctrl+p`, and `g`. The `g` key opens the config editor directly (ADR 0008).
- 2. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting. Press `g` or use the Ctrl+P command palette to open the editor. Press Esc to validate and save changes. Press `x` to discard changes. The form stays open when validation fails. The `q` key quits only from the main screen. A saved change takes effect on the next launch (ADR 0008).
- 3. As a developer, I want ghstars to remember my last Layout, sort, Filter, and Detail pane visibility between sessions, so that the TUI opens where I left it.
+1. As a developer, I want to set every keybinding in config, so that the TUI matches the keys I already use. ghstars reserves `ctrl+q`, `ctrl+c`, `ctrl+p`, and `g`. The `g` key opens the config editor directly (ADR 0008).
+2. As a developer, I want to edit config from inside the TUI and save it deliberately, so that I do not have to leave the TUI to change a setting. Press `g` or use the Ctrl+P command palette to open the editor. Press Esc to validate and save changes. Press `x` to discard changes. The form stays open when validation fails. The `q` key quits only from the main screen. A saved change takes effect on the next launch (ADR 0008).
+3. As a developer, I want ghstars to remember my last Layout, sort, Filter, and Detail pane visibility between sessions, so that the TUI opens where I left it.
 
 **Responsiveness**
 
- 1. As a developer, I want the TUI to draw immediately on launch and never block on a network call, so that a slow GitHub response never looks like a hang. Every panel that waits on data shows a labelled placeholder first.
+1. As a developer, I want the TUI to draw immediately on launch and never block on a network call, so that a slow GitHub response never looks like a hang. Every panel that waits on data shows a labelled placeholder first.
 
 **More configuration**
 
@@ -160,10 +160,10 @@ These four stories belong with the Configuration group above. They sit
 here, after story 72, so that adding them does not renumber any story a
 ticket already cross-references.
 
- 1. As a developer, I want to choose which columns the Star table shows and in what order, so that the table holds the fields I use. Each layout preset carries its own column list. When the columns do not fit the terminal, the table scrolls (ADR 0008).
- 2. As a developer, I want to set the date format, so that dates read the way I expect.
- 3. As a developer, I want to set how long a notification stays on screen, so that I can read an error before it clears.
- 4. As a developer, I want a text-only mode for the TUI's glyphs, so that a terminal without the fonts still renders every marker.
+1. As a developer, I want to choose which columns the Star table shows and in what order, so that the table holds the fields I use. Each layout preset carries its own column list. When the columns do not fit the terminal, the table scrolls (ADR 0008).
+2. As a developer, I want to set the date format, so that dates read the way I expect.
+3. As a developer, I want to set how long a notification stays on screen, so that I can read an error before it clears.
+4. As a developer, I want a text-only mode for the TUI's glyphs, so that a terminal without the fonts still renders every marker.
 
 ## Implementation Decisions
 
@@ -186,7 +186,7 @@ ticket already cross-references.
 
 - Read: `viewer.starredRepositories` (stars, paginated, including `licenseInfo`), `viewer.repositories(affiliations:[OWNER])` (forks), `viewer.following`, `viewer.lists` (`UserListConnection`: id, name, slug, description, isPrivate, items).
 - Write: `createUserList`, `updateUserList`, `deleteUserList`, `updateUserListsForItem(itemId, listIds[])`, `removeStar(starrableId)` (unstarring the repo itself, per story 8 — distinct from list-membership mutations).
-- Load-bearing detail: `updateUserListsForItem` replaces a Star's *entire* list membership per call — it is not additive. The sync engine must always compute and send the complete desired `listIds` set per Star, never a delta.
+- Load-bearing detail: `updateUserListsForItem` replaces a Star's _entire_ list membership per call — it is not additive. The sync engine must always compute and send the complete desired `listIds` set per Star, never a delta.
 
 **Sync/merge algorithm**
 
@@ -202,13 +202,13 @@ Three-way merge per Star, per sync: base (last-synced snapshot) vs. current GitH
 
 The Category is one flat value. It names a kind of thing (`Tool`, `Library`, `Example`) or a subject (`AI Agents`, `ML Research`). It never splits into a kind and a subject — ADR 0005 measured that split against the account and rejected it. A Star that needs two subjects belongs to two Lists.
 
-The parser normalizes the *derived* Category only: each underscore becomes a space, each run of whitespace collapses to one space, and the ends are trimmed. `List.name` keeps GitHub's exact value and is never rewritten.
+The parser normalizes the _derived_ Category only: each underscore becomes a space, each run of whitespace collapses to one space, and the ends are trimmed. `List.name` keeps GitHub's exact value and is never rewritten.
 
-The `[taxonomy]` table in `ghstars.toml` holds the blessed Category values. A Category outside that set is kept and reported as *unblessed*, never rejected — ADR 0001 keeps GitHub the source of truth, so a List can be named first and blessed after. `unblessed` is a distinct condition from `malformed`: a malformed name has one repair (rename it), an unblessed Category has two (bless the word, or rename), so ghstars reports it and never chooses. Validation reports each rather than guessing an Intent or a Category.
+The `[taxonomy]` table in `ghstars.toml` holds the blessed Category values. A Category outside that set is kept and reported as _unblessed_, never rejected — ADR 0001 keeps GitHub the source of truth, so a List can be named first and blessed after. `unblessed` is a distinct condition from `malformed`: a malformed name has one repair (rename it), an unblessed Category has two (bless the word, or rename), so ghstars reports it and never chooses. Validation reports each rather than guessing an Intent or a Category.
 
-`Explore`/`Current`/`Retired` are mutually exclusive across *all* of a Star's Lists, not per Category. `Reference` and `Learn` carry no lifecycle and no limit. `verify` reports a breach; no command blocks on it. `tag` keeps stripping a same-Category sibling, which is what makes a Current-to-Retired move one call.
+`Explore`/`Current`/`Retired` are mutually exclusive across _all_ of a Star's Lists, not per Category. `Reference` and `Learn` carry no lifecycle and no limit. `verify` reports a breach; no command blocks on it. `tag` keeps stripping a same-Category sibling, which is what makes a Current-to-Retired move one call.
 
-ghstars never *writes* a name it cannot parse. `tag` refuses to create a List whose name is malformed, or whose Category is outside the `[taxonomy]` vocabulary — the rule ticket 07 already applies to `category rename` and `category drain`. A name that already exists on GitHub is always kept and reported instead, because ADR 0001 makes GitHub the source of truth.
+ghstars never _writes_ a name it cannot parse. `tag` refuses to create a List whose name is malformed, or whose Category is outside the `[taxonomy]` vocabulary — the rule ticket 07 already applies to `category rename` and `category drain`. A name that already exists on GitHub is always kept and reported instead, because ADR 0001 makes GitHub the source of truth.
 
 `List.malformed` keeps its ticket 03 meaning: the name attempts the Intent-prefix pattern and fails. An unblessed Category is a separate condition that `verify` reports, and it adds no field to `List`.
 
@@ -301,7 +301,7 @@ PyPI + GitHub Releases with per-platform tar.gz binaries from v1; `uv tool insta
 
 - ADR 0001 (GitHub is the sole source of truth for List membership) and ADR 0002 (single `~/.ghstars/` directory instead of XDG base dirs) are binding architectural context — read both before implementing the sync engine or state layout.
 - ADR 0006 (the TUI can sync on an explicit keypress) supersedes ADR 0003 and governs stories 65 and 66. Read it before adding any live GitHub call to the TUI.
-- ADR 0005 (flat Category; List membership carries the second axis) is `proposed`. It reverses the compound-Category direction it first held. Read it before you touch `parse_list_name`, `strip_lifecycle_siblings`, or `tag`. It changes the *reported* exclusivity rule from per-Category to per-Star, but no write path enforces it: `verify` and `doctor` report a breach, and `tag` keeps its per-Category strip so a Current-to-Retired move stays one call. A per-Star strip would delete the membership holding a Star's second subject, and refusing would break stories 3/16/17 — so ghstars reports and the user decides (ticket 03).
+- ADR 0005 (flat Category; List membership carries the second axis) is `proposed`. It reverses the compound-Category direction it first held. Read it before you touch `parse_list_name`, `strip_lifecycle_siblings`, or `tag`. It changes the _reported_ exclusivity rule from per-Category to per-Star, but no write path enforces it: `verify` and `doctor` report a breach, and `tag` keeps its per-Category strip so a Current-to-Retired move stays one call. A per-Star strip would delete the membership holding a Star's second subject, and refusing would break stories 3/16/17 — so ghstars reports and the user decides (ticket 03).
 - ADR 0008 (TUI config and TUI state hold disjoint fields) governs stories 60-62, 69-71, and 73-76. Read it before you add a TUI setting. It also records two ticket 28 criteria that ticket 23 reverses: Category colours become named colours instead of Textual semantic text roles, and the Star table scrolls instead of hiding columns on a narrow terminal.
 - ADR 0007 supersedes story 4 as originally written: a never-classified Star is never pushed into `Explore: General` or any other List. "Unclassified" is a derived local view (`list_ids == [] and not archived`), never a real GitHub List membership ghstars writes on the user's behalf.
 - The TUI's rate-limit worker catches only `GitHubApiError` (`tui/app.py:432`). A `ValidationError` from `RateLimitResponse.model_validate` escapes the worker and leaves the bar blank with no message. Story 63 must fix this, and match the broad-catch reasoning `_apply_tag` already documents.

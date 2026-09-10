@@ -57,10 +57,10 @@ subject is both undecided and decided.
 _Avoid_: Misc, Uncategorized, Inbox.
 
 **Example** (Category value):
-Code that a publisher releases with a book, a course, or a video. The user
-reads it to learn a pattern. The user does not run it. An Example List takes
+Sample Code, scripts which serve the user as learning or revising value. May
+show recommended design patterns, book accompaniments code repos. An Example List takes
 the `Reference` Intent or the `Learn` Intent.
-_Avoid_: Book, Sample, Demo.
+_Avoid_: Book, Sample, Demo code.
 
 **Layout**:
 A named density preset for the flat Star table. It controls columns, row height,
