@@ -49,6 +49,7 @@ def extract_cmd(
     except (
         OSError,
         TypeError,
+        UnicodeDecodeError,
         json.JSONDecodeError,
         ValidationError,
         ClassificationError,

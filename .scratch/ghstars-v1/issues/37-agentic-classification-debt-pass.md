@@ -404,7 +404,7 @@ and was removed during cleanup.
 - `ghstars classify render --work-dir PATH --output REPORT.md --threshold 70`
   writes the numbered three-column report.
 - Focused classification and CLI tests pass.
-- The full suite passes: 560 tests.
+- The full suite passes: 562 tests.
 - `mise run check` passes: tests, Ruff, formatting, and mypy.
 - LSP and pi-lens diagnostics pass for the changed implementation.
 
@@ -435,13 +435,15 @@ trust boundary. The corrective pass fixed them before the next commit:
 - Work-directory extraction, writing, and rendering use bounded locks.
 - Proposal input handles invalid UTF-8 through the CLI error envelope.
 - The report path is an explicit user-selected output exception.
+- Render rejects output paths that overwrite work files.
+- Invalid UTF-8 state reaches the JSON error envelope.
 
 The first code commit was `740795a`. The corrective commits are `a55d27e`
 (`Harden classification reconciliation`) and `e8d2651` (`Prevent
 classification side effects`). The skill is committed with this project under
 `skills/ghstars-bulk-classify/SKILL.md`. The old `env/ai` copy was removed.
 
-Verification after the corrective pass: 560 tests pass, `mise run check` passes,
+Verification after the corrective pass: 562 tests pass, `mise run check` passes,
 and Ruff and mypy pass.
 
 ## Comments

@@ -237,6 +237,12 @@ def render_markdown(work_dir: Path, output: Path, threshold: int) -> dict[str, i
     """Join validated proposals with current mappings and write Markdown."""
     if not 0 <= threshold <= 100:
         raise ClassificationError("threshold must be between 0 and 100")
+    protected = {
+        (work_dir / name).resolve()
+        for name in ("manifest.json", "classifier-input.jsonl", "proposals.jsonl")
+    }
+    if output.resolve() in protected:
+        raise ClassificationError("report output must not overwrite a work file")
     with FileLock(str(work_dir / ".lock")).acquire(timeout=5.0):
         return _render_markdown_locked(work_dir, output, threshold)
 

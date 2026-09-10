@@ -172,6 +172,16 @@ def test_render_rejects_tampered_manifest_contents(
         render_markdown(tmp_path, tmp_path / "out.md", 70)
 
 
+def test_render_rejects_work_file_output_path(
+    tmp_path: Path, make_star: StarFactory
+) -> None:
+    manifest = extract_work([make_star("owner/repo")], [], tmp_path)
+    write_proposals(tmp_path, manifest.snapshot, [proposal("owner/repo")])
+
+    with pytest.raises(ClassificationError, match="must not overwrite"):
+        render_markdown(tmp_path, tmp_path / "manifest.json", 70)
+
+
 def test_markdown_escapes_classifier_text(
     tmp_path: Path, make_star: StarFactory
 ) -> None:
