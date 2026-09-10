@@ -53,6 +53,11 @@ a low-confidence guess, presents three Category choices, and requires final
 user approval before any adoption commands run. The CLI does not apply
 proposals.
 
+Committed as `740795a` (`Add offline Star classification workflow`). The
+untracked `.scratch/ghstars-v1/triage/` sample data was not committed and was
+removed during cleanup. Existing edits in `spec.md` and `CONTEXT.md` remain
+uncommitted.
+
 ### Notes repository split
 
 Resolved 2026-09-09. ghstars does not depend on the old notes path or on

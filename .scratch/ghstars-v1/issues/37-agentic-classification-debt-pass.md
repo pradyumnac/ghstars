@@ -392,6 +392,10 @@ intentional because the workflow must not read beyond stored pull data.
 
 Implemented on 2026-09-10.
 
+Committed in `740795a` (`Add offline Star classification workflow`). The old
+untracked `.scratch/ghstars-v1/triage/` sample data was not part of that commit
+and was removed during cleanup.
+
 - `ghstars classify extract --work-dir PATH --json` writes the runtime
   snapshot and classifier input.
 - `ghstars classify write --work-dir PATH --snapshot ID --input BATCH.jsonl`
