@@ -18,8 +18,31 @@ class StarFactory(Protocol):
 
 
 def _use_store(monkeypatch: pytest.MonkeyPatch, store: StateStore) -> None:
+    monkeypatch.setattr(cli_module, "get_read_only_store", lambda: store)
     monkeypatch.setattr(cli_module, "get_store", lambda: store)
     monkeypatch.setattr(cli_module, "ensure_config_dir", lambda: store.base_dir)
+
+
+def test_classify_extract_does_not_create_state_or_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("GHSTARS_HOME", str(home))
+
+    result = runner.invoke(
+        app,
+        [
+            "classify",
+            "extract",
+            "--work-dir",
+            str(tmp_path / "work"),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert not (home / "config").exists()
+    assert not (home / "state").exists()
 
 
 def test_classify_extract_is_offline_and_writes_runtime_snapshot(

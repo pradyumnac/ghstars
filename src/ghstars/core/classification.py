@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from itertools import pairwise
 from pathlib import Path
 
+from filelock import FileLock
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -171,6 +172,7 @@ def extract_work(stars: list[Star], lists: list[List], work_dir: Path) -> Manife
     work_dir.mkdir(parents=True, exist_ok=True)
     _write_json(work_dir / "manifest.json", manifest.model_dump(mode="json"))
     _write_raw_jsonl(work_dir / "classifier-input.jsonl", classifier_input)
+    (work_dir / "proposals.jsonl").unlink(missing_ok=True)
     return manifest
 
 
@@ -203,26 +205,31 @@ def write_proposals(
     work_dir: Path, snapshot: str, records: list[ProposalRecord]
 ) -> int:
     """Validate and idempotently append a classifier batch."""
-    work = load_work(work_dir)
-    if snapshot != work.manifest.snapshot:
-        raise ClassificationError("snapshot does not match manifest")
-    existing = {
-        item.repo: item
-        for item in _load_proposals(work_dir, expected_snapshot=work.manifest.snapshot)
-    }
-    valid_repos = set(work.manifest.repos)
-    for record in records:
-        if record.repo not in valid_repos:
-            raise ClassificationError(
-                f"proposal has unknown repository {record.repo!r}"
+    with FileLock(str(work_dir / ".lock")):
+        work = load_work(work_dir)
+        if snapshot != work.manifest.snapshot:
+            raise ClassificationError("snapshot does not match manifest")
+        existing = {
+            item.repo: item
+            for item in _load_proposals(
+                work_dir, expected_snapshot=work.manifest.snapshot
             )
-        prior = existing.get(record.repo)
-        if prior is not None and prior.model_dump() != record.model_dump():
-            raise ClassificationError(f"conflicting proposal for {record.repo!r}")
-        existing[record.repo] = record
-    payload = [existing[repo] for repo in work.manifest.repos if repo in existing]
-    _write_jsonl(work_dir / "proposals.jsonl", payload, extra={"snapshot": snapshot})
-    return len(records)
+        }
+        valid_repos = set(work.manifest.repos)
+        for record in records:
+            if record.repo not in valid_repos:
+                raise ClassificationError(
+                    f"proposal has unknown repository {record.repo!r}"
+                )
+            prior = existing.get(record.repo)
+            if prior is not None and prior.model_dump() != record.model_dump():
+                raise ClassificationError(f"conflicting proposal for {record.repo!r}")
+            existing[record.repo] = record
+        payload = [existing[repo] for repo in work.manifest.repos if repo in existing]
+        _write_jsonl(
+            work_dir / "proposals.jsonl", payload, extra={"snapshot": snapshot}
+        )
+        return len(records)
 
 
 def render_markdown(work_dir: Path, output: Path, threshold: int) -> dict[str, int]:

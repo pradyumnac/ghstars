@@ -9,6 +9,7 @@ from ghstars.cli.deps import (
     get_cli_config_path,
     get_client,
     get_core_config_path,
+    get_read_only_store,
     get_store,
     get_tui_config_path,
     get_tui_state_path,
@@ -27,6 +28,7 @@ __all__ = [
     "get_cli_config_path",
     "get_client",
     "get_core_config_path",
+    "get_read_only_store",
     "get_store",
     "get_tui_config_path",
     "get_tui_state_path",
@@ -59,8 +61,10 @@ app.add_typer(classify_app, name="classify")
 
 
 @app.callback()
-def main() -> None:
+def main(ctx: typer.Context) -> None:
     """ghstars: classify GitHub starred repos into GitHub's native Lists."""
+    if ctx.invoked_subcommand == "classify":
+        return
     ensure_config_dir()
     check_stale_export_config()
 

@@ -46,6 +46,10 @@ def get_store() -> StateStore:
     return StateStore(get_ghstars_home() / "state")
 
 
+def get_read_only_store() -> StateStore:
+    return StateStore(get_ghstars_home() / "state", create=False)
+
+
 def ensure_config_dir() -> Path:
     """Scaffold `~/.ghstars/config/` if it's missing.
 

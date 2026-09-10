@@ -36,8 +36,8 @@ def extract_cmd(
 ) -> None:
     """Write the offline classifier input and hidden current mapping."""
     try:
-        store = cli.get_store()
-        stars, lists = store.load_stars_and_lists()
+        store = cli.get_read_only_store()
+        stars, lists = store.read_existing_stars_and_lists()
         manifest = extract_work(stars, lists, work_dir)
     except Timeout:
         fail(
@@ -84,6 +84,12 @@ def write_cmd(
             raise ClassificationError("classifier input must contain JSON objects")
         records = [ProposalRecord.model_validate(item) for item in raw_records]
         count = write_proposals(work_dir, snapshot, records)
+    except Timeout:
+        fail(
+            "could not acquire the classification work lock. Try again.",
+            code=CODE_STATE_LOCK_HELD,
+            json_output=json_output,
+        )
     except (OSError, json.JSONDecodeError, ValidationError, ClassificationError) as exc:
         _classification_fail(str(exc), json_output)
     payload = {"accepted": count, "snapshot": snapshot}

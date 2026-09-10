@@ -17,9 +17,10 @@ class StateStore:
     caller decides.
     """
 
-    def __init__(self, base_dir: Path) -> None:
+    def __init__(self, base_dir: Path, *, create: bool = True) -> None:
         self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        if create:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
         self._file_lock = FileLock(str(self.base_dir / ".lock"))
 
     @property
@@ -68,6 +69,24 @@ class StateStore:
             return self.load_stars(lock_timeout=lock_timeout), self.load_lists(
                 lock_timeout=lock_timeout
             )
+
+    def read_existing_stars_and_lists(self) -> tuple[list[Star], list[List]]:
+        """Read an existing snapshot without creating directories or locks."""
+        if not self.base_dir.exists():
+            return [], []
+        lock_path = self.base_dir / ".lock"
+        if lock_path.exists():
+            with FileLock(str(lock_path)):
+                return self._read_existing_stars_and_lists()
+        return self._read_existing_stars_and_lists()
+
+    def _read_existing_stars_and_lists(self) -> tuple[list[Star], list[List]]:
+        stars_data = _read_json(self._stars_path) if self._stars_path.exists() else []
+        lists_data = _read_json(self._lists_path) if self._lists_path.exists() else []
+        return (
+            [Star.model_validate(item) for item in stars_data],
+            [List.model_validate(item) for item in lists_data],
+        )
 
     def save_lists(
         self, lists: list[List], *, lock_timeout: float = _DEFAULT_TIMEOUT
