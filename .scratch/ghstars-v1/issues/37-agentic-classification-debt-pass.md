@@ -430,9 +430,9 @@ trust boundary. The corrective pass fixed them before the next commit:
 - `classify extract --json` converts corrupt state and lock errors to the CLI
   error envelope instead of exposing a traceback.
 
-The first code commit was `740795a`. The corrective commit follows this ticket
-update. The skill is committed separately in the `env/ai` repository as
-`3c10412` (`Add ghstars classification skill`).
+The first code commit was `740795a`. The corrective commit is `a55d27e`
+(`Harden classification reconciliation`). The skill is committed separately in
+the `env/ai` repository as `3c10412` (`Add ghstars classification skill`).
 
 Verification after the corrective pass: 559 tests pass, `mise run check` passes,
 and Ruff and mypy pass.
