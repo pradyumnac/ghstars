@@ -61,8 +61,8 @@ uncommitted.
 The first clean-context review found trust-boundary defects in ticket 37. The
 corrective pass now validates local membership, strict proposal input, snapshot
 content, exact proposal keys, atomic work files, Markdown escaping, and JSON
-error handling. The ghstars corrective commit is `a55d27e`. The dedicated skill is committed separately
-in `env/ai` as `3c10412`.
+error handling. The ghstars corrective commits are `a55d27e` and `e8d2651`. The dedicated skill is
+committed separately in `env/ai` as `3c10412`.
 
 ### Notes repository split
 
