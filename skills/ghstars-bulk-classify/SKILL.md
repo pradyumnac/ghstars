@@ -27,6 +27,9 @@ classification. The `ghstars classify` commands perform deterministic work.
 - Do not apply a proposal without final approval.
 - Do not infer which Lists a replacement removes.
 - Do not bless a Category without a separate user decision.
+- Present each review report in the exact format from `classify render`.
+- Do not use command output as the user-facing review report.
+- Do not summarize, shorten, reformat, or omit report fields.
 
 ## Workflow
 
@@ -43,9 +46,21 @@ Before the first command, show these run assumptions:
 - the review batch size, from 1 through the selected Star count
 - whether prior proposals and reviews can be reused
 
-Ask the user to confirm these assumptions. By default, include only Stars with
-no Category or only `General`. Include classified Stars only when the user asks
-to redo them. Apply a requested limit after this scope filter.
+Ask for the review batch size before run confirmation. Accept a value from 1
+through the selected Star count. If the value is greater than 50, immediately
+show this warning:
+
+> Generating and displaying more than 50 classifications can be time-consuming
+> and token-expensive. Do you want to continue?
+
+Ask the user to select `Yes, continue` or `Choose a smaller batch`. Do not
+reject or reduce the requested batch size. Continue with the requested size
+only after the user selects `Yes, continue`. If the user selects
+`Choose a smaller batch`, ask for a new batch size.
+
+Ask the user to confirm the assumptions. By default, include only Stars with no
+Category or only `General`. Include classified Stars only when the user asks to
+redo them. Apply a requested limit after this scope filter.
 
 Ask for approval to run a fresh sync. Do not extract before this approval.
 
@@ -143,9 +158,8 @@ conflict error.
 
 ### 3. Review pending Stars
 
-Ask the user for a review batch size before the first render. Set
-`REVIEW_BATCH_SIZE` to that value. Accept values from 1 through the selected
-Star count. Reject a value above the selected Star count.
+Use the approved review batch size from the run assumptions. Set
+`REVIEW_BATCH_SIZE` to that value.
 
 After all Stars in the selected run have proposals, render the next review
 batch:
@@ -160,9 +174,20 @@ ghstars classify render \
   --json
 ```
 
-Show the rendered Markdown. Do not show more than `REVIEW_BATCH_SIZE` pending
-Stars. When Category A is below the threshold, the renderer marks the
-repository target as unclassified. This marker does not make a user decision.
+After the command succeeds, read the file at `OUTPUT`. Copy the complete file
+into a user-facing assistant message. Present the Markdown exactly as the
+renderer produced it. Do not rely on command output to present the report. Do
+not summarize or reformat the report. Do not remove descriptions, languages,
+current Lists, Intent guesses, scores, headings, or classification choices. Do
+not ask for review decisions until the complete report is visible. Do not show
+more than `REVIEW_BATCH_SIZE` pending Stars.
+
+If a platform output limit requires multiple messages, split the report only
+between repository entries. Label each message as a report part. Do not ask for
+decisions until all parts are visible. Do not reduce the approved batch size.
+
+When Category A is below the threshold, the renderer marks the repository
+target as unclassified. This marker does not make a user decision.
 
 Ask the user to select a Category or skip each displayed Star. Accept tokens
 such as `adopt 1A, 5C` and `skip 2-4`. A selection does not authorize a
